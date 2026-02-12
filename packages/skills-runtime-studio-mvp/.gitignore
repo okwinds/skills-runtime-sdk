@@ -1,0 +1,20 @@
+# Local secrets / env
+backend/.env
+
+# Runtime state (file storage)
+backend/.skills_runtime_sdk/
+
+# Local-only scripts
+config.local.sh
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS
+.DS_Store

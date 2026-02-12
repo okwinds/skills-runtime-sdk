@@ -1,0 +1,25 @@
+config_version: 1
+
+skills:
+  mode: "explicit"
+  scan:
+    refresh_policy: "always"
+    max_depth: 6
+    ignore_dot_entries: true
+    max_dirs_per_root: 2000
+    max_frontmatter_bytes: 65536
+
+  # 示例：filesystem source（metadata-only scan）
+  spaces:
+    - id: "local"
+      account: "web"
+      domain: "mvp"
+      sources: ["fs_local"]
+      enabled: true
+
+  sources:
+    - id: "fs_local"
+      type: "filesystem"
+      options:
+        # 推荐用仓库内自带的最小示例目录，避免依赖本地产物（`.skills_runtime_sdk/`）。
+        root: "examples/skills"

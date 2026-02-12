@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skills-runtime-sdk-python"
+version = "0.1.0"
+description = "通用 Skills Runtime SDK（Python）最小可测骨架（M1）"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pydantic>=2,<3",
+  "PyYAML>=6",
+  "httpx>=0.25",
+]
+
+[project.scripts]
+skills-runtime-sdk = "agent_sdk.cli.main:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+redis = ["redis>=5"]
+pgsql = ["psycopg[binary]>=3"]
+all = ["redis>=5", "psycopg[binary]>=3"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"agent_sdk.assets" = ["default.yaml", "prompts/default/*.md", "migrations/pgsql/*.sql"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "integration: integration tests (require external services like docker/redis/postgres; skipped by default)",
+]

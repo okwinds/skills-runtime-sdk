@@ -1,0 +1,50 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: skills
+      POSTGRES_PASSWORD: skills
+      POSTGRES_DB: skills
+    volumes:
+      - ../../packages/skills-runtime-sdk-python/src/agent_sdk/assets/migrations/pgsql/0001_skills_catalog.up.sql:/docker-entrypoint-initdb.d/0001_skills_catalog.up.sql:ro
+    # 默认不暴露端口到宿主机（runner 走 compose network）
+
+  runner:
+    image: python:3.11-slim
+    working_dir: /repo
+    volumes:
+      - ../..:/repo:rw
+    environment:
+      # 仅在显式开启时运行 integration tests
+      SKILLS_RUNTIME_SDK_RUN_INTEGRATION: "1"
+      # skills sources DSN
+      REDIS_URL: "redis://redis:6379/0"
+      # connect_timeout 用于避免服务尚未 ready 时 `psycopg.connect(...)` 长时间阻塞
+      SKILLS_PG_DSN: "postgresql://skills:skills@postgres:5432/skills?connect_timeout=1"
+      # 统一 UTF-8 locale（避免中文路径/输出导致 Python 初始化失败）
+      LANG: "C.UTF-8"
+      LC_ALL: "C.UTF-8"
+      PYTHONUTF8: "1"
+      # 让 CI/本地日志更“实时可见”，并在 hang/死锁时输出 traceback
+      PYTHONUNBUFFERED: "1"
+      PYTHONFAULTHANDLER: "1"
+    depends_on:
+      - redis
+      - postgres
+    command:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        python -V
+        # 说明：
+        # - 这里选择 pin 版本，避免 pip resolver 在某些平台/架构上对 `psycopg[binary]>=3` 发生长时间 backtracking 或 ResolutionImpossible。
+        # - 该 compose 仅用于集成验证（非生产依赖），pin 的目的是“可复现、可回归、可快速定位问题”。
+        python -m pip install --upgrade pip
+        python -m pip install "redis==7.1.0" "psycopg==3.3.2" "psycopg-binary==3.3.2"
+        python -m pip install -e "packages/skills-runtime-sdk-python[dev]"
+        pytest -vv -s --maxfail=1 packages/skills-runtime-sdk-python/tests/test_skills_sources_redis_pgsql_integration.py

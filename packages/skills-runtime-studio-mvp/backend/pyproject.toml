@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skills-runtime-studio-mvp-backend"
+version = "0.0.0"
+description = "Skills Runtime Studio MVP backend (reusing skills-runtime-sdk Web MVP)"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "pydantic",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

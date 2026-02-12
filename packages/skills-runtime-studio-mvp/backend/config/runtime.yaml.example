@@ -1,0 +1,117 @@
+config_version: 1
+
+# Studio MVP 默认 overlay（示例文件）。
+#
+# 用法：
+# - 复制本文件为 `runtime.yaml`（本地使用；不要提交到远端仓库）
+# - `.env` 中提供真实 key（或用环境变量注入），YAML 里只声明 `api_key_env`
+#
+# 说明：
+# - `runtime.yaml` 属于本地敏感配置（可能包含内网 base_url、默认模型名、安全策略）
+# - 远端仓库只保留 `.example`，保证开源可复现但不泄露内部环境
+
+llm:
+  # OpenAI-compatible Base URL（通常以 /v1 结尾）
+  base_url: "http://127.0.0.1:8000/v1"
+  # 仅声明“从哪个环境变量读取 key”；请在 `.env` 或运行环境中提供
+  api_key_env: "OPENAI_API_KEY"
+  timeout_sec: 60
+  max_retries: 3
+
+models:
+  planner: "YOUR_PLANNER_MODEL"
+  executor: "YOUR_EXECUTOR_MODEL"
+
+#
+# Safety / Sandbox（最佳实践：不打扰正常操作，但能拦截明显危险操作）
+#
+# 设计目标：
+# - 审批像“门卫”：决定要不要放行某个高风险动作（policy gate）
+# - 沙箱像“围栏”：即使动作放行，也限制命令在受控边界内执行（OS sandbox）
+#
+
+safety:
+  # allow：不审批（仅 denylist 会拦截；不建议作为默认）
+  # ask：需要审批；allowlist 命中可直接放行（推荐默认）
+  # deny：一律拒绝高危工具（适合强管控环境）
+  mode: "ask" # allow|ask|deny
+
+  # 降低“正常操作”打扰：命中 allowlist 的命令直接允许执行（不弹 approvals）
+  allowlist:
+    - "ls"
+    - "pwd"
+    - "whoami"
+    - "echo"
+    - "cat"
+    - "head"
+    - "tail"
+    - "rg"
+    - "sed"
+    - "pytest"
+    - "python -m pytest"
+    - "python3 -m pytest"
+
+  # 先拦截（denylist 命中直接拒绝，不进入 approvals）
+  denylist:
+    - "sudo"
+    - "rm -rf"
+    - "mkfs"
+    - "dd"
+    - "shutdown"
+    - "reboot"
+    - "halt"
+    - "poweroff"
+
+  approval_timeout_ms: 60000
+
+sandbox:
+  # OS sandbox 默认策略：
+  # - none：不强制 OS sandbox（可用性优先）
+  # - restricted：默认强制 OS sandbox（安全优先；推荐生产）
+  # 注意：若要求 restricted 但当前平台缺少可用 adapter，会返回 sandbox_denied（不会静默降级）。
+  default_policy: "restricted" # none|restricted
+
+  os:
+    # auto：macOS 用 seatbelt，Linux 用 bubblewrap
+    mode: "auto" # auto|none|seatbelt|bubblewrap
+
+    # macOS：seatbelt（sandbox-exec）
+    seatbelt:
+      # Profile 建议用多行文本，便于审阅与演进（SBPL）。
+      #
+      # 你可以把 profile 当成“围栏规则”：
+      # - approvals（门卫）决定“要不要执行”
+      # - seatbelt（围栏）决定“即使执行，也只能在围栏内做”
+      #
+      # 重要提醒：
+      # - macOS seatbelt 不会把路径变成“容器路径假象”；看到物理机绝对路径是正常现象
+      # - 想确认“真进沙箱且能限制”，请跑：
+      #   `bash scripts/integration/os_sandbox_restriction_demo.sh`
+      #
+      # Profile 分级建议：
+      # - dev_min：最小可跑通（默认，不打扰开发）
+      # - balanced：更偏生产的“平衡”示例（仍尽量不误伤常见命令）
+      #
+      # 当前默认使用 dev_min；如需更严格，请切换为 balanced 并先跑 demo 验证。
+      profile: |
+        (version 1)
+        (allow default)
+
+      # balanced 示例（可按需替换上面的 profile；建议先在本机验证不会误拦截）：
+      #
+      # profile: |
+      #   (version 1)
+      #   (allow default)
+      #   ; 证明“限制可见”的最小 deny（不会影响绝大多数日常开发命令）
+      #   (deny file-read* (subpath "/etc"))
+
+    # Linux：bubblewrap（bwrap）
+    # 生产环境示例（放在旁边，便于对照；在 macOS 开发时保持注释）：
+    # bubblewrap:
+    #   bwrap_path: "bwrap"
+    #   unshare_net: true
+    #
+    # 说明：
+    # - `unshare_net` 只影响 shell 工具（shell_exec/exec_command）是否能联网；
+    #   不影响 SDK 自身对 LLM 的 HTTP 调用（LLM 请求不在 bwrap 内执行）。
+    # - 若业务明确需要 shell 工具联网（例如 curl 拉取依赖），可临时设为 false，并用 denylist/approvals 做额外约束。

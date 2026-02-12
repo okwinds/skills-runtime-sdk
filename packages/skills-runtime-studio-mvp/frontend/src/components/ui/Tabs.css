@@ -1,0 +1,106 @@
+.tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tabs__list {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--color-bg-secondary);
+  border-bottom: var(--border-width-thin) solid var(--border-color-default);
+}
+
+.tabs__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast) var(--ease-out),
+    background-color var(--transition-fast) var(--ease-out);
+}
+
+.tabs__tab:hover:not([aria-selected="true"]) {
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-hover);
+}
+
+.tabs__tab[aria-selected="true"] {
+  color: var(--color-accent-primary);
+  background-color: color-mix(in srgb, var(--color-accent-primary) 8%, transparent);
+}
+
+.tabs__tab[aria-selected="true"]::after {
+  content: '';
+  position: absolute;
+  bottom: -var(--space-2) - 1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--color-accent-primary);
+}
+
+.tabs__content {
+  flex: 1;
+  overflow: hidden;
+  background-color: var(--color-bg-primary);
+}
+
+.tabs__panel {
+  height: 100%;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.tabs__panel[hidden] {
+  display: none;
+}
+
+/* Tab badge */
+.tabs__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-elevated);
+  border-radius: var(--radius-full);
+}
+
+.tabs__tab[aria-selected="true"] .tabs__badge {
+  background-color: var(--color-accent-primary);
+  color: var(--color-text-inverse);
+}
+
+/* Icon in tab */
+.tabs__icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast) var(--ease-out);
+}
+
+.tabs__tab:hover .tabs__icon,
+.tabs__tab[aria-selected="true"] .tabs__icon {
+  opacity: 1;
+}

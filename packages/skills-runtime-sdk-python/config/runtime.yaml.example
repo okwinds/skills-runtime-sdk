@@ -1,0 +1,88 @@
+config_version: 1
+
+#
+# SDK 默认 overlay（示例文件）。
+#
+# 用法：
+# - 复制本文件为 `runtime.yaml`（本地使用；不要提交到远端仓库）
+# - `.env` 或运行环境中提供真实 key；YAML 里只声明 `api_key_env`
+#
+# 说明：
+# - `runtime.yaml` 属于本地敏感配置（可能包含内网 base_url、默认模型名、安全策略）
+# - 远端仓库只保留 `.example`，保证开源可复现但不泄露内部环境
+#
+# 字段路径速查（便于对照文档/检索；实际 YAML 为嵌套结构）：
+# - llm.base_url / llm.api_key_env
+# - models.planner / models.executor
+# - safety.* / sandbox.*
+
+llm:
+  # OpenAI-compatible Base URL（通常以 /v1 结尾）
+  base_url: "http://127.0.0.1:8000/v1"
+  # 仅声明“从哪个环境变量读取 key”；请在 `.env` 或运行环境中提供
+  api_key_env: "OPENAI_API_KEY"
+  timeout_sec: 60
+  max_retries: 3
+
+models:
+  # 根据你内网可用的模型名替换
+  planner: "YOUR_PLANNER_MODEL"
+  executor: "YOUR_EXECUTOR_MODEL"
+
+#
+# Safety / Sandbox（最佳实践：不打扰正常操作，但能拦截明显危险操作）
+#
+
+safety:
+  # allow：不审批（仅 denylist 会拦截；不建议作为默认）
+  # ask：需要审批；allowlist 命中可直接放行（推荐默认）
+  # deny：一律拒绝高危工具（适合强管控环境）
+  mode: "ask" # allow|ask|deny
+
+  allowlist:
+    - "ls"
+    - "pwd"
+    - "whoami"
+    - "echo"
+    - "cat"
+    - "head"
+    - "tail"
+    - "rg"
+    - "sed"
+    - "pytest"
+    - "python -m pytest"
+    - "python3 -m pytest"
+
+  denylist:
+    - "sudo"
+    - "rm -rf"
+    - "mkfs"
+    - "dd"
+    - "shutdown"
+    - "reboot"
+    - "halt"
+    - "poweroff"
+
+  approval_timeout_ms: 60000
+
+sandbox:
+  # OS sandbox 默认策略：
+  # - none：不强制 OS sandbox（可用性优先）
+  # - restricted：默认强制 OS sandbox（安全优先；推荐生产）
+  default_policy: "restricted" # none|restricted
+
+  os:
+    # auto：macOS 用 seatbelt，Linux 用 bubblewrap
+    mode: "auto" # auto|none|seatbelt|bubblewrap
+
+    # macOS：seatbelt（sandbox-exec）
+    seatbelt:
+      profile: |
+        (version 1)
+        (allow default)
+
+    # Linux：bubblewrap（bwrap）
+    # 生产环境示例（放在旁边，便于对照；在 macOS 开发时保持注释）：
+    # bubblewrap:
+    #   bwrap_path: "bwrap"
+    #   unshare_net: true

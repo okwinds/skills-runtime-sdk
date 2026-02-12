@@ -1,0 +1,421 @@
+.film-strip-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  height: 100%;
+  background-color: var(--color-bg-secondary);
+  border-right: var(--border-width-thin) solid var(--border-color-default);
+  overflow: hidden;
+}
+
+/* Film strip header */
+.film-strip__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: var(--border-width-thin) solid var(--border-color-default);
+  background-color: var(--color-bg-tertiary);
+}
+
+.film-strip__title {
+  font-family: var(--font-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin: 0;
+}
+
+.film-strip__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.film-strip__action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: var(--border-width-thin) solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast) var(--ease-out),
+    border-color var(--transition-fast) var(--ease-out),
+    color var(--transition-fast) var(--ease-out);
+}
+
+.film-strip__action-btn:hover {
+  background-color: var(--color-bg-hover);
+  border-color: var(--border-color-default);
+  color: var(--color-text-primary);
+}
+
+.film-strip__action-btn:active {
+  transform: translateY(1px);
+}
+
+/* Film strip list */
+.film-strip__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Film strip tag - The main visual element */
+.film-strip-tag {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  background-color: var(--color-bg-tertiary);
+  border: var(--border-width-thin) solid var(--border-color-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast) var(--ease-out),
+    background-color var(--transition-fast) var(--ease-out),
+    box-shadow var(--transition-fast) var(--ease-out),
+    transform var(--transition-fast) var(--ease-out);
+
+  /* Perforations - the film strip holes */
+  --perforation-size: 6px;
+  --perforation-gap: 8px;
+
+  background-image:
+    /* Left perforations */
+    radial-gradient(
+      circle at calc(var(--perforation-size) / 2) var(--perforation-gap),
+      var(--color-bg-secondary) var(--perforation-size / 2),
+      transparent var(--perforation-size / 2)
+    ),
+    radial-gradient(
+      circle at calc(var(--perforation-size) / 2) calc(var(--perforation-gap) * 2 + var(--perforation-size)),
+      var(--color-bg-secondary) var(--perforation-size / 2),
+      transparent var(--perforation-size / 2)
+    ),
+    radial-gradient(
+      circle at calc(var(--perforation-size) / 2) calc(var(--perforation-gap) * 3 + var(--perforation-size) * 2),
+      var(--color-bg-secondary) var(--perforation-size / 2),
+      transparent var(--perforation-size / 2)
+    ),
+    /* Right perforations */
+    radial-gradient(
+      circle at calc(100% - var(--perforation-size) / 2) var(--perforation-gap),
+      var(--color-bg-secondary) var(--perforation-size / 2),
+      transparent var(--perforation-size / 2)
+    ),
+    radial-gradient(
+      circle at calc(100% - var(--perforation-size) / 2) calc(var(--perforation-gap) * 2 + var(--perforation-size)),
+      var(--color-bg-secondary) var(--perforation-size / 2),
+      transparent var(--perforation-size / 2)
+    ),
+    radial-gradient(
+      circle at calc(100% - var(--perforation-size) / 2) calc(var(--perforation-gap) * 3 + var(--perforation-size) * 2),
+      var(--color-bg-secondary) var(--perforation-size / 2),
+      transparent var(--perforation-size / 2)
+    );
+}
+
+.film-strip-tag:hover:not(.film-strip-tag--active) {
+  border-color: var(--border-color-strong);
+  background-color: color-mix(in srgb, var(--color-bg-tertiary) 95%, white);
+  transform: translateY(-1px);
+}
+
+.film-strip-tag--active {
+  border-color: var(--color-accent-primary);
+  background-color: color-mix(in srgb, var(--color-accent-primary) 5%, var(--color-bg-tertiary));
+  box-shadow:
+    inset 0 1px 0 rgba(232, 184, 109, 0.1),
+    0 0 0 1px rgba(232, 184, 109, 0.2),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.film-strip-tag--active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-accent-primary), transparent);
+  opacity: 0.5;
+}
+
+/* Film strip tag content */
+.film-strip-tag__frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-tertiary);
+  background-color: var(--color-bg-secondary);
+  border: var(--border-width-thin) solid var(--border-color-default);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-3);
+}
+
+.film-strip-tag--active .film-strip-tag__frame {
+  color: var(--color-accent-primary);
+  border-color: var(--color-accent-primary);
+  background-color: color-mix(in srgb, var(--color-accent-primary) 10%, var(--color-bg-secondary));
+}
+
+.film-strip-tag__label {
+  font-family: var(--font-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-tight);
+  margin-bottom: var(--space-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.film-strip-tag--active .film-strip-tag__label {
+  color: var(--color-text-primary);
+}
+
+.film-strip-tag__meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: var(--leading-tight);
+}
+
+.film-strip-tag--active .film-strip-tag__meta {
+  color: var(--color-text-tertiary);
+}
+
+/* Active indicator */
+.film-strip-tag__active-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    var(--color-accent-primary) 0%,
+    color-mix(in srgb, var(--color-accent-primary) 60%, transparent) 100%
+  );
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+/* Delete button on film strip tag */
+.film-strip-tag__delete {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--transition-fast) var(--ease-out),
+    background-color var(--transition-fast) var(--ease-out),
+    color var(--transition-fast) var(--ease-out);
+}
+
+.film-strip-tag:hover .film-strip-tag__delete,
+.film-strip-tag:focus-within .film-strip-tag__delete {
+  opacity: 1;
+}
+
+.film-strip-tag__delete:hover {
+  background-color: color-mix(in srgb, var(--color-danger) 15%, transparent);
+  color: var(--color-danger);
+}
+
+.film-strip-tag__delete:active {
+  transform: scale(0.95);
+}
+
+/* Delete confirmation modal */
+.delete-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  animation: modalFadeIn var(--transition-fast) var(--ease-out);
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.delete-modal {
+  background-color: var(--color-bg-secondary);
+  border: var(--border-width-thin) solid var(--border-color-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  max-width: 360px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  animation: modalSlideIn var(--transition-fast) var(--ease-out);
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.delete-modal__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto var(--space-4);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-danger) 20%, transparent), color-mix(in srgb, var(--color-danger) 5%, transparent));
+  border-radius: var(--radius-lg);
+  color: var(--color-danger);
+}
+
+.delete-modal__title {
+  font-family: var(--font-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-2);
+}
+
+.delete-modal__message {
+  font-family: var(--font-primary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-6);
+}
+
+.delete-modal__message strong {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.delete-modal__actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: center;
+}
+
+.delete-modal__btn {
+  font-family: var(--font-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: var(--border-width-thin) solid transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast) var(--ease-out),
+    border-color var(--transition-fast) var(--ease-out),
+    color var(--transition-fast) var(--ease-out),
+    transform var(--transition-fast) var(--ease-out);
+}
+
+.delete-modal__btn:hover {
+  transform: translateY(-1px);
+}
+
+.delete-modal__btn:active {
+  transform: translateY(0);
+}
+
+.delete-modal__btn--cancel {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--border-color-default);
+  color: var(--color-text-secondary);
+}
+
+.delete-modal__btn--cancel:hover {
+  background-color: var(--color-bg-hover);
+  border-color: var(--border-color-strong);
+  color: var(--color-text-primary);
+}
+
+.delete-modal__btn--confirm {
+  background: linear-gradient(135deg, var(--color-danger), color-mix(in srgb, var(--color-danger) 80%, #000));
+  border-color: color-mix(in srgb, var(--color-danger) 80%, #000);
+  color: white;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+
+.delete-modal__btn--confirm:hover {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-danger) 90%, #fff), var(--color-danger));
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-danger) 40%, transparent);
+}
+
+/* Empty state */
+.film-strip__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--color-text-tertiary);
+}
+
+.film-strip__empty-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--space-4);
+  color: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+.film-strip__empty-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.film-strip__empty-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}

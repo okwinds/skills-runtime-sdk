@@ -1,0 +1,59 @@
+config_version: 1
+
+run:
+  max_steps: 40
+  max_wall_time_sec: 1800
+  human_timeout_ms: null
+
+safety:
+  mode: "ask" # allow|ask|deny
+  allowlist: []
+  denylist: []
+  approval_timeout_ms: 60000
+
+sandbox:
+  # none：默认不强制 OS sandbox（可用性优先；SDK 缺省）
+  # restricted：默认强制 OS sandbox（安全优先；推荐生产）
+  default_policy: "none" # none|restricted
+
+  os:
+    # auto：macOS 用 seatbelt，Linux 用 bubblewrap
+    mode: "auto" # auto|none|seatbelt|bubblewrap
+
+    seatbelt:
+      # 宽松默认 profile（仅用于演示/占位；是否启用由 default_policy 决定）
+      profile: "(version 1) (allow default)"
+
+    bubblewrap:
+      bwrap_path: "bwrap"
+      unshare_net: true
+
+llm:
+  # OpenAI-compatible Base URL（通常以 /v1 结尾）
+  base_url: "https://api.openai.com/v1"
+  # 仅声明“从哪个环境变量读取 key”；不要把真实 key 写入配置文件
+  api_key_env: "OPENAI_API_KEY"
+  timeout_sec: 60
+  max_retries: 3
+
+models:
+  # best-practice 默认值（调用方可通过 overlay 替换为实际可用模型名）
+  planner: "gpt-4"
+  executor: "gpt-4"
+
+skills:
+  roots: []
+  mode: "explicit"
+  max_auto: 3
+
+prompt:
+  template: "default"
+  system_text: null
+  developer_text: null
+  system_path: null
+  developer_path: null
+  include_skills_list: true
+  include_cwd_tree: false
+  history:
+    max_messages: 40
+    max_chars: 120000

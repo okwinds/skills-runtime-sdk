@@ -1,0 +1,65 @@
+# macOS
+.DS_Store
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Packaging build artifacts
+*.egg-info/
+dist/
+build/
+
+# Node.js / frontend artifacts
+**/node_modules/
+**/frontend/dist/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Test/coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type/checker caches
+.mypy_cache/
+.ruff_cache/
+
+# Editors
+.vscode/
+.idea/
+
+# Local secrets (keep file, never commit)
+.env
+**/.env
+
+# Runtime artifacts (events/sessions cache)
+.skills_runtime_sdk/
+**/.skills_runtime_sdk/
+
+# Local scratch from tests
+tmp_cancel_test/
+
+# Open-source publishing exclusions (keep local only)
+legacy/
+docs/
+packages/skills-runtime-studio-mvp/docs/
+
+# Local collaboration markdown/docs (not for remote open-source)
+AGENTS.md
+DOCS_INDEX.md
+TASK_SUMMARY_TEMPLATE.md
+WORKLOG_TEMPLATE.md
+README_local.md
+packages/skills-runtime-studio-mvp/DOCS_INDEX.md
+packages/skills-runtime-studio-mvp/tests/skills-runtime-studio-mvp-test-cases.md
+
+# Local-only runtime configs (contain private endpoint defaults)
+**/runtime.yaml
+**/llm.yaml
+packages/skills-runtime-sdk-python/config/runtime.yaml
+packages/skills-runtime-sdk-python/config/llm.yaml
+packages/skills-runtime-studio-mvp/backend/config/runtime.yaml
+packages/skills-runtime-studio-mvp/backend/config/llm.yaml

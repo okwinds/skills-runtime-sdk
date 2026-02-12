@@ -1,0 +1,57 @@
+### 0) health
+GET http://127.0.0.1:8000/api/v1/health
+
+### 1) create session
+POST http://127.0.0.1:8000/api/v1/sessions
+Content-Type: application/json
+
+{
+  "title": "demo",
+  "skills_roots": []
+}
+
+### 2) set roots
+PUT http://127.0.0.1:8000/api/v1/sessions/{{session_id}}/skills/roots
+Content-Type: application/json
+
+{
+  "roots": [
+    "<repo_root>/packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/skills"
+  ]
+}
+
+### 3) list skills
+GET http://127.0.0.1:8000/api/v1/sessions/{{session_id}}/skills
+
+### 4) create skill
+POST http://127.0.0.1:8000/studio/api/v1/sessions/{{session_id}}/skills
+Content-Type: application/json
+
+{
+  "name": "article-writer",
+  "description": "写作技能",
+  "body_markdown": "# 输出要求\n- 标题\n- 要点",
+  "title": "Article Writer"
+}
+
+### 5) create run
+POST http://127.0.0.1:8000/api/v1/sessions/{{session_id}}/runs
+Content-Type: application/json
+
+{
+  "message": "请调用 $[web:mvp].article-writer 输出 5 条测试建议"
+}
+
+### 6) pending approvals
+GET http://127.0.0.1:8000/api/v1/runs/{{run_id}}/approvals/pending
+
+### 7) decide approval
+POST http://127.0.0.1:8000/api/v1/runs/{{run_id}}/approvals/{{approval_key}}
+Content-Type: application/json
+
+{
+  "decision": "approved"
+}
+
+### 8) stream events (SSE)
+GET http://127.0.0.1:8000/api/v1/runs/{{run_id}}/events/stream

@@ -1,0 +1,42 @@
+config_version: 1
+
+llm:
+  base_url: "https://api.openai.com/v1"
+  api_key_env: "OPENAI_API_KEY"
+  timeout_sec: 60
+  max_retries: 3
+
+models:
+  planner: "gpt-5.2"
+  executor: "gpt-4"
+
+safety:
+  mode: "ask"
+  allowlist:
+    - "ls"
+    - "pwd"
+    - "cat"
+    - "rg"
+    - "pytest"
+  denylist:
+    - "sudo"
+    - "rm -rf"
+    - "mkfs"
+    - "dd"
+    - "shutdown"
+    - "reboot"
+  approval_timeout_ms: 60000
+
+sandbox:
+  default_policy: "restricted"
+  os:
+    mode: "auto"
+
+    # macOS（当前启用）
+    seatbelt:
+      profile: "(version 1) (allow default)"
+
+    # Linux（生产示例，默认先注释；启用前先确认 `command -v bwrap`）
+    # bubblewrap:
+    #   bwrap_path: "bwrap"
+    #   unshare_net: true
