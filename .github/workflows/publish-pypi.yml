@@ -1,0 +1,47 @@
+name: Publish skills-runtime-sdk to PyPI
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/skills-runtime-sdk-python
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+
+      - name: Build sdist and wheel
+        run: |
+          python -m build
+
+      # Uses PyPI Trusted Publishing (OIDC). No API token required.
+      # Configure on pypi.org:
+      # - Project: skills-runtime-sdk
+      # - Publishing: Trusted Publishers
+      # - Owner: okwinds
+      # - Repo: skills-runtime-sdk
+      # - Workflow: publish-pypi.yml
+      # - Environment: (leave empty unless you use GitHub Environments)
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

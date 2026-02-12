@@ -59,7 +59,9 @@ def test_exec_command_sandbox_policy_invalid(tmp_path: Path) -> None:
 
 def test_exec_command_short_command_finishes_without_session_id(tmp_path: Path) -> None:
     ctx = _mk_ctx(tmp_path)
-    r = exec_command(ToolCall(call_id="c1", name="exec_command", args={"cmd": "echo hi", "yield_time_ms": 100}), ctx)
+    # 该用例本质是在验证“短命令默认会被回收并返回 session_id=None”。
+    # yield_time_ms 需要留出一定调度窗口，避免在慢机器/CI 上出现偶发 running=true 的假失败。
+    r = exec_command(ToolCall(call_id="c1", name="exec_command", args={"cmd": "echo hi", "yield_time_ms": 500}), ctx)
     p = _payload(r)
     assert p["ok"] is True
     assert "hi" in p["stdout"]

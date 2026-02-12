@@ -10,13 +10,13 @@
 
 - 安装 redis source 依赖：
   - editable：`python -m pip install -e ".[dev,redis]"`
-  - 非 editable：`python -m pip install "skills-runtime-sdk-python[redis]"`
+  - 非 editable：`python -m pip install "skills-runtime-sdk[redis]"`
 - 安装 pgsql source 依赖：
   - editable：`python -m pip install -e ".[dev,pgsql]"`
-  - 非 editable：`python -m pip install "skills-runtime-sdk-python[pgsql]"`
+  - 非 editable：`python -m pip install "skills-runtime-sdk[pgsql]"`
 - 安装全部可选依赖：
   - editable：`python -m pip install -e ".[dev,all]"`
-  - 非 editable：`python -m pip install "skills-runtime-sdk-python[all]"`
+  - 非 editable：`python -m pip install "skills-runtime-sdk[all]"`
 
 更多说明请参考 `help/` 手册（尤其是 `help/02-config-reference.md` 与 `help/05-skills-guide.md`）。
 
