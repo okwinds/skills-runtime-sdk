@@ -4,7 +4,7 @@
 参考文档：
 - 配置概览与示例：`help/02-config-reference.md`
 - Tools/Safety/Sandbox 心智模型：`help/06-tools-and-safety.md`
-- Sandbox 最佳实践：`help/sandbox-best-practices.zh-CN.md`
+- Sandbox best practices：`help/sandbox-best-practices.md` / `help/sandbox-best-practices.cn.md`
 - 默认配置：`packages/skills-runtime-sdk-python/src/agent_sdk/assets/default.yaml`
 
 设计目标（M1）：
@@ -70,7 +70,7 @@ class AgentSdkSandboxConfig(BaseModel):
 
     参考文档：
     - `help/02-config-reference.md`（字段说明）
-    - `help/sandbox-best-practices.zh-CN.md`（最佳实践与验证脚本）
+    - `help/sandbox-best-practices.md` / `help/sandbox-best-practices.cn.md`（最佳实践与验证脚本）
 
     说明：
     - `default_policy` 默认 `none`，保证不改变既有行为；

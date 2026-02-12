@@ -3,7 +3,7 @@ OS sandbox adapters（Linux bubblewrap / macOS seatbelt）。
 
 参考文档：
 - `help/02-config-reference.md`（字段说明）
-- `help/sandbox-best-practices.zh-CN.md`（最佳实践与验证脚本）
+- `help/sandbox-best-practices.md` / `help/sandbox-best-practices.cn.md`（最佳实践与验证脚本）
 
 说明：
 - 本模块只负责“如何把一次 shell_exec 包装成沙箱内执行”的可实现逻辑；

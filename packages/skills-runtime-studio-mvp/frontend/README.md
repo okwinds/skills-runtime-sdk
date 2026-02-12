@@ -1,111 +1,38 @@
-# Skills Runtime Studio MVP - Frontend
+<div align="center">
 
-Industrial Editorial style React frontend for the Skills Runtime Studio MVP.
+[English](README.md) | [中文](README.cn.md)
 
-## Quick Start
+</div>
 
-```bash
-# Install dependencies
-npm install
+# Skills Runtime Studio MVP — Frontend
 
-# Start development server
-npm run dev
-```
+React + Vite frontend for the Studio MVP.
 
-The app will be available at `http://localhost:5173`
+This is a repo example (not a published npm package). Start it from the monorepo root.
 
-## Tech Stack
+## Prerequisites
 
-- **Framework**: React 18 + TypeScript
-- **Build Tool**: Vite 6
-- **Styling**: CSS Variables + Custom Design System
-- **Aesthetic**: Industrial Editorial (dark theme with amber accents)
+- Node.js **20.19+** or **22.12+**
 
-## Project Structure
-
-```
-src/
-├── components/
-│   ├── layout/          # Layout components
-│   │   └── FilmStripSidebar.tsx    # Session sidebar with film strip tags
-│   ├── skills/          # Skills-related components
-│   │   ├── SkillList.tsx           # Skills grid display
-│   │   └── SkillCreateForm.tsx     # Create skill form
-│   ├── run/             # Run/SSE components
-│   │   └── SSETimeline.tsx         # SSE event timeline
-│   └── ui/              # Reusable UI components
-│       ├── Button.tsx
-│       ├── Card.tsx
-│       ├── Input.tsx
-│       └── Tabs.tsx
-├── lib/
-│   └── api.ts           # API client with mock data
-├── pages/
-│   └── App.tsx          # Main application component
-├── styles/
-│   └── design-system.css # CSS variables and design tokens
-└── types/
-│   └── index.ts         # TypeScript type definitions
-```
-
-## Design System
-
-### Color Palette (Industrial Editorial)
-
-```css
-/* Primary backgrounds */
---color-bg-primary: #0f0f0f;
---color-bg-secondary: #1a1a1a;
---color-bg-tertiary: #252525;
-
-/* Accents */
---color-accent-primary: #e8b86d;     /* Amber */
---color-accent-secondary: #6b9dc7;  /* Steel blue */
---color-accent-success: #7eb8a2;   /* Sage green */
---color-accent-error: #c97b7b;     /* Muted red */
-```
-
-### Key Features
-
-1. **Film Strip Sidebar**: Session list with perforated edge design resembling film strips
-2. **Timeline with Ticks**: SSE event timeline with mechanical tick marks
-3. **Amber Accent Glow**: Active states feature amber glow effects
-4. **Monospace Typography**: Code and data displayed in JetBrains Mono
-
-## Mock API
-
-The `src/lib/api.ts` file provides a complete mock implementation of the API with:
-
-- Session management (create, list)
-- Skill management (list, create)
-- Run streaming with SSE events
-- Realistic delays to simulate network latency
-
-## Development
-
-### Available Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-
-### Environment Variables
-
-Create a `.env` file for environment-specific configuration:
-
-```env
-VITE_API_BASE_URL=http://localhost:8000/api
-```
-
-## Building for Production
+## Quick start
 
 ```bash
-npm run build
+cd <repo_root>
+npm -C packages/skills-runtime-studio-mvp/frontend install
+npm -C packages/skills-runtime-studio-mvp/frontend run dev
 ```
 
-The built files will be in the `dist/` directory.
+Open: `http://localhost:5173`
+
+The dev server proxies backend APIs to `http://localhost:8000` (see `vite.config.ts`).
+
+## Scripts
+
+- `npm -C packages/skills-runtime-studio-mvp/frontend run dev`
+- `npm -C packages/skills-runtime-studio-mvp/frontend test`
+- `npm -C packages/skills-runtime-studio-mvp/frontend run lint`
+- `npm -C packages/skills-runtime-studio-mvp/frontend run build`
 
 ## License
 
-MIT
+Apache-2.0 (see repo root `LICENSE`)
