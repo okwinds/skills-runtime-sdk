@@ -45,3 +45,5 @@ jobs:
       # - Environment: (leave empty unless you use GitHub Environments)
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/skills-runtime-sdk-python/dist
