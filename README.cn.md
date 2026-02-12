@@ -82,6 +82,54 @@ $[web:mvp].skill_name
 
 ---
 
+## 用 `pip` 安装与使用（仅 SDK）
+
+PyPI 包名：`skills-runtime-sdk`（Python `>=3.10`）。
+
+```bash
+python -m pip install -U skills-runtime-sdk
+```
+
+可选 extras（skills sources）：
+
+```bash
+python -m pip install -U "skills-runtime-sdk[redis]"
+python -m pip install -U "skills-runtime-sdk[pgsql]"
+python -m pip install -U "skills-runtime-sdk[all]"
+```
+
+注意：
+- Python 的 import 名称是 `agent_sdk`（包名与模块名不同）。
+- `pip install` 安装的是 SDK；**Studio MVP 是仓库内的 example**（需要从源码运行）。
+
+### CLI
+
+```bash
+skills-runtime-sdk --help
+skills-runtime-sdk skills --help
+```
+
+### Python 最小示例
+
+```python
+from pathlib import Path
+
+from agent_sdk import Agent
+from agent_sdk.bootstrap import resolve_effective_run_config
+from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
+
+cfg = resolve_effective_run_config(
+    workspace_root=Path("."),
+    config_paths=[],
+)
+
+backend = OpenAIChatCompletionsBackend(cfg=cfg.llm, models=cfg.models)
+agent = Agent(workspace_root=Path("."), config=cfg, backend=backend)
+
+result = agent.run("用一句话打个招呼。")
+print(result.final_text)
+```
+
 ## Help 导览（建议按顺序）
 
 - 总导航：`help/README.cn.md`

@@ -80,6 +80,54 @@ Note: only **valid** mentions are extracted; invalid “mention-like” fragment
 
 ---
 
+## Install via `pip` (SDK only)
+
+PyPI package name: `skills-runtime-sdk` (Python `>=3.10`).
+
+```bash
+python -m pip install -U skills-runtime-sdk
+```
+
+Optional extras (skills sources):
+
+```bash
+python -m pip install -U "skills-runtime-sdk[redis]"
+python -m pip install -U "skills-runtime-sdk[pgsql]"
+python -m pip install -U "skills-runtime-sdk[all]"
+```
+
+Notes:
+- The import name is `agent_sdk` (package name differs from module name).
+- `pip install` ships the SDK; **Studio MVP is a repo example** (run it from source).
+
+### CLI
+
+```bash
+skills-runtime-sdk --help
+skills-runtime-sdk skills --help
+```
+
+### Minimal Python
+
+```python
+from pathlib import Path
+
+from agent_sdk import Agent
+from agent_sdk.bootstrap import resolve_effective_run_config
+from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
+
+cfg = resolve_effective_run_config(
+    workspace_root=Path("."),
+    config_paths=[],
+)
+
+backend = OpenAIChatCompletionsBackend(cfg=cfg.llm, models=cfg.models)
+agent = Agent(workspace_root=Path("."), config=cfg, backend=backend)
+
+result = agent.run("Say hi in one sentence.")
+print(result.final_text)
+```
+
 ## Help (recommended reading order)
 
 - Index: `help/README.md` (English) / `help/README.cn.md` (中文)
