@@ -21,7 +21,7 @@ A **skills-first** Agent Runtime SDK (Python) plus a companion **Studio MVP** (m
 ### 0) Prerequisites
 
 - Python **3.10+**
-- Node.js (for the frontend; recommended 18+)
+- Node.js (Studio frontend only; **20.19+** or **22.12+**)
 
 ### 1) Configure (local only, do not commit)
 

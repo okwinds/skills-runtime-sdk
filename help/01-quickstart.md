@@ -9,7 +9,7 @@
 ## 1.1 Prerequisites
 
 - Python `>=3.10` (required)
-- Node.js (only for Studio frontend)
+- Node.js (Studio frontend only; 20.19+ or 22.12+)
 - Run commands from the repo root: `<repo_root>`
 
 Note: if you use Python 3.9, imports may fail due to `X | None` typing.

@@ -9,7 +9,7 @@
 ## 1.1 前置要求
 
 - Python `>=3.10`（必须）
-- Node.js（仅 Studio 前端需要）
+- Node.js（仅 Studio 前端需要；建议 20.19+ 或 22.12+）
 - 在仓库根目录执行命令：`<repo_root>`
 
 > 说明：若你用系统 Python 3.9，会在导入阶段因 `str | None` 注解报错。
