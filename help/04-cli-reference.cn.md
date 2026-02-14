@@ -138,9 +138,14 @@ python3 -m agent_sdk.cli.main tools write-stdin \
   --workspace-root . \
   --yes \
   --session-id <id> \
-  --chars "hello\n" \
+  # PTY 往往处于 canonical mode；CR 更接近“按下回车”。
+  --chars $'hello\r' \
   --pretty
 ```
+
+备注：
+- `exec-command` / `write-stdin` 由 workspace 本地 runtime 服务托管，因此 `session-id` 可跨多次 CLI 调用复用。
+- runtime 产物位于 `<workspace_root>/.skills_runtime_sdk/runtime/`（server 信息 + 启动日志）。当路径过长时，socket 会降级到 `/tmp/...sock`（仍为 0600 权限）。
 
 ---
 

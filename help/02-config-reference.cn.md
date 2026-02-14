@@ -36,6 +36,7 @@ SDK 运行时有效配置可来自四层（高到低）：
 - `max_steps`：单次 run 最大 step 数
 - `max_wall_time_sec`：单次 run 最大墙钟时间
 - `human_timeout_ms`：人类输入超时（可空）
+- `resume_strategy`：`summary|replay`（默认 `summary`；`replay` 为逐事件回放恢复）
 
 ### `safety`
 

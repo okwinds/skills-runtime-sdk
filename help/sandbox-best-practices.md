@@ -153,3 +153,68 @@ bash scripts/integration/os_sandbox_restriction_demo.sh
 ```bash
 pytest -q packages/skills-runtime-sdk-python/tests/test_os_sandbox_restriction_effects.py
 ```
+
+---
+
+## 8. Docker / container notes (Debian 13, Ubuntu 20.04/24.04 examples)
+
+In containers, “does the OS sandbox work” depends on the image, the host kernel, and container security settings (seccomp/AppArmor/capabilities).
+
+### 8.1 macOS seatbelt (`sandbox-exec`) cannot run inside Linux containers
+
+- Seatbelt is a macOS (Darwin) userland feature.
+- Debian/Ubuntu containers are Linux userland, so they cannot provide `sandbox-exec`.
+- Conclusion: **seatbelt is not available inside containers**. Use it only when running the SDK/tools directly on a macOS host.
+
+### 8.2 Linux bubblewrap (`bwrap`) is “conditionally available” in containers
+
+Common prerequisites (if unmet you may see `sandbox_denied` or `Operation not permitted` from bwrap):
+- `bubblewrap` is installed in the container (provides `bwrap`).
+- The host kernel and container policies allow user namespaces (and `unshare` is not blocked by seccomp/AppArmor).
+
+Quick checks (run inside the container):
+
+```bash
+command -v bwrap || true
+bwrap --version || true
+cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || true
+cat /proc/sys/user/max_user_namespaces 2>/dev/null || true
+```
+
+Notes:
+- On Ubuntu, `kernel.unprivileged_userns_clone=0` disables unprivileged user namespaces (you usually can’t enable it from inside a container).
+- `max_user_namespaces=0` can also break bwrap.
+
+### 8.3 Docker probe examples (use privileged for probing, not as a production default)
+
+This repo includes a one-shot probe script (Debian-family, requires privileged):
+
+```bash
+bash scripts/integration/os_sandbox_bubblewrap_probe_docker.sh
+```
+
+If you prefer an Ubuntu-based probe (example: Ubuntu 24.04), you can use:
+
+```bash
+docker run --rm \
+  --privileged \
+  --security-opt seccomp=unconfined \
+  --entrypoint bash \
+  ubuntu:24.04 -lc '
+    set -eu
+    apt-get update -qq
+    apt-get install -y -qq bubblewrap >/dev/null
+    bwrap --version
+    mkdir -p /tmp/work
+    echo hi >/tmp/work/hi.txt
+    bwrap --die-with-parent --unshare-net \
+      --proc /proc --dev /dev \
+      --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib --ro-bind /etc /etc \
+      --bind /tmp/work /work --chdir /work -- /bin/cat /work/hi.txt
+  '
+```
+
+Similarly you can probe with Debian 13 (often referred to as “trixie”) or Ubuntu 20.04 (“focal”). The key variables are:
+- whether user namespaces are allowed
+- whether seccomp/AppArmor blocks required syscalls
+- whether `bwrap` can be installed and executed

@@ -27,42 +27,15 @@ from agent_sdk.config.defaults import load_default_config_dict
 from agent_sdk.config.loader import AgentSdkConfig, load_config_dicts
 from agent_sdk.core.errors import FrameworkError, FrameworkIssue
 from agent_sdk.core.executor import Executor
-from agent_sdk.core.exec_sessions import ExecSessionManager
-from agent_sdk.core.collab_manager import ChildAgentContext, CollabManager
+from agent_sdk.core.exec_sessions import PersistentExecSessionManager
+from agent_sdk.core.collab_persistent import PersistentCollabManager
 from agent_sdk.skills.manager import SkillsManager
 from agent_sdk.skills.models import ScanReport, _json_sanitize
 from agent_sdk.observability.run_metrics import compute_run_metrics_summary
 from agent_sdk.tools.builtin import register_builtin_tools
 from agent_sdk.tools.protocol import ToolCall, ToolResult
 from agent_sdk.tools.registry import ToolExecutionContext, ToolRegistry
-
-
-def _cli_child_runner(message: str, ctx: ChildAgentContext) -> str:
-    """
-    tools CLI 的默认子 agent runner（最小可用）。
-
-    说明：
-    - 用于让 collab tools 在 CLI 环境可被“烟测/回归”；不引入 LLM 依赖。
-    - 若业务需要真正的子 agent（LLM-backed），应在产品侧注入更强 runner。
-    """
-
-    if ctx.cancel_event.is_set():
-        return "cancelled"
-    msg = str(message)
-    if msg.startswith("wait_input:"):
-        while not ctx.cancel_event.is_set():
-            try:
-                x = ctx.inbox.get(timeout=0.05)
-                return f"got:{x}"
-            except Exception:
-                continue
-        return "cancelled"
-    return f"echo:{msg}"
-
-
-# tools CLI 的“进程内”单例（便于 tests 在同一进程多次调用 main(...) 时复用 session/child agents）。
-_TOOLS_CLI_EXEC_SESSIONS = ExecSessionManager()
-_TOOLS_CLI_COLLAB_MANAGER = CollabManager(runner=_cli_child_runner)
+from agent_sdk.core.utf8 import ensure_utf8_stdio
 
 
 def _dump_json_to_stdout(obj: Dict[str, Any], *, pretty: bool) -> None:
@@ -241,7 +214,10 @@ def _exit_code_for_scan(report: ScanReport) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     """构建 CLI argparse parser。"""
 
-    parser = argparse.ArgumentParser(prog="skills-runtime-sdk")
+    parser = argparse.ArgumentParser(
+        prog="skills-runtime-sdk",
+        description="Skills Runtime SDK CLI（skills/tools/runs）。",
+    )
     root_sub = parser.add_subparsers(dest="command", required=True)
 
     def _add_common_flags(p: argparse.ArgumentParser) -> None:
@@ -500,6 +476,17 @@ def _dispatch_builtin_tool(
 ) -> ToolResult:
     """构造 ToolRegistry 并派发执行 builtin tool。"""
 
+    exec_tools = {"exec_command", "write_stdin"}
+    collab_tools = {"spawn_agent", "wait", "send_input", "close_agent", "resume_agent"}
+
+    exec_sessions = None
+    if tool_name in exec_tools:
+        exec_sessions = PersistentExecSessionManager(workspace_root=workspace_root)
+
+    collab_manager = None
+    if tool_name in collab_tools:
+        collab_manager = PersistentCollabManager(workspace_root=workspace_root)
+
     ctx = ToolExecutionContext(
         workspace_root=workspace_root,
         run_id="tools_cli",
@@ -507,9 +494,9 @@ def _dispatch_builtin_tool(
         executor=Executor(),
         human_io=human_io,
         env=None,
-        exec_sessions=_TOOLS_CLI_EXEC_SESSIONS,
+        exec_sessions=exec_sessions,
         web_search_provider=web_search_provider,
-        collab_manager=_TOOLS_CLI_COLLAB_MANAGER,
+        collab_manager=collab_manager,
         emit_tool_events=False,
     )
     registry = ToolRegistry(ctx=ctx)
@@ -1621,12 +1608,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     - int：exit code（不会直接 sys.exit，便于测试）。
     """
 
+    # 入口期尽早确保 UTF-8 输出，避免 `C` locale 下 `--help`/JSON 输出触发 UnicodeEncodeError。
+    ensure_utf8_stdio()
+
     parser = _build_parser()
     try:
         args = parser.parse_args(list(argv) if argv is not None else None)
     except SystemExit as exc:
-        # argparse 解析错误：遵循标准 exit code 2
-        return int(getattr(exc, "code", 2) or 2)
+        # argparse 的约定：
+        # - `--help`：exit code 0
+        # - 参数错误：exit code 2
+        code = getattr(exc, "code", 2)
+        if code is None:
+            return 2
+        return int(code)
 
     if args.command == "tools":
         if args.tools_cmd == "list-dir":

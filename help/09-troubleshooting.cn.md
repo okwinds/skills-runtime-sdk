@@ -80,6 +80,20 @@ command -v sandbox-exec || true
 command -v bwrap || true
 ```
 
+容器/Docker 额外定位（Linux）：
+- 若在 Debian/Ubuntu 容器内启用 `bubblewrap`（`bwrap`），但仍失败，常见是 user namespace 或容器策略限制：
+
+```bash
+cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || true
+cat /proc/sys/user/max_user_namespaces 2>/dev/null || true
+```
+
+- 快速探测通路（需要 privileged；仅用于探测，不建议作为生产默认）：
+
+```bash
+bash scripts/integration/os_sandbox_bubblewrap_probe_docker.sh
+```
+
 修复：
 - 安装缺失适配器
 - 或临时将 `sandbox.default_policy` 调整为 `none`（保留 approvals+denylist）

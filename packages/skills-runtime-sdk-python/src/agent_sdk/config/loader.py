@@ -116,6 +116,7 @@ class AgentSdkRunConfig(BaseModel):
     max_steps: int = Field(default=40, ge=1)
     max_wall_time_sec: Optional[int] = Field(default=None, ge=1)
     human_timeout_ms: Optional[int] = Field(default=None, ge=1)
+    resume_strategy: str = Field(default="summary")  # summary|replay
 
 
 class AgentSdkSafetyConfig(BaseModel):

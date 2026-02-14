@@ -138,9 +138,14 @@ python3 -m agent_sdk.cli.main tools write-stdin \
   --workspace-root . \
   --yes \
   --session-id <id> \
-  --chars "hello\n" \
+  # PTY is often in canonical mode; CR is closer to pressing Enter.
+  --chars $'hello\r' \
   --pretty
 ```
+
+Notes:
+- `exec-command` / `write-stdin` are backed by a workspace-local runtime service, so `session_id` works across multiple CLI invocations.
+- Runtime artifacts live under `<workspace_root>/.skills_runtime_sdk/runtime/` (server info + logs). Socket may fallback to `/tmp/...sock` if the path would be too long.
 
 ---
 

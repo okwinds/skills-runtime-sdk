@@ -965,12 +965,36 @@ class Agent:
 
         existing_events_count = 0
         existing_events_tail: List[AgentEvent] = []
+        existing_events_all: List[AgentEvent] = []
         if events_path.exists():
             tail: "deque[AgentEvent]" = deque(maxlen=200)
             for ev in wal.iter_events():
                 existing_events_count += 1
                 tail.append(ev)
+                existing_events_all.append(ev)
             existing_events_tail = list(tail)
+
+        resume_strategy = str(getattr(self._config.run, "resume_strategy", "summary") or "summary").strip().lower()
+        if resume_strategy not in ("summary", "replay"):
+            resume_strategy = "summary"
+
+        resume_replay_history: Optional[List[Dict[str, Any]]] = None
+        resume_replay_denied: Dict[str, int] = {}
+        resume_replay_approved: set[str] = set()
+
+        if existing_events_count > 0 and initial_history is None and resume_strategy == "replay":
+            try:
+                from agent_sdk.state.replay import rebuild_resume_replay_state
+
+                st = rebuild_resume_replay_state(existing_events_all)
+                resume_replay_history = st.history
+                resume_replay_denied = st.denied_approvals_by_key
+                resume_replay_approved = st.approved_for_session_keys
+            except Exception:
+                # fail-open：回放失败时回退到 Phase 2 summary-based resume
+                resume_replay_history = None
+                resume_replay_denied = {}
+                resume_replay_approved = set()
 
         def _build_resume_summary() -> Optional[str]:
             """
@@ -984,6 +1008,8 @@ class Agent:
             if existing_events_count <= 0:
                 return None
             if initial_history is not None:
+                return None
+            if resume_strategy == "replay" and resume_replay_history is not None:
                 return None
 
             last_run_started: Optional[AgentEvent] = None
@@ -1085,7 +1111,11 @@ class Agent:
                         "config_overlays": list(self._config_overlay_paths),
                     },
                     "workspace_root": str(self._workspace_root),
-                    "resume": {"enabled": bool(resume_summary), "previous_events": existing_events_count},
+                    "resume": {
+                        "enabled": bool(resume_summary) or bool(resume_replay_history),
+                        "strategy": resume_strategy,
+                        "previous_events": existing_events_count,
+                    },
                 },
             )
         )
@@ -1145,7 +1175,11 @@ class Agent:
             registry.register(spec, handler, override=False)
 
         history: List[Dict[str, Any]] = []
-        if resume_summary:
+        if resume_replay_history:
+            history.extend(resume_replay_history)
+            # replay 模式下尽量恢复 approvals cache，避免进程重启后重复 ask。
+            self._approved_for_session_keys.update(set(resume_replay_approved))
+        elif resume_summary:
             history.append({"role": "assistant", "content": resume_summary})
         if initial_history:
             # 约束：仅接受最小 message 形态（role/content），避免 tool_calls/tool 复杂态污染会话级历史
@@ -1162,7 +1196,7 @@ class Agent:
         turn = 0
         step = 0
         steps_executed = 0
-        denied_approvals_by_key: Dict[str, int] = {}
+        denied_approvals_by_key: Dict[str, int] = dict(resume_replay_denied or {})
 
         try:
             while True:

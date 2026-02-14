@@ -36,6 +36,7 @@ Where to find defaults:
 - `max_steps`: maximum steps per run
 - `max_wall_time_sec`: max wall-clock time per run
 - `human_timeout_ms`: human input timeout (optional)
+- `resume_strategy`: `summary|replay` (default: `summary`)
 
 ### `safety`
 

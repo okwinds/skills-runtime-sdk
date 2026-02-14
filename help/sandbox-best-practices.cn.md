@@ -153,3 +153,68 @@ pytest -q packages/skills-runtime-sdk-python/tests/test_os_sandbox_restriction_e
 补充说明（避免误判）：
 - macOS seatbelt 不会提供“容器路径假象”；你仍可能看到物理机绝对路径，这不等于没进沙箱。
 - 要判断是否“真进 OS sandbox”，请看 `tool_call_finished.result.data.sandbox.active/adapter/effective`，不要只凭体感。
+
+---
+
+## 8. Docker / 容器环境说明（以 Debian 13、Ubuntu 20.04/24.04 为例）
+
+你在容器里看到的可用性，取决于“容器镜像 + 宿主内核能力 + 容器安全策略（seccomp/apparmor/capabilities）”。
+
+### 8.1 macOS seatbelt（`sandbox-exec`）在 Linux 容器里不能用
+
+- seatbelt 只存在于 macOS（Darwin）宿主机用户态。
+- 在 Docker 容器（例如 Debian 13 / Ubuntu 20.04/24.04）里属于 Linux 用户态，无法获得 `sandbox-exec`。
+- 结论：**容器里无法使用 seatbelt**；只能在 macOS 宿主机直接运行 SDK/工具进程时使用。
+
+### 8.2 Linux bubblewrap（`bwrap`）在容器里“有条件可用”
+
+必要条件（至少满足其一，否则常见表现为 `sandbox_denied` 或 bwrap 报 `Operation not permitted`）：
+- 容器内安装了 `bubblewrap`（提供 `bwrap`）。
+- 宿主机允许 user namespace（以及容器 seccomp/apparmor 未拦截 `unshare` 等系统调用）。
+
+快速核验（在容器里执行）：
+
+```bash
+command -v bwrap || true
+bwrap --version || true
+cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || true
+cat /proc/sys/user/max_user_namespaces 2>/dev/null || true
+```
+
+说明：
+- Ubuntu 上常见开关是 `kernel.unprivileged_userns_clone`（0 表示禁用；在容器里通常无法自行打开，需要宿主机配置）。
+- `max_user_namespaces` 为 0 也会导致 bwrap 无法创建 namespace。
+
+### 8.3 Docker 探测示例（建议仅用于“可用性探测”，不要把 privileged 当成生产默认）
+
+仓库内已提供一键探测脚本（默认用 Debian 系镜像；需要 privileged）：
+
+```bash
+bash scripts/integration/os_sandbox_bubblewrap_probe_docker.sh
+```
+
+如果你希望用 Ubuntu 镜像做同类探测（示例：Ubuntu 24.04），可以参考下面命令自行替换镜像与包管理命令：
+
+```bash
+docker run --rm \
+  --privileged \
+  --security-opt seccomp=unconfined \
+  --entrypoint bash \
+  ubuntu:24.04 -lc '
+    set -eu
+    apt-get update -qq
+    apt-get install -y -qq bubblewrap >/dev/null
+    bwrap --version
+    mkdir -p /tmp/work
+    echo hi >/tmp/work/hi.txt
+    bwrap --die-with-parent --unshare-net \
+      --proc /proc --dev /dev \
+      --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib --ro-bind /etc /etc \
+      --bind /tmp/work /work --chdir /work -- /bin/cat /work/hi.txt
+  '
+```
+
+同理你也可以把镜像替换为 Debian 13（常见代号 trixie）或 Ubuntu 20.04（focal）进行探测；关键点在于：
+- 容器是否允许创建 user namespace；
+- seccomp/apparmor 是否阻断；
+- 是否能安装并执行 `bwrap`。

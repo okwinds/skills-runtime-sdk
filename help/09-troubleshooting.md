@@ -80,6 +80,20 @@ command -v sandbox-exec || true
 command -v bwrap || true
 ```
 
+Container/Docker extra checks (Linux):
+- If you enable `bubblewrap` (`bwrap`) inside a Debian/Ubuntu container but it still fails, user namespaces or container policies are common causes:
+
+```bash
+cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || true
+cat /proc/sys/user/max_user_namespaces 2>/dev/null || true
+```
+
+- One-shot probe (requires privileged; use for probing only, not as a production default):
+
+```bash
+bash scripts/integration/os_sandbox_bubblewrap_probe_docker.sh
+```
+
 Fix:
 - Install the missing OS sandbox adapter
 - Or temporarily set `sandbox.default_policy` to `none` (keep approvals + denylist)
