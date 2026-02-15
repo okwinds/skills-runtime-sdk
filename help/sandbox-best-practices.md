@@ -218,3 +218,12 @@ Similarly you can probe with Debian 13 (often referred to as “trixie”) or Ub
 - whether user namespaces are allowed
 - whether seccomp/AppArmor blocks required syscalls
 - whether `bwrap` can be installed and executed
+
+### 8.4 macOS host + Docker Desktop nuance (common confusion)
+
+If your host OS is macOS but you run Debian/Ubuntu containers via Docker Desktop:
+
+- Containers run on a **Linux VM kernel** (not Darwin), so the container userland is still **Linux**.
+- Conclusion #1: **seatbelt (`sandbox-exec`) is not available inside containers**. Use it only when running the SDK/tools directly on a macOS host.
+- Conclusion #2: inside containers, OS sandboxing (if any) is **bubblewrap (`bwrap`)**, and it still depends on Linux VM kernel support for user namespaces + Docker security settings (seccomp/AppArmor/capabilities).
+- Conclusion #3: the probe script `scripts/integration/os_sandbox_bubblewrap_probe_docker.sh` is still the right starting point (treat it as “capability probing”, not a production baseline).

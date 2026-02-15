@@ -218,3 +218,12 @@ docker run --rm \
 - 容器是否允许创建 user namespace；
 - seccomp/apparmor 是否阻断；
 - 是否能安装并执行 `bwrap`。
+
+### 8.4 macOS 宿主机 + Docker Desktop 的特殊性（容易误判）
+
+当你的宿主机是 macOS，但你在 Docker 里跑 Debian/Ubuntu 容器时：
+
+- 容器运行在 Docker Desktop 的 **Linux VM 内核**（不是 Darwin），所以容器内依然是 **Linux 用户态**。
+- 结论 1：容器里 **不能用 seatbelt（`sandbox-exec`）**；seatbelt 只能在 macOS 宿主机直接运行 SDK/工具进程时使用。
+- 结论 2：容器里如果要做 OS sandbox，只能走 **bubblewrap（`bwrap`）**，且仍然取决于 Linux VM 内核是否允许 user namespace，以及 Docker 的 seccomp/AppArmor/capabilities 配置。
+- 结论 3：探测脚本 `scripts/integration/os_sandbox_bubblewrap_probe_docker.sh` 仍然有效；即便宿主机是 macOS，也建议先用它做“可用性探测”，避免凭体感判断。

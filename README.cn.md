@@ -141,6 +141,13 @@ print(result.final_text)
 
 ---
 
+## 示例库与编码智能体教学文档
+
+- SDK 全能力离线示例库：`examples/`
+- 给编码智能体的教学文档包（CAP 清单 + 覆盖映射 + cheatsheet）：`docs_for_coding_agent/`
+
+---
+
 ## 如何确认“真沙箱生效”（不与 approvals 混淆）
 
 不要凭“输出里出现绝对路径”判断（macOS seatbelt 不会虚拟路径）。建议用可复现验证：

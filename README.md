@@ -137,6 +137,11 @@ print(result.final_text)
 - Studio end-to-end: `help/07-studio-guide.md`
 - Troubleshooting: `help/09-troubleshooting.md`
 
+## Examples & Coding-Agent Docs
+
+- Full-spectrum offline examples library: `examples/`
+- Coding-agent teaching pack (CAP inventory + coverage map + cheatsheets): `docs_for_coding_agent/`
+
 ---
 
 ## How to verify “real sandbox” (not just approvals)

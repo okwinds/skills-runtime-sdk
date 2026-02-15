@@ -57,6 +57,8 @@
 - `help/examples/run_agent_minimal.py`：Python 最小运行示例
 - `help/examples/run_agent_with_custom_tool.py`：自定义 tool 示例
 - `help/examples/studio-api.http`：Studio API 调用样例
+- `examples/`：SDK 全能力离线示例库（按 step_by_step/tools/skills/state 分层）
+- `docs_for_coding_agent/`：给编码智能体的教学文档包（CAP-* 清单 + 覆盖映射 + cheatsheet）
 
 ## 重要约束
 
