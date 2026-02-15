@@ -32,6 +32,7 @@ from agent_sdk.config.loader import AgentSdkConfig, load_config_dicts
 from agent_sdk.config.defaults import load_default_config_dict
 from agent_sdk.core.contracts import AgentEvent
 from agent_sdk.core.errors import FrameworkError
+from agent_sdk.core.exec_sessions import ExecSessionsProvider
 from agent_sdk.core.executor import Executor
 from agent_sdk.state.jsonl_wal import JsonlWal
 from agent_sdk.tools.builtin import register_builtin_tools
@@ -454,6 +455,8 @@ class Agent:
         human_io: Optional[HumanIOProvider] = None,
         approval_provider: Optional[ApprovalProvider] = None,
         cancel_checker: Optional[Callable[[], bool]] = None,
+        exec_sessions: Optional[ExecSessionsProvider] = None,
+        collab_manager: Optional[object] = None,
     ) -> None:
         """
         构造一个可运行的 Agent 实例（Phase 2）。
@@ -536,6 +539,8 @@ class Agent:
         self._cancel_checker = cancel_checker
         self._safety = self._config.safety
         self._approved_for_session_keys: set[str] = set()
+        self._exec_sessions = exec_sessions
+        self._collab_manager = collab_manager
         # session-only env_store（可由应用层传入共享 dict；不得落盘）
         self._env_store: Dict[str, str] = env_vars if env_vars is not None else {}
 
@@ -1168,6 +1173,8 @@ class Agent:
             emit_tool_events=False,
             event_sink=_tool_event_sink,
             skills_manager=self._skills_manager,
+            exec_sessions=self._exec_sessions,
+            collab_manager=self._collab_manager,
         )
         registry = ToolRegistry(ctx=tool_ctx)
         register_builtin_tools(registry)

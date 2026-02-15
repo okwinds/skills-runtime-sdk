@@ -48,3 +48,23 @@
 8. `08_studio_sse_integration/`
    - Studio 集成：create session/run → SSE stream → 自动 approvals → 等待 terminal event
    - 默认不进入离线门禁（需要显式 opt-in）
+
+9. `09_branching_router_workflow/`
+   - 路由分支：router 生成 route.json → worker 执行分支 → reporter 汇总 report.md
+   - 强调把“分支决策”落为可审计产物
+
+10. `10_retry_degrade_workflow/`
+   - 重试→降级：attempt 失败达到预算后生成 fallback，并汇总 exit_code/证据指针
+   - 强调“失败也必须可审计”
+
+11. `11_collab_parallel_subagents_workflow/`
+   - collab 原语：master 在 agent loop 内调用 spawn_agent/send_input/wait 管理子 agent
+   - 强调“子 agent 生命周期工具链”与 Skills-First 的结合
+
+12. `12_exec_sessions_engineering_workflow/`
+   - exec sessions：在 agent loop 内调用 exec_command/write_stdin 完成交互式工程流
+   - 强调“交互式会话也要有 WAL/approvals 证据链”
+
+15. `15_workflow_eval_harness/`
+   - eval harness：同一 workflow 跑多次，对比 artifacts，一致性评分并输出 diff 摘要
+   - 强调把 workflow 当作“可评测对象”，利于 CI/回归护栏

@@ -73,3 +73,18 @@
   - 产物：`action_artifact.json` + `report.md`
 - `examples/workflows/08_studio_sse_integration/`：
   - Studio 集成：API + SSE + approvals（集成示例，需显式 opt-in）
+- `examples/workflows/09_branching_router_workflow/`：
+  - Router pattern：read_file 输入 → file_write(route.json) → 分支 worker → report 汇总
+  - 产物：`task_input.json` + `route.json` + `outputs/*` + `report.md`
+- `examples/workflows/10_retry_degrade_workflow/`：
+  - Retry + Degrade：attempt（允许失败）→ fallback → report（exit_code + 证据指针）
+  - 强调失败可审计：`tool_call_finished.ok == false` 也是证据的一部分
+- `examples/workflows/11_collab_parallel_subagents_workflow/`：
+  - Collab 原语：master 在 agent loop 内调用 spawn_agent/send_input/wait 管理子 agent
+  - 子 agent 仍 Skills-First：独立 WAL + 独立产物（`outputs/*`）
+- `examples/workflows/12_exec_sessions_engineering_workflow/`：
+  - Exec sessions：在 agent loop 内调用 exec_command/write_stdin 完成交互式工程流
+  - 产物：`report.md`（只记录关键标记，避免 PTY 输出噪音）
+- `examples/workflows/15_workflow_eval_harness/`：
+  - Eval harness：同一 workflow 多次运行 → normalize artifacts → score + diff（Markdown + JSON）
+  - 产物：`eval_report.md` + `eval_score.json` + `runs/*`

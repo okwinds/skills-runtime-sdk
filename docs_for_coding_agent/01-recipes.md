@@ -272,3 +272,105 @@
 
 对应示例（集成，需显式 opt-in）：
 - `examples/workflows/08_studio_sse_integration/`
+
+---
+
+## 配方 14：路由分支（Router pattern）
+
+适用：
+- 你希望一个入口任务按条件走不同分支（A/B/...），但最终汇总成同一份报告；
+- 你希望“分支决策”可审计、可回放（而不是埋在 prompt 里）。
+
+关键能力组合：
+- Router：`read_file` 读取输入 → `file_write(route.json)` 落盘决策
+- Branch worker：每个分支一个 Skill，各写独立产物（例如 `outputs/path_a.md`）
+- Reporter：`file_write(report.md)` 汇总（包含 `events_path` 指针）
+
+对应示例：
+- `examples/workflows/09_branching_router_workflow/`
+
+验收建议：
+- `route.json` 存在且结构稳定（后续可被别的工具/流程消费）
+- `report.md` 能指向路由/分支产物及证据路径
+
+---
+
+## 配方 15：重试→降级→报告（Retry + Degrade + Report）
+
+适用：
+- 真实项目中，外部依赖/工具执行可能失败；
+- 你需要“失败也可审计”，并在预算耗尽后走降级路径（fallback）。
+
+关键能力组合：
+- Controller：`update_plan` + `file_write(retry_plan.json)`（预算/策略可审计）
+- Attempt：`shell_exec`（允许失败；exit_code/ok 作为证据）
+- Degrade：`file_write(outputs/fallback.md)`（生成最小可用结果）
+- Reporter：`file_write(report.md)`（汇总每次 attempt 的 exit_code + events_path）
+
+对应示例：
+- `examples/workflows/10_retry_degrade_workflow/`
+
+验收建议：
+- attempt 的 `tool_call_finished.ok == false` 也必须存在（失败仍可审计）
+- 报告中体现：预算、每次 attempt 的 exit_code、降级结论与产物路径
+
+---
+
+## 配方 16：Collab 原语并行子 agent（spawn/wait/send_input）
+
+适用：
+- 子任务数量动态变化（不希望编排层自己维护线程池）
+- 希望在执行中途给子 agent 追加输入（例如补充约束/数据/反馈）
+
+关键能力组合：
+- master：`spawn_agent` / `send_input` / `wait`
+- subagents：仍然 Skills-First（各自独立 WAL + 独立产物）
+- aggregator：汇总输出（例如 `report.md`）
+
+对应示例：
+- `examples/workflows/11_collab_parallel_subagents_workflow/`
+
+验收建议：
+- master 的 WAL 中应出现 `tool_call_finished`（spawn_agent/send_input/wait）
+- 子 agent 的 WAL 中必须出现 `skill_injected`（证明能力来自 SKILL.md）
+
+---
+
+## 配方 17：exec sessions 工程式交互（exec_command/write_stdin）
+
+适用：
+- 需要实现交互式工程流（REPL/交互脚本/生成器 CLI）
+- 希望把交互过程纳入 approvals + WAL 的可审计证据链
+
+关键能力组合：
+- `exec_command`：启动 PTY-backed 会话
+- `write_stdin`：写入输入并轮询输出
+- Reporter：只记录关键标记是否出现，避免 PTY 输出细节导致回归不稳定
+
+对应示例：
+- `examples/workflows/12_exec_sessions_engineering_workflow/`
+
+验收建议：
+- WAL 中应出现 `exec_command/write_stdin` 的 `tool_call_finished`
+- `report.md` 只写关键标记（READY/ECHO/BYE 等）
+
+---
+
+## 配方 18：workflow eval harness（多次运行对比 artifacts）
+
+适用：
+- 你希望把 workflow 当作“可评测对象”，建立回归护栏（类似 eval harness）
+- 需要自动化对比 artifacts，并输出 score + diff 摘要
+
+关键能力组合：
+- 多次运行同一 workflow
+- 收集 artifacts（例如 `report.md`、`outputs/*`）
+- normalize（去掉 workspace 绝对路径、WAL run_id 等噪音）
+- 输出 `eval_score.json` + `eval_report.md`
+
+对应示例：
+- `examples/workflows/15_workflow_eval_harness/`
+
+验收建议：
+- `eval_score.json` 可被 CI 消费（结构化）
+- diff 摘要能快速定位不一致 artifact
