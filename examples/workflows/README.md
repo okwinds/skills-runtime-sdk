@@ -68,3 +68,19 @@
 15. `15_workflow_eval_harness/`
    - eval harness：同一 workflow 跑多次，对比 artifacts，一致性评分并输出 diff 摘要
    - 强调把 workflow 当作“可评测对象”，利于 CI/回归护栏
+
+16. `16_rules_based_parser/`
+   - 规则驱动的结构化解析：自然语言规则 → 可执行 plan.json → 确定性执行 result.json
+   - 强调 skills-first + `file_write` 产物落盘 + WAL 审计证据链
+
+17. `17_minimal_rag_stub/`
+   - 最小 RAG（离线 stub）：自定义 `kb_search`（关键词检索）→ retrieval.json → report.md
+   - 强调离线可回归（不依赖向量库/外网）+ `skill_injected` 证据
+
+19. `19_view_image_offline/`
+   - 离线 view_image：生成小 PNG → `view_image` 读取 → image_meta.json/report.md
+   - 强调 image tool 的可审计证据链（WAL：tool_call_finished(view_image)）
+
+21. `21_data_import_validate_and_fix/`
+   - 数据导入校验与修复：read_file(input.csv) → 写 fixed.csv/报告 → shell_exec(QA) → report
+   - 强调“确定性修复规则 + QA 护栏 + WAL 证据指针”

@@ -23,7 +23,7 @@
 | CAP-SDK-010 State/WAL | `docs/specs/skills-runtime-sdk/docs/state.md` | `help/08-architecture-internals.cn.md` | `examples/state/01_wal_replay_and_fork/` | `packages/skills-runtime-sdk-python/tests/test_agent_resume_replay.py` |
 | CAP-SDK-012 Studio | `docs/specs/skills-runtime-studio-mvp/SPEC.md` | `help/07-studio-guide.md` | `help/examples/studio-api.http` | `packages/skills-runtime-studio-mvp/**` |
 | CAP-SDK-014 Plan + Input | `docs/specs/skills-runtime-sdk/docs/tools-plan-and-input.md` | `help/04-cli-reference.cn.md` | `examples/step_by_step/08_plan_and_user_input/` | `packages/skills-runtime-sdk-python/tests/test_tools_update_plan.py` + `packages/skills-runtime-sdk-python/tests/test_tools_request_user_input.py` |
-| CAP-SDK-015 Web/Image | `docs/specs/skills-runtime-sdk/docs/tools-web-and-image.md` | `help/06-tools-and-safety.cn.md` | `examples/tools/02_web_search_disabled_and_fake_provider/` | `packages/skills-runtime-sdk-python/tests/test_tools_web_search.py` |
+| CAP-SDK-015 Web/Image | `docs/specs/skills-runtime-sdk/docs/tools-web-and-image.md` | `help/06-tools-and-safety.cn.md` | `examples/tools/02_web_search_disabled_and_fake_provider/` + `examples/workflows/19_view_image_offline/` | `packages/skills-runtime-sdk-python/tests/test_tools_web_search.py` + `packages/skills-runtime-sdk-python/tests/test_examples_smoke.py -k workflows_19` |
 
 ---
 
@@ -88,3 +88,17 @@
 - `examples/workflows/15_workflow_eval_harness/`：
   - Eval harness：同一 workflow 多次运行 → normalize artifacts → score + diff（Markdown + JSON）
   - 产物：`eval_report.md` + `eval_score.json` + `runs/*`
+
+新增（更偏“具体落地场景”，仍保持离线可回归）：
+- `examples/workflows/16_rules_based_parser/`：
+  - 规则驱动结构化解析：自然语言规则 → plan.json → 确定性执行 result.json
+  - 产物：`plan.json` + `result.json` + `report.md`
+- `examples/workflows/17_minimal_rag_stub/`：
+  - 最小 RAG（离线 stub）：kb_search（关键词检索）→ retrieval.json → report.md
+  - 产物：`retrieval.json` + `report.md`
+- `examples/workflows/19_view_image_offline/`：
+  - 离线 view_image：生成 PNG → view_image → image_meta.json/report.md
+  - 产物：`generated.png` + `image_meta.json` + `report.md`
+- `examples/workflows/21_data_import_validate_and_fix/`：
+  - 数据导入校验与修复：read_file → file_write → shell_exec(QA) → report.md
+  - 产物：`fixed.csv` + `validation_report.json` + `report.md`

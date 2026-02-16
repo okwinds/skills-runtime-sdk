@@ -374,3 +374,18 @@
 验收建议：
 - `eval_score.json` 可被 CI 消费（结构化）
 - diff 摘要能快速定位不一致 artifact
+
+---
+
+## 附：更多“具体落地场景”示例（Workflows / 离线可回归）
+
+这些示例更偏“项目形态”，通常同时覆盖：skills-first（mention → `skill_injected`）、approvals、WAL 证据链与产物落盘。
+
+- 规则驱动的结构化解析器：`examples/workflows/16_rules_based_parser/`
+  - 自然语言规则 → `plan.json` → 确定性执行 `result.json` → `report.md`
+- 最小 RAG（离线 stub）：`examples/workflows/17_minimal_rag_stub/`
+  - 自定义 `kb_search`（关键词检索）→ `retrieval.json` → `report.md`
+- 离线 view_image：`examples/workflows/19_view_image_offline/`
+  - 生成 PNG → `view_image` → `image_meta.json` / `report.md`
+- 数据导入校验与修复：`examples/workflows/21_data_import_validate_and_fix/`
+  - `read_file(input.csv)` → `file_write(fixed.csv/report)` → `shell_exec(QA_OK)` → `report.md`

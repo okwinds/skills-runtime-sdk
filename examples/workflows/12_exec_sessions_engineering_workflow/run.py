@@ -125,6 +125,33 @@ def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
     raise AssertionError(f"missing ok tool_call_finished for tool={tool_name}")
 
 
+def _detect_skip_no_pty_reason(*, events_path: str, tool_name: str) -> Optional[str]:
+    """
+    检测“明确 PTY 不可用”场景并返回 skip 原因；否则返回 None。
+
+    约束：
+    - 仅当 WAL 中存在该 tool 的 `tool_call_finished`，且 result.ok != true；
+    - 且 stderr/错误信息包含明显 PTY 不可用信号（例如包含 'pty'）；
+    才允许对示例做 SKIP，避免吞掉非 PTY 类回归。
+    """
+
+    for ev in _load_events(events_path):
+        if ev.get("type") != "tool_call_finished":
+            continue
+        payload = ev.get("payload") or {}
+        if payload.get("tool") != tool_name:
+            continue
+        result = payload.get("result") or {}
+        if result.get("ok") is True:
+            return None
+        stderr = str(result.get("stderr") or "")
+        error_kind = str(result.get("error_kind") or "")
+        msg = f"{stderr} {error_kind}".strip().lower()
+        if "pty" in msg:
+            return stderr or f"{tool_name} failed: {error_kind}".strip()
+    return None
+
+
 def _collect_exec_stdout(*, events_path: str) -> str:
     """
     汇总 exec_command/write_stdin 的 stdout（用于做“标记出现”判断）。
@@ -272,6 +299,16 @@ def main() -> int:
     r_op = operator.run(op_task, run_id="run_workflows_12_session_operator")
 
     _assert_skill_injected(events_path=r_op.events_path, mention_text="$[examples:workflow].session_operator")
+
+    # 某些受限环境（例如缺少 /dev/pts 或 PTY 配额很小）无法分配 PTY（exec_command tty=True）。
+    # 该示例的目标是演示“工程式交互 + WAL 证据”，在无 PTY 环境下无法成立；
+    # 因此仅对“明确的 PTY 不可用”场景做 skip，避免离线回归在 CI 上漂移。
+    no_pty_reason = _detect_skip_no_pty_reason(events_path=r_op.events_path, tool_name="exec_command")
+    if no_pty_reason:
+        print(f"[example] skipped: exec_command cannot allocate PTY: {no_pty_reason}")
+        print("EXAMPLE_OK: workflows_12 (SKIPPED_NO_PTY)")
+        return 0
+
     _assert_tool_ok(events_path=r_op.events_path, tool_name="exec_command")
     _assert_tool_ok(events_path=r_op.events_path, tool_name="write_stdin")
 
@@ -310,4 +347,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

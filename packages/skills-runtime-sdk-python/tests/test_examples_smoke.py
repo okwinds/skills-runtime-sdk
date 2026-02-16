@@ -102,6 +102,10 @@ def test_examples_smoke(tmp_path: Path) -> None:
         ("examples/workflows/10_retry_degrade_workflow", "run.py"),
         ("examples/workflows/11_collab_parallel_subagents_workflow", "run.py"),
         ("examples/workflows/12_exec_sessions_engineering_workflow", "run.py"),
+        ("examples/workflows/16_rules_based_parser", "run.py"),
+        ("examples/workflows/17_minimal_rag_stub", "run.py"),
+        ("examples/workflows/19_view_image_offline", "run.py"),
+        ("examples/workflows/21_data_import_validate_and_fix", "run.py"),
     ]
 
     for example_dir, entry in examples:
@@ -112,3 +116,67 @@ def test_examples_smoke(tmp_path: Path) -> None:
         workspace_name = example_dir.replace("/", "_")
         out = _run_example(repo_root=repo_root, script_relpath=rel, tmp_path=tmp_path, workspace_name=workspace_name)
         assert "EXAMPLE_OK:" in out, (rel, out)
+
+
+def test_example_workflows_19_view_image_offline(tmp_path: Path) -> None:
+    """
+    smoke（narrow）：只跑 workflows/19_view_image_offline，便于本地快速验证。
+    """
+
+    repo_root = Path(__file__).resolve().parents[3]
+    rel = "examples/workflows/19_view_image_offline/run.py"
+    out = _run_example(
+        repo_root=repo_root,
+        script_relpath=rel,
+        tmp_path=tmp_path,
+        workspace_name="examples_workflows_19_view_image_offline",
+    )
+    assert "EXAMPLE_OK:" in out, (rel, out)
+
+
+def test_example_workflows_16_rules_based_parser(tmp_path: Path) -> None:
+    """
+    smoke（narrow）：只跑 workflows/16_rules_based_parser，便于本地快速验证。
+    """
+
+    repo_root = Path(__file__).resolve().parents[3]
+    rel = "examples/workflows/16_rules_based_parser/run.py"
+    out = _run_example(
+        repo_root=repo_root,
+        script_relpath=rel,
+        tmp_path=tmp_path,
+        workspace_name="examples_workflows_16_rules_based_parser",
+    )
+    assert "EXAMPLE_OK:" in out, (rel, out)
+
+
+def test_example_workflows_17_minimal_rag_stub(tmp_path: Path) -> None:
+    """
+    smoke（narrow）：只跑 workflows/17_minimal_rag_stub，便于本地快速验证。
+    """
+
+    repo_root = Path(__file__).resolve().parents[3]
+    rel = "examples/workflows/17_minimal_rag_stub/run.py"
+    out = _run_example(
+        repo_root=repo_root,
+        script_relpath=rel,
+        tmp_path=tmp_path,
+        workspace_name="examples_workflows_17_minimal_rag_stub",
+    )
+    assert "EXAMPLE_OK:" in out, (rel, out)
+
+
+def test_example_workflows_21_data_import_validate_and_fix(tmp_path: Path) -> None:
+    """
+    smoke（narrow）：只跑 workflows/21_data_import_validate_and_fix，便于本地快速验证。
+    """
+
+    repo_root = Path(__file__).resolve().parents[3]
+    rel = "examples/workflows/21_data_import_validate_and_fix/run.py"
+    out = _run_example(
+        repo_root=repo_root,
+        script_relpath=rel,
+        tmp_path=tmp_path,
+        workspace_name="examples_workflows_21_data_import_validate_and_fix",
+    )
+    assert "EXAMPLE_OK:" in out, (rel, out)
