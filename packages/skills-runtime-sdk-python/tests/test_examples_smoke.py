@@ -104,8 +104,11 @@ def test_examples_smoke(tmp_path: Path) -> None:
         ("examples/workflows/12_exec_sessions_engineering_workflow", "run.py"),
         ("examples/workflows/16_rules_based_parser", "run.py"),
         ("examples/workflows/17_minimal_rag_stub", "run.py"),
+        ("examples/workflows/18_fastapi_sse_gateway_minimal", "run.py"),
         ("examples/workflows/19_view_image_offline", "run.py"),
+        ("examples/workflows/20_policy_compliance_patch", "run.py"),
         ("examples/workflows/21_data_import_validate_and_fix", "run.py"),
+        ("examples/workflows/22_chatops_incident_triage", "run.py"),
     ]
 
     for example_dir, entry in examples:

@@ -31,6 +31,9 @@ htmlcov/
 .vscode/
 .idea/
 
+# Codex local home (may contain auth/config; never commit)
+.codex-home/
+
 # Local secrets (keep file, never commit)
 .env
 **/.env

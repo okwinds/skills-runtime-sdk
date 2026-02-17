@@ -37,6 +37,13 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 - `examples/workflows/11_collab_parallel_subagents_workflow/`：collab 原语并行子 agent（spawn/wait/send_input）
 - `examples/workflows/12_exec_sessions_engineering_workflow/`：exec sessions 工程式交互（exec_command/write_stdin）
 - `examples/workflows/15_workflow_eval_harness/`：workflow eval harness（多次运行对比 artifacts + score）
+- `examples/workflows/16_rules_based_parser/`：规则驱动结构化解析（规则→plan.json→确定性执行→result.json）
+- `examples/workflows/17_minimal_rag_stub/`：最小 RAG（离线 stub：kb_search → retrieval.json → report.md）
+- `examples/workflows/18_fastapi_sse_gateway_minimal/`：FastAPI/SSE 网关最小骨架（离线）
+- `examples/workflows/19_view_image_offline/`：离线 view_image（生成 PNG → view_image → 产物落盘）
+- `examples/workflows/20_policy_compliance_patch/`：policy 合规补丁（references/policy.md → apply_patch → artifacts）
+- `examples/workflows/21_data_import_validate_and_fix/`：数据导入校验与修复（确定性规则 + QA 护栏）
+- `examples/workflows/22_chatops_incident_triage/`：ChatOps 排障（澄清→计划→runbook/report）
 
 ---
 
@@ -193,6 +200,9 @@ $[examples:workflow].repo_patcher
 
 对应示例（集成，需显式 opt-in）：
 - `examples/workflows/08_studio_sse_integration/`
+
+离线最小骨架（不依赖 Studio）：
+- `examples/workflows/18_fastapi_sse_gateway_minimal/`
 
 ---
 

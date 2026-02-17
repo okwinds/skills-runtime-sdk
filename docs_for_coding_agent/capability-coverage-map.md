@@ -96,9 +96,18 @@
 - `examples/workflows/17_minimal_rag_stub/`：
   - 最小 RAG（离线 stub）：kb_search（关键词检索）→ retrieval.json → report.md
   - 产物：`retrieval.json` + `report.md`
+- `examples/workflows/18_fastapi_sse_gateway_minimal/`：
+  - FastAPI/SSE 网关最小骨架：create run → SSE stream → approvals decide → terminal event
+  - 产物：`report.md` + `.skills_runtime_sdk/runs/<run_id>/events.jsonl`
 - `examples/workflows/19_view_image_offline/`：
   - 离线 view_image：生成 PNG → view_image → image_meta.json/report.md
   - 产物：`generated.png` + `image_meta.json` + `report.md`
+- `examples/workflows/20_policy_compliance_patch/`：
+  - Policy 合规补丁：skill_ref_read 读取 references/policy.md → apply_patch 修复 target.md → artifacts 落盘
+  - 产物：`target.md` + `patch.diff` + `result.md` + `report.md`
 - `examples/workflows/21_data_import_validate_and_fix/`：
   - 数据导入校验与修复：read_file → file_write → shell_exec(QA) → report.md
   - 产物：`fixed.csv` + `validation_report.json` + `report.md`
+- `examples/workflows/22_chatops_incident_triage/`：
+  - ChatOps 排障：read_file(incident.log) → request_user_input 澄清 → update_plan 推进 → file_write(runbook/report)
+  - 产物：`incident.log` + `runbook.md` + `report.md`

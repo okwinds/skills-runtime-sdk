@@ -77,10 +77,22 @@
    - 最小 RAG（离线 stub）：自定义 `kb_search`（关键词检索）→ retrieval.json → report.md
    - 强调离线可回归（不依赖向量库/外网）+ `skill_injected` 证据
 
+18. `18_fastapi_sse_gateway_minimal/`
+   - FastAPI/SSE 网关最小骨架：create run → SSE stream → 自动 approvals decide → terminal event
+   - 若缺少 fastapi/uvicorn：明确 SKIP 原因但仍输出 EXAMPLE_OK（避免门禁不稳定）
+
 19. `19_view_image_offline/`
    - 离线 view_image：生成小 PNG → `view_image` 读取 → image_meta.json/report.md
    - 强调 image tool 的可审计证据链（WAL：tool_call_finished(view_image)）
 
+20. `20_policy_compliance_patch/`
+   - Policy 合规补丁：`skill_ref_read` 读取 references/policy.md → `apply_patch` 修复 target.md → 产物落盘
+   - 强调 references 的“可分发政策”形态 + approvals/WAL 证据链
+
 21. `21_data_import_validate_and_fix/`
    - 数据导入校验与修复：read_file(input.csv) → 写 fixed.csv/报告 → shell_exec(QA) → report
    - 强调“确定性修复规则 + QA 护栏 + WAL 证据指针”
+
+22. `22_chatops_incident_triage/`
+   - ChatOps 排障：read_file(incident.log) → request_user_input 澄清 → update_plan 推进 → file_write(runbook/report)
+   - 强调 human_request/human_response + plan_updated + approvals/WAL 证据链

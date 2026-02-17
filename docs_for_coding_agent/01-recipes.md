@@ -85,6 +85,7 @@
 对应示例：
 - `examples/skills/01_skills_preflight_and_scan/`
 - `examples/step_by_step/07_skills_references_and_actions/`
+- `examples/workflows/20_policy_compliance_patch/`（policy 合规补丁：references/policy.md → apply_patch → artifacts）
 
 验收建议：
 - references/actions 默认禁用（permission）
@@ -103,6 +104,7 @@
 
 对应示例：
 - `examples/step_by_step/08_plan_and_user_input/`
+- `examples/workflows/22_chatops_incident_triage/`（ChatOps 排障：澄清→计划→runbook/report）
 
 验收建议：
 - 离线：通过 tools CLI 的 `--answers-json` 可注入答案，避免示例阻塞
@@ -152,6 +154,9 @@
 对应示例：
 - `examples/workflows/01_multi_agent_repo_change_pipeline/`
 - `examples/workflows/03_multi_agent_reference_driven_pipeline/`（references 驱动：skill_ref_read 读取 policy）
+- `examples/workflows/18_fastapi_sse_gateway_minimal/`（本地 FastAPI + SSE + approvals decide：网关骨架）
+- `examples/workflows/20_policy_compliance_patch/`（policy 合规补丁：references → patch → artifacts）
+- `examples/workflows/22_chatops_incident_triage/`（ChatOps 排障：human I/O → plan → runbook/report）
 
 验收建议：
 1. 离线门禁：
