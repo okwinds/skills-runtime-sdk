@@ -12,11 +12,19 @@ def _repo_root() -> Path:
 
 
 def test_repo_has_agents_md() -> None:
+    # 说明：
+    # - 开源发布场景下，仓库可能通过 `.gitignore` 将本地协作“宪法”（AGENTS.md）排除在外；
+    # - 内部生产/协作场景下，通常要求该文件存在。
+    # 因此这里用环境变量显式控制，避免 OSS CI 因“本地文件未入库”而失败。
+    if os.environ.get("REQUIRE_LOCAL_DOCS") != "1":
+        pytest.skip("local collaboration docs are optional in OSS (set REQUIRE_LOCAL_DOCS=1 to enforce)")
     assert (_repo_root() / "AGENTS.md").exists()
 
 
 def test_repo_has_docs_index_and_worklog() -> None:
     root = _repo_root()
+    if os.environ.get("REQUIRE_LOCAL_DOCS") != "1":
+        pytest.skip("local docs index/worklog are optional in OSS (set REQUIRE_LOCAL_DOCS=1 to enforce)")
     assert (root / "DOCS_INDEX.md").exists()
     assert (root / "docs" / "worklog.md").exists()
 
