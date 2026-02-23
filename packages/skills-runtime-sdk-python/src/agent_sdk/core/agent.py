@@ -34,8 +34,11 @@ from agent_sdk.core.contracts import AgentEvent
 from agent_sdk.core.errors import FrameworkError, UserError
 from agent_sdk.core.exec_sessions import ExecSessionsProvider
 from agent_sdk.core.executor import Executor
+from agent_sdk.core.loop_controller import LoopController
 from agent_sdk.state.jsonl_wal import JsonlWal
+from agent_sdk.state.wal_emitter import WalEmitter
 from agent_sdk.tools.builtin import register_builtin_tools
+from agent_sdk.tools.dispatcher import ToolDispatchInputs, ToolDispatcher
 from agent_sdk.tools.protocol import ToolCall, ToolResult, ToolSpec
 from agent_sdk.tools.registry import ToolExecutionContext, ToolRegistry
 
@@ -44,7 +47,7 @@ from agent_sdk.skills.manager import SkillsManager
 from agent_sdk.skills.models import Skill
 from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest, compute_approval_key
 from agent_sdk.safety.guard import evaluate_command_risk
-from agent_sdk.safety.policy import evaluate_policy_for_shell_exec
+from agent_sdk.safety.policy import evaluate_policy_for_custom_tool, evaluate_policy_for_shell_exec
 from agent_sdk.tools.protocol import HumanIOProvider, ToolResultPayload
 from agent_sdk.sandbox import create_default_os_sandbox_adapter
 
@@ -1001,6 +1004,7 @@ class Agent:
         run_dir.mkdir(parents=True, exist_ok=True)
         events_path = run_dir / "events.jsonl"
         wal = JsonlWal(events_path)
+        wal_emitter = WalEmitter(wal=wal, stream=emit)
         started_monotonic = time.monotonic()
 
         max_steps = int(self._config.run.max_steps)
@@ -1105,10 +1109,9 @@ class Agent:
         resume_summary = _build_resume_summary()
 
         def _emit_event(ev: AgentEvent) -> None:
-            """统一事件出口：先追加到 WAL，再回调给调用方（保持顺序一致）。"""
+            """统一事件出口：先写 WAL，再 stream（保持顺序一致）。"""
 
-            wal.append(ev)
-            emit(ev)
+            wal_emitter.emit(ev)
 
         def _emit_budget_exceeded(*, message: str) -> None:
             """
@@ -1133,14 +1136,6 @@ class Agent:
                 )
             )
 
-        def _wall_time_exceeded() -> bool:
-            """检查 wall time 预算是否耗尽（未配置则返回 False）。"""
-
-            if max_wall_time_sec is None:
-                return False
-            elapsed = time.monotonic() - started_monotonic
-            return elapsed > float(max_wall_time_sec)
-
         _emit_event(
             AgentEvent(
                 type="run_started",
@@ -1162,15 +1157,6 @@ class Agent:
                 },
             )
         )
-
-        def _is_cancelled() -> bool:
-            """检查是否需要取消本次 run（异常时 fail-open：返回 False）。"""
-
-            try:
-                return bool(self._cancel_checker and self._cancel_checker())
-            except Exception:
-                # fail-open：取消检测异常不应杀死 run
-                return False
 
         def _emit_cancelled() -> None:
             """发出 `run_cancelled` 事件并包含 events_path，供调用方定位审计日志。"""
@@ -1221,6 +1207,7 @@ class Agent:
             registry.register(spec, handler, override=bool(override))
         custom_tool_names = set(s.name for s, _h, _o in self._extra_tools)
         registered_tool_names = set(s.name for s in registry.list_specs())
+        dispatcher = ToolDispatcher(registry=registry, now_rfc3339=_now_rfc3339)
 
         history: List[Dict[str, Any]] = []
         if resume_replay_history:
@@ -1241,24 +1228,26 @@ class Agent:
                 if not isinstance(content, str):
                     continue
                 history.append({"role": role, "content": content})
-        turn = 0
-        step = 0
-        steps_executed = 0
-        denied_approvals_by_key: Dict[str, int] = dict(resume_replay_denied or {})
+        loop = LoopController(
+            max_steps=max_steps,
+            max_wall_time_sec=float(max_wall_time_sec) if max_wall_time_sec is not None else None,
+            started_monotonic=started_monotonic,
+            cancel_checker=self._cancel_checker,
+            denied_approvals_by_key=dict(resume_replay_denied or {}),
+        )
 
         try:
             while True:
-                if _is_cancelled():
+                if loop.is_cancelled():
                     _emit_cancelled()
                     return
-                if _wall_time_exceeded():
+                if loop.wall_time_exceeded():
                     _emit_budget_exceeded(
                         message=f"budget exceeded: max_wall_time_sec={max_wall_time_sec}",
                     )
                     return
 
-                turn += 1
-                turn_id = f"turn_{turn}"
+                turn_id = loop.next_turn_id()
 
                 # skills injection（Phase 2：仅显式 mention）
                 injected: List[Tuple[Any, str, Optional[str]]] = []
@@ -1334,13 +1323,13 @@ class Agent:
                 backend_task = asyncio.create_task(_consume_backend())
                 try:
                     while True:
-                        if _is_cancelled():
+                        if loop.is_cancelled():
                             backend_task.cancel()
                             with contextlib.suppress(BaseException):
                                 await asyncio.gather(backend_task, return_exceptions=True)
                             _emit_cancelled()
                             return
-                        if _wall_time_exceeded():
+                        if loop.wall_time_exceeded():
                             backend_task.cancel()
                             with contextlib.suppress(BaseException):
                                 await asyncio.gather(backend_task, return_exceptions=True)
@@ -1420,17 +1409,16 @@ class Agent:
                     history.append({"role": "assistant", "content": None, "tool_calls": tool_calls_wire})
 
                     for call in pending_tool_calls:
-                        if _is_cancelled():
+                        if loop.is_cancelled():
                             _emit_cancelled()
                             return
-                        if _wall_time_exceeded():
+                        if loop.wall_time_exceeded():
                             _emit_budget_exceeded(
                                 message=f"budget exceeded: max_wall_time_sec={max_wall_time_sec}",
                             )
                             return
 
-                        step += 1
-                        step_id = f"step_{step}"
+                        step_id = loop.next_step_id()
 
                         # tool_call_requested
                         redaction_values = list((self._env_store or {}).values())
@@ -1468,33 +1456,19 @@ class Agent:
                             # Custom tools（自定义工具）审批门禁（Route A）：
                             # - 默认 ask（除非显式 allowlist）
                             # - denylist 命中直接拒绝（不进入 approvals）
-                            mode = str(getattr(self._safety, "mode", "ask") or "ask").strip().lower()
-                            tool_deny = set(
-                                str(x or "").strip()
-                                for x in (getattr(self._safety, "tool_denylist", []) or [])
-                                if str(x or "").strip()
-                            )
-                            tool_allow = set(
-                                str(x or "").strip()
-                                for x in (getattr(self._safety, "tool_allowlist", []) or [])
-                                if str(x or "").strip()
-                            )
-
-                            if call.name in tool_deny or mode == "deny":
-                                matched = "tool_denylist" if call.name in tool_deny else "mode=deny"
-                                stderr = (
-                                    "Tool is denied by safety.tool_denylist."
-                                    if matched == "tool_denylist"
-                                    else "Tool is denied by safety.mode=deny."
-                                )
+                            policy = evaluate_policy_for_custom_tool(tool=call.name, safety=self._safety)
+                            if policy.action == "deny":
                                 denied_payload = ToolResultPayload(
                                     ok=False,
                                     stdout="",
-                                    stderr=stderr,
+                                    stderr=policy.reason,
                                     exit_code=None,
                                     duration_ms=0,
                                     truncated=False,
-                                    data={"tool": call.name, "reason": matched},
+                                    data={
+                                        "tool": call.name,
+                                        "reason": str(policy.matched_rule or ""),
+                                    },
                                     error_kind="permission",
                                     retryable=False,
                                     retry_after_ms=None,
@@ -1518,12 +1492,7 @@ class Agent:
                                     {"role": "tool", "tool_call_id": call.call_id, "content": denied_result.content}
                                 )
                                 continue
-
-                            if mode == "allow":
-                                requires_approval = False
-                            else:
-                                # mode=ask
-                                requires_approval = call.name not in tool_allow
+                            requires_approval = policy.action == "ask"
                         elif call.name == "shell_exec":
                             argv = call.args.get("argv")
                             argv_list: list[str] = (
@@ -1766,7 +1735,7 @@ class Agent:
                                 return
 
                             if decision == ApprovalDecision.DENIED:
-                                denied_approvals_by_key[approval_key] = int(denied_approvals_by_key.get(approval_key, 0)) + 1
+                                loop.record_denied_approval(approval_key)
                                 denied_payload = ToolResultPayload(
                                     ok=False,
                                     stdout="",
@@ -1822,7 +1791,7 @@ class Agent:
                                     return
 
                                 # Loop guard：同一 approval_key 被重复 denied 多次，视为模型陷入重试循环，直接中止本次 run。
-                                if denied_approvals_by_key.get(approval_key, 0) >= 2:
+                                if loop.should_abort_due_to_repeated_denial(approval_key=approval_key):
                                     _emit_event(
                                         AgentEvent(
                                             type="run_failed",
@@ -1844,41 +1813,20 @@ class Agent:
                                     return
                                 continue
 
-                        if _is_cancelled():
+                        if loop.is_cancelled():
                             _emit_cancelled()
                             return
 
                         # max_steps 预算按“实际开始执行的 tool call”计数（不把 policy/approval deny 计入）。
-                        if steps_executed >= max_steps:
+                        if not loop.try_consume_tool_step():
                             _emit_budget_exceeded(message=f"budget exceeded: max_steps={max_steps}")
                             return
-                        steps_executed += 1
 
-                        _emit_event(
-                            AgentEvent(
-                                type="tool_call_started",
-                                ts=_now_rfc3339(),
-                                run_id=run_id,
-                                turn_id=turn_id,
-                                step_id=step_id,
-                                payload={"call_id": call.call_id, "tool": call.name},
-                            )
-                        )
-
-                        pending_tool_events.clear()
-                        result: ToolResult = registry.dispatch(call, turn_id=turn_id, step_id=step_id)
-                        for te in pending_tool_events:
-                            emit(te)
-
-                        _emit_event(
-                            AgentEvent(
-                                type="tool_call_finished",
-                                ts=_now_rfc3339(),
-                                run_id=run_id,
-                                turn_id=turn_id,
-                                step_id=step_id,
-                                payload={"call_id": call.call_id, "tool": call.name, "result": result.details or {}},
-                            )
+                        result = dispatcher.dispatch_one(
+                            inputs=ToolDispatchInputs(call=call, run_id=run_id, turn_id=turn_id, step_id=step_id),
+                            pending_tool_events=pending_tool_events,
+                            emit_event=_emit_event,
+                            emit_stream=wal_emitter.stream_only,
                         )
 
                         history.append({"role": "tool", "tool_call_id": call.call_id, "content": result.content})

@@ -267,6 +267,68 @@ def test_agent_register_tool_is_dispatchable_and_obeys_allowlist(tmp_path: Path)
     assert finished[0].payload["result"]["stdout"] == "hi"
 
 
+def test_agent_register_tool_requires_approvals_when_provider_is_configured(tmp_path: Path) -> None:
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(
+                        type="tool_calls",
+                        tool_calls=[ToolCall(call_id="c1", name="hello_tool", args={}, raw_arguments="{}")],
+                    ),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            ),
+            FakeChatCall(events=[ChatStreamEvent(type="text_delta", text="ok"), ChatStreamEvent(type="completed", finish_reason="stop")]),
+        ]
+    )
+
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=_AlwaysApprove())
+
+    spec = ToolSpec(
+        name="hello_tool",
+        description="say hi",
+        parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+    )
+
+    called = {"n": 0}
+
+    def handler(call: ToolCall, _ctx) -> ToolResult:  # type: ignore[no-untyped-def]
+        _ = call
+        called["n"] += 1
+        payload = ToolResultPayload(
+            ok=True,
+            stdout="hi",
+            stderr="",
+            exit_code=0,
+            duration_ms=0,
+            truncated=False,
+            data={"result": "hi"},
+            error_kind=None,
+            retryable=False,
+            retry_after_ms=None,
+        )
+        return ToolResult.from_payload(payload)
+
+    agent.register_tool(spec, handler)
+    result = agent.run("use hello_tool")
+    assert result.final_output == "ok"
+    assert called["n"] == 1
+
+    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    req = [e for e in events if e.type == "approval_requested"]
+    dec = [e for e in events if e.type == "approval_decided"]
+    req_tool = [e for e in req if (e.payload or {}).get("tool") == "hello_tool"]
+    assert req_tool
+    approval_key = str(req_tool[-1].payload.get("approval_key") or "")
+    assert approval_key
+
+    dec_tool = [e for e in dec if (e.payload or {}).get("approval_key") == approval_key]
+    assert dec_tool
+    assert dec_tool[-1].payload.get("decision") == ApprovalDecision.APPROVED.value
+    assert dec_tool[-1].payload.get("reason") == "provider"
+
+
 def test_agent_register_tool_default_ask_fails_fast_without_provider(tmp_path: Path) -> None:
     backend = FakeChatBackend(
         calls=[

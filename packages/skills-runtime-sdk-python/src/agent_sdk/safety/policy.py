@@ -119,3 +119,49 @@ def evaluate_policy_for_shell_exec(
 
     return PolicyDecision(action="ask", reason="Approval required by safety.mode=ask.", matched_rule="mode=ask")
 
+
+def evaluate_policy_for_custom_tool(*, tool: str, safety: AgentSdkSafetyConfig) -> PolicyDecision:
+    """
+    对 custom tool 做 policy 决策（allow/ask/deny）。
+
+    背景：
+    - custom tools 指“不在 builtin tools 名称集合内”的工具（包括 `Agent.tool` 注册与 `Agent.register_tool` 注入）。
+    - 在 `safety.mode=ask` 下，custom tools 默认必须进入 approvals（fail-closed），只有显式 allowlist 才可免审批执行。
+
+    参数：
+    - tool：工具名（`ToolCall.name`）
+    - safety：安全配置（包含 mode/tool_allowlist/tool_denylist）
+
+    返回：
+    - PolicyDecision：确定性的 allow/ask/deny 决策（matched_rule 用于诊断与审计）
+    """
+
+    tool_name = str(tool or "").strip()
+
+    tool_deny = set(str(x or "").strip() for x in (getattr(safety, "tool_denylist", []) or []) if str(x or "").strip())
+    if tool_name and tool_name in tool_deny:
+        return PolicyDecision(
+            action="deny",
+            reason="Tool is denied by safety.tool_denylist.",
+            matched_rule="tool_denylist",
+        )
+
+    mode = str(getattr(safety, "mode", "ask") or "ask").strip().lower()
+
+    if mode == "deny":
+        return PolicyDecision(action="deny", reason="Tool is denied by safety.mode=deny.", matched_rule="mode=deny")
+
+    if mode == "allow":
+        return PolicyDecision(action="allow", reason="Allowed by safety.mode=allow.", matched_rule="mode=allow")
+
+    tool_allow = set(
+        str(x or "").strip() for x in (getattr(safety, "tool_allowlist", []) or []) if str(x or "").strip()
+    )
+    if tool_name and tool_name in tool_allow:
+        return PolicyDecision(
+            action="allow",
+            reason="Tool is allowed by safety.tool_allowlist.",
+            matched_rule="tool_allowlist",
+        )
+
+    return PolicyDecision(action="ask", reason="Approval required by safety.mode=ask.", matched_rule="mode=ask")
