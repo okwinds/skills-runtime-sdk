@@ -45,6 +45,7 @@
 - 09 排障：`help/09-troubleshooting.cn.md` ｜ English：`help/09-troubleshooting.md`
 - 10 Cookbook：`help/10-cookbook.cn.md` ｜ English：`help/10-cookbook.md`
 - 11 FAQ：`help/11-faq.cn.md` ｜ English：`help/11-faq.md`
+- 12 验证用例集索引：`help/12-validation-suites.cn.md` ｜ English：`help/12-validation-suites.md`
 
 补充专题（不按编号顺序阅读）：
 - Sandbox 最佳实践：`help/sandbox-best-practices.cn.md` ｜ English：`help/sandbox-best-practices.md`

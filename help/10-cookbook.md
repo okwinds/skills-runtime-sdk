@@ -86,7 +86,7 @@ Minimal flow:
 
 Suggested gates:
 
-1. `bash scripts/pytest.sh`
+1. Tier-0 single entrypoint: `bash scripts/tier0.sh`
 2. `skills preflight` (CI overlay)
 3. `skills scan` (warnings/errors must be actionable)
 4. Docs check (README/Help links should not break; example commands should work)

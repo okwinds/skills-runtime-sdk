@@ -45,6 +45,7 @@ Chinese counterparts:
 - 09 Troubleshooting: `help/09-troubleshooting.md` ｜ 中文：`help/09-troubleshooting.cn.md`
 - 10 Cookbook: `help/10-cookbook.md` ｜ 中文：`help/10-cookbook.cn.md`
 - 11 FAQ: `help/11-faq.md` ｜ 中文：`help/11-faq.cn.md`
+- 12 Validation suites: `help/12-validation-suites.md` ｜ 中文：`help/12-validation-suites.cn.md`
 
 Supplemental topics (not numbered):
 - Sandbox best practices: `help/sandbox-best-practices.md` ｜ 中文：`help/sandbox-best-practices.cn.md`

@@ -80,7 +80,7 @@
 ## 配方 5：CI 门禁
 
 建议门禁：
-1. `bash scripts/pytest.sh`
+1. Tier-0 单一入口：`bash scripts/tier0.sh`
 2. `skills preflight`（使用 CI overlay）
 3. `skills scan`（检查 warning/error）
 4. 文档检查（README/Help 内链不应断；示例命令可跑通）
