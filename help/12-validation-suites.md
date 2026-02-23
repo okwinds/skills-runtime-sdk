@@ -49,6 +49,24 @@ Evidence to archive (recommended in CI):
 - pytest outputs (pass/skip/fail summary)
 - events/WAL artifacts if your test setup emits them (optional, project-dependent)
 
+### 12.2.1 Internal production: enforce local collaboration docs without exposing them
+
+Notes:
+- This repo may intentionally exclude local collaboration artifacts (for example `AGENTS.md`, root `DOCS_INDEX.md`, `docs/worklog.md`) via `.gitignore` to avoid exposing them in OSS.
+- Internal production environments may still want to enforce their presence as part of a gate.
+
+Approach (explicit switch):
+- Default (OSS/public CI): do not require these local docs to exist.
+- Internal enforcement: set `REQUIRE_LOCAL_DOCS=1` to enable strict checks in smoke tests.
+
+Example:
+
+```bash
+REQUIRE_LOCAL_DOCS=1 bash scripts/tier0.sh
+```
+
+This switch only controls whether the tests enforce the docs’ presence; it does not change SDK runtime behavior.
+
 ## 12.3 Tier-1: integration validation (optional; safe to skip)
 
 OS sandbox "visible restriction" checks (offline; adapters may be unavailable):
@@ -82,4 +100,3 @@ Constraints:
 
 Back to overview: `help/README.md`  
 Related: `help/10-cookbook.md`
-

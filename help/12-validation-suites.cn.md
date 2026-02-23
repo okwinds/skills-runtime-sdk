@@ -49,6 +49,26 @@ bash scripts/tier0.sh
 - pytest 输出（pass/skip/failed）
 - 如测试运行会落盘 events/WAL：保存对应目录（可选；按项目实际配置）
 
+### 12.2.1 内部生产：如何“强制要求本地协作文档”但不暴露
+
+约束提醒：
+- 本仓库允许把本地协作文件（例如 `AGENTS.md`、根 `DOCS_INDEX.md`、`docs/worklog.md`）通过 `.gitignore` 排除，以满足“开源不暴露”的要求。
+- 但内部生产环境仍可能希望把这些文件作为门禁的一部分进行校验（例如确保 worklog/台账存在）。
+
+做法（显式开关）：
+- 默认（开源/公共 CI）：不强制要求这些本地文件存在。
+- 内部环境若要强制：设置环境变量 `REQUIRE_LOCAL_DOCS=1`，相关 smoke tests 才会执行强校验。
+
+示例：
+
+```bash
+REQUIRE_LOCAL_DOCS=1 bash scripts/tier0.sh
+```
+
+说明：
+- 该开关只影响“是否强制要求本地协作文档存在”，不会改变 SDK 运行逻辑；
+- 内部环境若要在 CI 中启用，建议通过“私有注入/挂载”的方式把这些文件放到 workspace（仍不提交到 Git）。
+
 ## 12.3 Tier-1：集成验证（可选；环境不齐可跳过）
 
 OS sandbox 可见限制验证（无需外网；adapter 缺失会显式提示或跳过）：
