@@ -61,6 +61,9 @@ README_local.md
 packages/skills-runtime-studio-mvp/DOCS_INDEX.md
 packages/skills-runtime-studio-mvp/tests/skills-runtime-studio-mvp-test-cases.md
 
+# docs_for_coding_agent 是公开教学材料，需要仓库内可定位的索引文件。
+!docs_for_coding_agent/DOCS_INDEX.md
+
 # Local-only runtime configs (contain private endpoint defaults)
 **/runtime.yaml
 **/llm.yaml
