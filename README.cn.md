@@ -14,6 +14,10 @@ _许可证：Apache License 2.0（见 `LICENSE`）_
 - 以 Runs + SSE 事件流的方式可观测地运行
 - 用 `approvals`（门卫）+ `OS sandbox`（围栏）降低高风险工具调用带来的事故概率
 
+概念模型：
+- Skills 是一等扩展面（你主要编写/复用的资产）。
+- `Agent` API 是运行引擎（负责执行一次 run，并安全编排 tool calls + 落 WAL 事件）。
+
 ---
 
 ## 快速开始（5 分钟体验 Studio MVP）

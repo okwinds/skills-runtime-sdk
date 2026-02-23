@@ -8,11 +8,15 @@
 
 ## 0.1 一句话定义
 
-`skills-runtime-sdk` 是一个 **Skills-first 的 Agent Runtime 框架**：
+`skills-runtime-sdk` 是一个 **Skills-first 的 Skills Runtime 框架**：
 - 用统一配置定义模型、工具、安全策略；
 - 用标准事件流（WAL）记录运行过程；
 - 用 Skills 机制把可复用能力注入到任务执行中；
 - 用 Studio MVP 提供可视化会话与运行入口。
+
+命名说明：
+- 你依然通过 `Agent` API（`Agent.run()` / `Agent.run_stream()`）来运行任务，但从概念上 **Skills 才是一等扩展面**。
+- `Agent` 是运行引擎：负责执行一次 run（Prompt 编译 → Skills 注入 → LLM → tool 编排 → WAL 事件落盘）。
 
 ## 0.2 仓库结构（只看关键）
 
@@ -34,7 +38,7 @@
 
 2. **Runtime Layer（运行层）**
    - 入口：`Agent.run()` / `Agent.run_stream()`
-   - 核心：Prompt 编译、LLM 请求、tool orchestration、事件落盘
+   - 核心：Prompt 编译、Skills 注入、LLM 请求、tool orchestration、事件落盘
 
 3. **Safety Layer（安全层）**
    - 门禁：denylist / allowlist / approvals
@@ -48,6 +52,7 @@
 - **Skill mention**：合法格式为 `$[account:domain].skill_name`
 - **自由文本提取**：只提取合法 mention；不合法片段按普通文本处理
 - **Tool 参数严格校验**：当参数要求 `skill_mention` 时仍必须是完整 token
+- **Agent**：运行引擎实例（执行一次 run 并产出 WAL 事件）
 - **Approval（门卫）**：决定是否允许动作执行
 - **Sandbox（围栏）**：允许执行后仍限制执行边界
 - **WAL（events.jsonl）**：运行事件审计日志，排障第一现场

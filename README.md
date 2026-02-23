@@ -14,6 +14,10 @@ A **skills-first** Agent Runtime SDK (Python) plus a companion **Studio MVP** (m
 - Running with observable **Runs + SSE event streams**
 - Reducing risk of tool execution with `approvals` (gatekeeper) + **OS sandbox** (fence)
 
+Conceptual model:
+- Skills are the primary extension surface (what you author/reuse).
+- The `Agent` API is the runtime engine used to execute runs and orchestrate tool calls safely.
+
 ---
 
 ## Quickstart (Try Studio MVP in ~5 minutes)

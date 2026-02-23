@@ -8,12 +8,16 @@
 
 ## 0.1 One-sentence definition
 
-`skills-runtime-sdk` is a **skills-first Agent Runtime framework**:
+`skills-runtime-sdk` is a **skills-first Skills Runtime framework**:
 
 - One unified configuration for models, tools, and safety policies
 - A standard event stream (WAL) for reproducibility and debugging
 - A Skills mechanism to inject reusable capabilities into runs
 - A Studio MVP to provide a visual entry point for sessions and runs
+
+Note on naming:
+- You still use the `Agent` API (`Agent.run()` / `Agent.run_stream()`), but conceptually **Skills are the primary extension surface**.
+- `Agent` is the runtime engine that executes a run (prompt compilation → LLM → tool orchestration → WAL).
 
 ## 0.2 Repository layout (key parts only)
 
@@ -35,7 +39,7 @@
 
 2. **Runtime Layer**
    - Entry: `Agent.run()` / `Agent.run_stream()`
-   - Core: prompt compilation, LLM requests, tool orchestration, event logging
+   - Core: prompt compilation, Skills injection, LLM requests, tool orchestration, event logging
 
 3. **Safety Layer**
    - Gatekeeping: denylist / allowlist / approvals
@@ -49,6 +53,7 @@
 - **Skill mention**: valid format is `$[account:domain].skill_name`
 - **Free-text extraction**: only extracts valid mentions; invalid fragments become plain text
 - **Strict tool validation**: if a tool arg requires `skill_mention`, it must be a full token
+- **Agent**: the run engine instance (executes a run and emits WAL events)
 - **Approval (gatekeeper)**: decides whether an action is allowed
 - **Sandbox (fence)**: limits what an allowed action can do
 - **WAL (`events.jsonl`)**: the audit/event log; your first stop for debugging
