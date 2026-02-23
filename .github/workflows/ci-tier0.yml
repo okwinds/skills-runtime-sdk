@@ -1,0 +1,39 @@
+name: CI (Tier-0)
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tier0:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies (SDK + pytest)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "packages/skills-runtime-sdk-python[dev]"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            packages/skills-runtime-studio-mvp/frontend/package-lock.json
+
+      - name: Run Tier-0 gate
+        run: |
+          bash scripts/tier0.sh
+
