@@ -25,6 +25,16 @@ cp packages/skills-runtime-studio-mvp/backend/.env.example \
 bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
 ```
 
+离线回归（fake LLM，无需真实 key/外网）：
+
+```bash
+cd <repo_root>
+STUDIO_LLM_BACKEND=fake bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+```
+
+说明：
+- `STUDIO_LLM_BACKEND=fake` 会让后端用 `FakeChatBackend` 产出确定性的 tool_calls→approvals→completed 流程，用于 CI/离线集成回归护栏。
+
 健康检查：
 
 ```bash

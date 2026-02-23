@@ -13,8 +13,11 @@ from pydantic import BaseModel, Field
 from agent_sdk import Agent
 from agent_sdk import bootstrap as agent_bootstrap
 from agent_sdk.config.loader import AgentSdkLlmConfig, load_config_dicts
+from agent_sdk.llm.chat_sse import ChatStreamEvent
+from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
 from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
 from agent_sdk.skills.manager import SkillsManager
+from agent_sdk.tools.protocol import ToolCall
 
 from studio_api.approvals import ApprovalHub
 from studio_api.envfile import load_dotenv_for_workspace
@@ -207,7 +210,32 @@ def _build_agent(*, session_id: str, run_id: str) -> Agent:
         max_retries=int(getattr(merged_cfg.llm, "max_retries", 3)),
     )
 
-    backend = OpenAIChatCompletionsBackend(llm_cfg)
+    import os
+
+    backend_kind = str(os.getenv("STUDIO_LLM_BACKEND") or "openai").strip().lower()
+    if backend_kind == "fake":
+        # 离线回归夹具：用确定性的 tool_calls → tool → text 序列，覆盖 Run+Approvals 核心闭环。
+        args = {"path": "studio_fake_llm_output.txt", "content": "hello from fake llm"}
+        raw_args = json.dumps(args, ensure_ascii=False, separators=(",", ":"))
+        tc = ToolCall(call_id="call_1", name="file_write", args=args, raw_arguments=raw_args)
+        backend = FakeChatBackend(
+            calls=[
+                FakeChatCall(
+                    events=[
+                        ChatStreamEvent(type="tool_calls", tool_calls=[tc], finish_reason="tool_calls"),
+                        ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                    ]
+                ),
+                FakeChatCall(
+                    events=[
+                        ChatStreamEvent(type="text_delta", text="done"),
+                        ChatStreamEvent(type="completed", finish_reason="stop"),
+                    ]
+                ),
+            ]
+        )
+    else:
+        backend = OpenAIChatCompletionsBackend(llm_cfg)
     return Agent(
         workspace_root=_WORKSPACE_ROOT,
         backend=backend,

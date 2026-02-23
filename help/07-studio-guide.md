@@ -25,6 +25,16 @@ cp packages/skills-runtime-studio-mvp/backend/.env.example \
 bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
 ```
 
+Offline regression (fake LLM, no real key/network):
+
+```bash
+cd <repo_root>
+STUDIO_LLM_BACKEND=fake bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+```
+
+Notes:
+- `STUDIO_LLM_BACKEND=fake` makes the backend use a deterministic `FakeChatBackend` to exercise tool_calls → approvals → completed, suitable for CI/offline integration tests.
+
 Health check:
 
 ```bash

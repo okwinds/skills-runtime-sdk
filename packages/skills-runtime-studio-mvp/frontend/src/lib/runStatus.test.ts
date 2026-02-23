@@ -43,5 +43,31 @@ describe('deriveStatusItem', () => {
     expect(it0?.message).toBe('等待审批：shell_exec');
     expect(it0?.force_open).toBe(true);
   });
-});
 
+  it('surfaces compaction notice on run_completed via status message', () => {
+    const it0 = deriveStatusItem({
+      event: 'run_completed',
+      data: {
+        type: 'run_completed',
+        timestamp: '2026-02-10T10:00:00Z',
+        payload: {
+          final_output: 'ok',
+          metadata: {
+            notices: [
+              {
+                kind: 'context_compacted',
+                count: 1,
+                message: '本次运行发生过 1 次上下文压缩；摘要可能遗漏细节。',
+                suggestion: '建议开新 run。',
+              },
+            ],
+          },
+        },
+      },
+      raw: '{}',
+    });
+    expect(it0?.message).toContain('上下文压缩');
+    expect(it0?.force_open).toBe(true);
+    expect(it0?.always_open).toBe(true);
+  });
+});
