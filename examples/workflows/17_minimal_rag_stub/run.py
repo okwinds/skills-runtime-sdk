@@ -34,6 +34,8 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "safety:",
                 f"  mode: {json.dumps(safety_mode)}",
                 "  approval_timeout_ms: 2000",
+                "  tool_allowlist:",
+                "    - kb_search",
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",

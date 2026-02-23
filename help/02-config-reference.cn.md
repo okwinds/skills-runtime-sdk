@@ -43,6 +43,8 @@ SDK 运行时有效配置可来自四层（高到低）：
 - `mode`：`allow|ask|deny`
 - `allowlist`：允许直通的命令前缀
 - `denylist`：直接拒绝的高危命令前缀
+- `tool_allowlist`：自定义工具白名单（精确匹配 tool name；无人值守场景用于“显式认可”免审批）
+- `tool_denylist`：自定义工具黑名单（精确匹配 tool name；优先级高于 allowlist）
 - `approval_timeout_ms`：审批等待超时
 
 ### `sandbox`

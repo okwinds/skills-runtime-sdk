@@ -1256,6 +1256,7 @@ class SkillsManager:
         try:
             keys_iter = client.scan_iter(match=pattern)
         except Exception as exc:
+            dsn_env = source.options.get("dsn_env")
             errors.append(
                 FrameworkIssue(
                     code="SKILL_SCAN_SOURCE_UNAVAILABLE",
@@ -1263,6 +1264,8 @@ class SkillsManager:
                     details={
                         "source_id": source.id,
                         "source_type": source.type,
+                        "dsn_env": dsn_env,
+                        "env_present": bool(os.environ.get(dsn_env)) if isinstance(dsn_env, str) else False,
                         "reason": f"redis scan failed: {exc}",
                     },
                 )
@@ -1276,6 +1279,7 @@ class SkillsManager:
             except StopIteration:
                 break
             except Exception as exc:
+                dsn_env = source.options.get("dsn_env")
                 errors.append(
                     FrameworkIssue(
                         code="SKILL_SCAN_SOURCE_UNAVAILABLE",
@@ -1283,6 +1287,8 @@ class SkillsManager:
                         details={
                             "source_id": source.id,
                             "source_type": source.type,
+                            "dsn_env": dsn_env,
+                            "env_present": bool(os.environ.get(dsn_env)) if isinstance(dsn_env, str) else False,
                             "reason": f"redis scan failed: {exc}",
                         },
                     )

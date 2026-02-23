@@ -35,6 +35,8 @@ safety:
   mode: "ask"
   allowlist: ["ls", "pwd", "cat", "rg"]
   denylist: ["sudo", "rm -rf", "shutdown", "reboot"]
+  tool_allowlist: []          # 自定义工具白名单（精确匹配 tool name）
+  tool_denylist: []           # 自定义工具黑名单（精确匹配 tool name）
   approval_timeout_ms: 60000
 ```
 
@@ -42,6 +44,7 @@ safety:
 - `mode=ask`：默认审批
 - allowlist：降低高频安全操作的打扰
 - denylist：高危动作前置拒绝
+- `tool_allowlist/tool_denylist`：用于自定义工具（非 builtin tools）的无人值守治理：默认 `ask`，只有显式 allowlist 才可免审批执行；denylist 强制拒绝。
 
 ## 6.4 Sandbox 策略（围栏）
 

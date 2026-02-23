@@ -102,6 +102,32 @@ print(result.final_output)
 Notes:
 - Prefer primitive types (`str/int/float/bool`) for tool args
 - Return values are serialized into the tool result
+- When `safety.mode=ask` (default), custom tools are approval-gated unless explicitly allowlisted via `safety.tool_allowlist`
+
+## 3.6.1 Register a pre-built `ToolSpec + handler` (BL-031)
+
+If you already have a `ToolSpec` and a handler (e.g., building an integration bridge), use `Agent.register_tool(...)`:
+
+```python
+from agent_sdk import Agent
+from agent_sdk.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec
+
+spec = ToolSpec(
+    name="hello_tool",
+    description="Return a friendly greeting",
+    parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+)
+
+def handler(call: ToolCall, _ctx) -> ToolResult:  # type: ignore[no-untyped-def]
+    payload = ToolResultPayload(ok=True, stdout="hi", exit_code=0, data={"result": "hi"})
+    return ToolResult.from_payload(payload)
+
+agent.register_tool(spec, handler, override=False)
+```
+
+Notes:
+- Name conflicts follow `ToolRegistry.register`: reject by default, allow override only when `override=True`
+- Tools injected via `register_tool` are still **custom tools** for safety governance (Route A)
 
 ## 3.7 Inject an approvals provider (`ApprovalProvider`)
 

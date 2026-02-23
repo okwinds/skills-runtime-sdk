@@ -31,7 +31,7 @@ from pydantic import BaseModel, create_model
 from agent_sdk.config.loader import AgentSdkConfig, load_config_dicts
 from agent_sdk.config.defaults import load_default_config_dict
 from agent_sdk.core.contracts import AgentEvent
-from agent_sdk.core.errors import FrameworkError
+from agent_sdk.core.errors import FrameworkError, UserError
 from agent_sdk.core.exec_sessions import ExecSessionsProvider
 from agent_sdk.core.executor import Executor
 from agent_sdk.state.jsonl_wal import JsonlWal
@@ -604,7 +604,9 @@ class Agent:
             history_max_messages=int(self._config.prompt.history.max_messages),
             history_max_chars=int(self._config.prompt.history.max_chars),
         )
-        self._extra_tools: List[Tuple[ToolSpec, Any]] = []
+        # 额外工具注册（custom tools / 外部注入扩展点）。
+        # tuple: (ToolSpec, handler, override)
+        self._extra_tools: List[Tuple[ToolSpec, Any, bool]] = []
 
     def tool(self, func=None, *, name: Optional[str] = None, description: Optional[str] = None):  # type: ignore[no-untyped-def]
         """
@@ -666,12 +668,48 @@ class Agent:
                 )
                 return ToolResult.from_payload(payload)
 
-            self._extra_tools.append((spec, handler))
+            self.register_tool(spec, handler, override=False)
             return f
 
         if func is None:
             return _register
         return _register(func)
+
+    def register_tool(self, spec: ToolSpec, handler: Any, *, override: bool = False) -> None:
+        """
+        注册一个预构造的 `ToolSpec + handler` 到 Agent（BL-031 公开扩展点）。
+
+        参数：
+        - spec：工具规格（包含 name/description/parameters）
+        - handler：工具执行函数（签名需兼容 `ToolHandler`）
+        - override：是否允许覆盖同名工具（语义与 `ToolRegistry.register(..., override=...)` 对齐）
+
+        行为：
+        - 默认拒绝重复注册（抛 `UserError`）
+        - `override=True` 时会替换已注册的同名条目
+        """
+
+        if not isinstance(spec, ToolSpec):
+            raise UserError("spec must be a ToolSpec")
+        if not isinstance(spec.name, str) or not spec.name.strip():
+            raise UserError("tool spec.name must be a non-empty string")
+        if not callable(handler):
+            raise UserError("handler must be callable")
+
+        tool_name = spec.name
+        idx: Optional[int] = None
+        for i, (s, _h, _o) in enumerate(self._extra_tools):
+            if s.name == tool_name:
+                idx = i
+                break
+        if idx is not None and not override:
+            raise UserError(f"重复注册 tool：{tool_name}")
+
+        entry = (spec, handler, bool(override))
+        if idx is None:
+            self._extra_tools.append(entry)
+        else:
+            self._extra_tools[idx] = entry
 
     async def _ensure_skill_env_vars(  # type: ignore[no-untyped-def]
         self,
@@ -1178,8 +1216,11 @@ class Agent:
         )
         registry = ToolRegistry(ctx=tool_ctx)
         register_builtin_tools(registry)
-        for spec, handler in self._extra_tools:
-            registry.register(spec, handler, override=False)
+        builtin_tool_names = set(s.name for s in registry.list_specs())
+        for spec, handler, override in self._extra_tools:
+            registry.register(spec, handler, override=bool(override))
+        custom_tool_names = set(s.name for s, _h, _o in self._extra_tools)
+        registered_tool_names = set(s.name for s in registry.list_specs())
 
         history: List[Dict[str, Any]] = []
         if resume_replay_history:
@@ -1410,7 +1451,7 @@ class Agent:
                             )
                         )
 
-                        requires_approval = call.name in ("shell_exec", "file_write", "skill_exec", "apply_patch")
+                        requires_approval = False
                         approval_reason: Optional[str] = None
 
                         sandbox_permissions: Optional[str] = None
@@ -1418,7 +1459,72 @@ class Agent:
                         if isinstance(sp, str) and sp.strip():
                             sandbox_permissions = sp.strip()
 
-                        if call.name == "shell_exec":
+                        is_registered = call.name in registered_tool_names
+                        is_custom_tool = (call.name in custom_tool_names) or (
+                            is_registered and call.name not in builtin_tool_names
+                        )
+
+                        if is_custom_tool:
+                            # Custom tools（自定义工具）审批门禁（Route A）：
+                            # - 默认 ask（除非显式 allowlist）
+                            # - denylist 命中直接拒绝（不进入 approvals）
+                            mode = str(getattr(self._safety, "mode", "ask") or "ask").strip().lower()
+                            tool_deny = set(
+                                str(x or "").strip()
+                                for x in (getattr(self._safety, "tool_denylist", []) or [])
+                                if str(x or "").strip()
+                            )
+                            tool_allow = set(
+                                str(x or "").strip()
+                                for x in (getattr(self._safety, "tool_allowlist", []) or [])
+                                if str(x or "").strip()
+                            )
+
+                            if call.name in tool_deny or mode == "deny":
+                                matched = "tool_denylist" if call.name in tool_deny else "mode=deny"
+                                stderr = (
+                                    "Tool is denied by safety.tool_denylist."
+                                    if matched == "tool_denylist"
+                                    else "Tool is denied by safety.mode=deny."
+                                )
+                                denied_payload = ToolResultPayload(
+                                    ok=False,
+                                    stdout="",
+                                    stderr=stderr,
+                                    exit_code=None,
+                                    duration_ms=0,
+                                    truncated=False,
+                                    data={"tool": call.name, "reason": matched},
+                                    error_kind="permission",
+                                    retryable=False,
+                                    retry_after_ms=None,
+                                )
+                                denied_result = ToolResult.from_payload(denied_payload, message="policy denied")
+                                _emit_event(
+                                    AgentEvent(
+                                        type="tool_call_finished",
+                                        ts=_now_rfc3339(),
+                                        run_id=run_id,
+                                        turn_id=turn_id,
+                                        step_id=step_id,
+                                        payload={
+                                            "call_id": call.call_id,
+                                            "tool": call.name,
+                                            "result": denied_result.details or {},
+                                        },
+                                    )
+                                )
+                                history.append(
+                                    {"role": "tool", "tool_call_id": call.call_id, "content": denied_result.content}
+                                )
+                                continue
+
+                            if mode == "allow":
+                                requires_approval = False
+                            else:
+                                # mode=ask
+                                requires_approval = call.name not in tool_allow
+                        elif call.name == "shell_exec":
                             argv = call.args.get("argv")
                             argv_list: list[str] = (
                                 argv if isinstance(argv, list) and all(isinstance(x, str) for x in argv) else []
@@ -1585,7 +1691,9 @@ class Agent:
                             summary, request_obj = _sanitize_approval_request(
                                 call.name,
                                 args=call.args,
-                                skills_manager=self._skills_manager if call.name == "skill_exec" else None,
+                                skills_manager=self._skills_manager
+                                if (call.name == "skill_exec" and not is_custom_tool)
+                                else None,
                             )
                             approval_key = compute_approval_key(tool=call.name, request=request_obj)
 

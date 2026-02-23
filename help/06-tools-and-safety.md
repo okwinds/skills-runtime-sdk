@@ -35,6 +35,8 @@ safety:
   mode: "ask"
   allowlist: ["ls", "pwd", "cat", "rg"]
   denylist: ["sudo", "rm -rf", "shutdown", "reboot"]
+  tool_allowlist: []          # custom tools allowlist (exact tool name match)
+  tool_denylist: []           # custom tools denylist (exact tool name match)
   approval_timeout_ms: 60000
 ```
 
@@ -42,6 +44,7 @@ Meaning:
 - `mode=ask`: approvals by default
 - allowlist: reduce interruptions for safe frequent commands
 - denylist: block dangerous operations early
+- `tool_allowlist/tool_denylist`: governs custom tools (non-builtin) for unattended runs: default is `ask`; only allowlisted tools can run without approvals; denylist blocks hard.
 
 ## 6.4 Sandbox policy (fence)
 

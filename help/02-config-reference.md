@@ -43,6 +43,8 @@ Where to find defaults:
 - `mode`: `allow|ask|deny`
 - `allowlist`: command prefixes that can pass without approvals
 - `denylist`: dangerous prefixes blocked early
+- `tool_allowlist`: allowlisted custom tool names (exact match; reviewed tools can run unattended)
+- `tool_denylist`: denylisted custom tool names (exact match; higher priority than allowlist)
 - `approval_timeout_ms`: approval wait timeout
 
 ### `sandbox`

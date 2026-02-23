@@ -102,6 +102,32 @@ print(result.final_output)
 注意：
 - 参数类型建议使用基础类型（`str/int/float/bool`）
 - 返回值会被转成字符串写入 tool result
+- 当 `safety.mode=ask`（默认）时，自定义工具默认会进入 approvals；只有显式配置 `safety.tool_allowlist` 才会免审批执行
+
+## 3.6.1 注册预构造的 `ToolSpec + handler`（BL-031）
+
+当你已经有预构造的 `ToolSpec` 与 handler（例如做集成桥接/注入自定义工具）时，可使用 `Agent.register_tool(...)`：
+
+```python
+from agent_sdk import Agent
+from agent_sdk.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec
+
+spec = ToolSpec(
+    name="hello_tool",
+    description="返回一条问候语",
+    parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+)
+
+def handler(call: ToolCall, _ctx) -> ToolResult:  # type: ignore[no-untyped-def]
+    payload = ToolResultPayload(ok=True, stdout="hi", exit_code=0, data={"result": "hi"})
+    return ToolResult.from_payload(payload)
+
+agent.register_tool(spec, handler, override=False)
+```
+
+注意：
+- 冲突策略与 `ToolRegistry.register` 一致：默认拒绝同名；仅当 `override=True` 时允许显式覆盖
+- 通过 `register_tool` 注入的工具同样属于 **自定义工具**，会遵循自定义工具审批门禁（Route A）
 
 ## 3.7 注入审批提供者（ApprovalProvider）
 

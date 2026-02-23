@@ -137,6 +137,8 @@ class AgentSdkSafetyConfig(BaseModel):
     mode: str = Field(default="ask")  # allow|ask|deny
     allowlist: List[str] = Field(default_factory=list)
     denylist: List[str] = Field(default_factory=list)
+    tool_allowlist: List[str] = Field(default_factory=list)
+    tool_denylist: List[str] = Field(default_factory=list)
     approval_timeout_ms: int = Field(default=60_000, ge=1)
 
 
