@@ -33,6 +33,8 @@ htmlcov/
 
 # Codex local home (may contain auth/config; never commit)
 .codex-home/
+.claude/
+openspec/
 
 # Local secrets (keep file, never commit)
 .env
