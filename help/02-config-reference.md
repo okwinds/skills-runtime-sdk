@@ -37,6 +37,18 @@ Where to find defaults:
 - `max_wall_time_sec`: max wall-clock time per run
 - `human_timeout_ms`: human input timeout (optional)
 - `resume_strategy`: `summary|replay` (default: `summary`)
+- `context_recovery`: context-length recovery (triggered on `context_length_exceeded`)
+  - `context_recovery.mode`: `compact_first|ask_first|fail_fast` (default: `fail_fast`, backwards compatible)
+  - `context_recovery.max_compactions_per_run`: max compactions per run (prevents loops)
+  - `context_recovery.ask_first_fallback_mode`: fallback when `ask_first` but no HumanIOProvider (`compact_first|fail_fast`)
+  - `context_recovery.compaction_history_max_chars`: max chars for the compaction transcript input
+  - `context_recovery.compaction_keep_last_messages`: keep last N user/assistant messages after compaction
+  - `context_recovery.increase_budget_extra_steps`: extra steps when user chooses "increase budget"
+  - `context_recovery.increase_budget_extra_wall_time_sec`: extra wall time seconds when user chooses "increase budget"
+
+Notes:
+- `compact_first` runs a compaction turn (tools disabled) to generate a handoff summary, rebuilds history, then retries.
+- When compaction happens, terminal `run_completed.payload.metadata.notices[]` includes a prominent notice (not appended into `final_output`).
 
 ### `safety`
 
@@ -49,6 +61,11 @@ Where to find defaults:
 
 ### `sandbox`
 
+- `profile`: `custom|dev|balanced|prod` (macro for staged tightening)
+  - `dev`: default does not enforce OS sandbox (availability-first)
+  - `balanced`: recommended default (restricted + auto backend; Linux defaults to `unshare_net=true`)
+  - `prod`: production-hardening baseline (tighten further via overlays)
+  - `custom`: no macro expansion; behavior is driven purely by `default_policy/os.*` (backwards compatible)
 - `default_policy`: `none|restricted`
 - `os.mode`: `auto|none|seatbelt|bubblewrap`
 - `os.seatbelt.profile`: macOS `sandbox-exec` profile
@@ -94,6 +111,8 @@ safety:
   approval_timeout_ms: 60000
 
 sandbox:
+  profile: "balanced" # dev/balanced/prod/custom
+  # profile expansion overrides default_policy/os.*; use overlays to fine-tune seatbelt/bwrap params
   default_policy: "restricted"
   os:
     mode: "auto"
@@ -120,6 +139,7 @@ safety:
   approval_timeout_ms: 60000
 
 sandbox:
+  profile: "prod"
   default_policy: "restricted"
   os:
     mode: "auto"

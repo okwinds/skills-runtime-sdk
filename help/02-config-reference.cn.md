@@ -37,6 +37,18 @@ SDK 运行时有效配置可来自四层（高到低）：
 - `max_wall_time_sec`：单次 run 最大墙钟时间
 - `human_timeout_ms`：人类输入超时（可空）
 - `resume_strategy`：`summary|replay`（默认 `summary`；`replay` 为逐事件回放恢复）
+- `context_recovery`：上下文恢复策略（当 LLM 返回 `context_length_exceeded` 时触发）
+  - `context_recovery.mode`：`compact_first|ask_first|fail_fast`（默认 `fail_fast`，兼容旧行为）
+  - `context_recovery.max_compactions_per_run`：单个 run 最大压缩次数（防无限循环）
+  - `context_recovery.ask_first_fallback_mode`：`ask_first` 但无 HumanIOProvider 时的降级策略（`compact_first|fail_fast`）
+  - `context_recovery.compaction_history_max_chars`：compaction turn 输入“对话节选”字符上限
+  - `context_recovery.compaction_keep_last_messages`：压缩后保留最近 user/assistant 原文条数（其余由摘要承载）
+  - `context_recovery.increase_budget_extra_steps`：用户选择“提高预算继续”时增加的 step 数
+  - `context_recovery.increase_budget_extra_wall_time_sec`：用户选择“提高预算继续”时增加的 wall time 秒数
+
+说明：
+- `compact_first` 会触发一次 compaction turn（tools 禁用）生成 handoff 摘要，并用摘要重建 history 后重试采样。
+- compaction 发生时，终态 `run_completed.payload.metadata.notices[]` 会携带明显提示（不拼进 `final_output` 正文）。
 
 ### `safety`
 
@@ -49,6 +61,11 @@ SDK 运行时有效配置可来自四层（高到低）：
 
 ### `sandbox`
 
+- `profile`：`custom|dev|balanced|prod`（高层宏；用于分阶段收紧）
+  - `dev`：默认不强制 OS sandbox（可用性优先）
+  - `balanced`：推荐默认（restricted + auto backend；Linux 默认隔离网络）
+  - `prod`：更偏生产硬化（提供更严格的基线；建议结合 overlay 按业务调整）
+  - `custom`：不做宏展开，仅由 `default_policy/os.*` 决定行为（兼容旧配置）
 - `default_policy`：`none|restricted`
 - `os.mode`：`auto|none|seatbelt|bubblewrap`
 - `os.seatbelt.profile`：macOS sandbox-exec profile
@@ -94,6 +111,8 @@ safety:
   approval_timeout_ms: 60000
 
 sandbox:
+  profile: "balanced" # dev/balanced/prod/custom
+  # profile 展开后会覆盖 default_policy/os.*；如需精细化请用 overlay 覆盖 seatbelt/bwrap 参数
   default_policy: "restricted"
   os:
     mode: "auto"
@@ -120,6 +139,7 @@ safety:
   approval_timeout_ms: 60000
 
 sandbox:
+  profile: "prod"
   default_policy: "restricted"
   os:
     mode: "auto"

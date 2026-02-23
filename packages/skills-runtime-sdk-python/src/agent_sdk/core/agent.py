@@ -43,6 +43,11 @@ from agent_sdk.tools.protocol import ToolCall, ToolResult, ToolSpec
 from agent_sdk.tools.registry import ToolExecutionContext, ToolRegistry
 
 from agent_sdk.prompts.manager import PromptManager, PromptTemplates
+from agent_sdk.prompts.compaction import (
+    SUMMARY_PREFIX_TEMPLATE_ZH,
+    build_compaction_messages,
+    format_history_for_compaction,
+)
 from agent_sdk.skills.manager import SkillsManager
 from agent_sdk.skills.models import Skill
 from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest, compute_approval_key
@@ -1009,6 +1014,22 @@ class Agent:
 
         max_steps = int(self._config.run.max_steps)
         max_wall_time_sec = self._config.run.max_wall_time_sec
+        cr = getattr(self._config.run, "context_recovery", None)
+        context_recovery_mode = str(getattr(cr, "mode", "fail_fast") or "fail_fast").strip().lower()
+        if context_recovery_mode not in ("compact_first", "ask_first", "fail_fast"):
+            context_recovery_mode = "fail_fast"
+        max_compactions_per_run = int(getattr(cr, "max_compactions_per_run", 2) or 0)
+        ask_first_fallback_mode = str(getattr(cr, "ask_first_fallback_mode", "compact_first") or "compact_first").strip().lower()
+        if ask_first_fallback_mode not in ("compact_first", "fail_fast"):
+            ask_first_fallback_mode = "compact_first"
+        compaction_history_max_chars = int(getattr(cr, "compaction_history_max_chars", 24_000) or 24_000)
+        compaction_keep_last_messages = int(getattr(cr, "compaction_keep_last_messages", 6) or 6)
+        increase_budget_extra_steps = int(getattr(cr, "increase_budget_extra_steps", 20) or 0)
+        increase_budget_extra_wall_time_sec = int(getattr(cr, "increase_budget_extra_wall_time_sec", 600) or 0)
+
+        compactions_performed = 0
+        compaction_artifacts: List[str] = []
+        terminal_notices: List[Dict[str, Any]] = []
 
         existing_events_count = 0
         existing_events_tail: List[AgentEvent] = []
@@ -1136,6 +1157,104 @@ class Agent:
                 )
             )
 
+        artifacts_dir = (run_dir / "artifacts").resolve()
+
+        def _write_text_artifact(*, kind: str, content: str) -> str:
+            """
+            将文本写入 run artifacts 目录并返回文件路径（字符串）。
+
+            参数：
+            - kind：产物类型标识（用于文件名）
+            - content：要写入的文本内容（UTF-8）
+            """
+
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            idx = len(compaction_artifacts) + 1
+            name = f"{idx:03d}_{str(kind or 'artifact')}.md"
+            p = (artifacts_dir / name).resolve()
+            p.write_text(str(content or ""), encoding="utf-8")
+            return str(p)
+
+        def _refresh_terminal_notices() -> None:
+            """
+            刷新终态 notices（metadata），但不拼接进 final_output。
+
+            说明：
+            - 当前仅用于 compaction 的明显提示；
+            - 若后续引入其它 notices 类型，建议同样在此处集中汇总。
+            """
+
+            terminal_notices.clear()
+            if compactions_performed <= 0:
+                return
+            terminal_notices.append(
+                {
+                    "kind": "context_compacted",
+                    "count": int(compactions_performed),
+                    "message": f"本次运行发生过 {int(compactions_performed)} 次上下文压缩；摘要可能遗漏细节。",
+                    "suggestion": "建议将任务拆分或开新 run，并把 handoff 摘要作为新 run 的起始上下文。",
+                }
+            )
+
+        async def _ask_human_context_recovery_choice(*, turn_id: str) -> Optional[str]:
+            """
+            ask-first：向人类请求“如何恢复”的选择（四选一）。
+
+            参数：
+            - turn_id：用于事件关联
+
+            返回：
+            - choice 字符串（compact_continue/handoff_new_run/increase_budget_continue/terminate）或 None（无 provider）
+            """
+
+            if self._human_io is None:
+                return None
+
+            call_id = f"context_recovery_{run_id}_{turn_id}"
+            question = (
+                "检测到 context_length_exceeded。\n\n"
+                "请选择下一步：\n"
+                "- compact_continue：执行一次上下文压缩并继续\n"
+                "- handoff_new_run：生成可复制的 handoff 摘要，建议开新 run\n"
+                "- increase_budget_continue：提高本次 run 预算后再压缩继续\n"
+                "- terminate：终止本次 run\n"
+            )
+            choices = ["compact_continue", "handoff_new_run", "increase_budget_continue", "terminate"]
+            _emit_event(
+                AgentEvent(
+                    type="human_request",
+                    ts=_now_rfc3339(),
+                    run_id=run_id,
+                    turn_id=turn_id,
+                    payload={
+                        "call_id": call_id,
+                        "question": question,
+                        "choices": choices,
+                        "context": {"kind": "context_recovery", "mode": "ask_first"},
+                    },
+                )
+            )
+
+            answer = await asyncio.to_thread(
+                self._human_io.request_human_input,
+                call_id=call_id,
+                question=question,
+                choices=choices,
+                context={"kind": "context_recovery", "mode": "ask_first"},
+                timeout_ms=self._config.run.human_timeout_ms,
+            )
+            ans = str(answer or "").strip()
+            _emit_event(
+                AgentEvent(
+                    type="human_response",
+                    ts=_now_rfc3339(),
+                    run_id=run_id,
+                    turn_id=turn_id,
+                    payload={"call_id": call_id, "answer": ans},
+                )
+            )
+            return ans
+
         _emit_event(
             AgentEvent(
                 type="run_started",
@@ -1236,6 +1355,121 @@ class Agent:
             denied_approvals_by_key=dict(resume_replay_denied or {}),
         )
 
+        async def _perform_compaction_turn_and_rebuild_history(*, reason: str, turn_id: str) -> str:
+            """
+            执行一次 compaction turn（tools 禁用），并用生成的摘要重建 history。
+
+            参数：
+            - reason：触发原因（例如 context_length_exceeded）
+            - turn_id：用于事件关联
+
+            返回：
+            - artifact_path：摘要产物路径（可复制/可审计）
+            """
+
+            nonlocal compactions_performed
+
+            if max_compactions_per_run > 0 and compactions_performed >= max_compactions_per_run:
+                raise ValueError("max compactions per run exceeded")
+
+            transcript = format_history_for_compaction(
+                history,
+                max_chars=compaction_history_max_chars,
+                keep_last_messages=compaction_keep_last_messages,
+            )
+            compaction_messages = build_compaction_messages(task=task, transcript=transcript)
+
+            _emit_event(
+                AgentEvent(
+                    type="compaction_started",
+                    ts=_now_rfc3339(),
+                    run_id=run_id,
+                    turn_id=turn_id,
+                    payload={"reason": str(reason or "unknown"), "mode": context_recovery_mode},
+                )
+            )
+
+            summary_text = ""
+            try:
+                agen = self._backend.stream_chat(
+                    model=self._executor_model,
+                    messages=compaction_messages,
+                    tools=None,  # 关键约束：compaction turn 禁用 tools
+                    temperature=0.2,
+                )
+                async for ev in agen:
+                    t = getattr(ev, "type", None)
+                    if t == "text_delta":
+                        summary_text += str(getattr(ev, "text", "") or "")
+                    elif t == "completed":
+                        break
+            except BaseException as e:
+                _emit_event(
+                    AgentEvent(
+                        type="compaction_failed",
+                        ts=_now_rfc3339(),
+                        run_id=run_id,
+                        turn_id=turn_id,
+                        payload={"reason": str(reason or "unknown"), "error": str(e)},
+                    )
+                )
+                # fallback：用 transcript 兜底，保证可复制/可继续（质量可能较差，但可回归）
+                summary_text = f"(compaction failed; fallback transcript excerpt)\n\n{transcript}"
+
+            summary_text = str(summary_text or "").strip()
+            summary_full = (SUMMARY_PREFIX_TEMPLATE_ZH + "\n" + summary_text).strip() + "\n"
+            artifact_path = _write_text_artifact(kind="handoff_summary", content=summary_full)
+            compaction_artifacts.append(artifact_path)
+
+            compactions_performed += 1
+            _refresh_terminal_notices()
+
+            sha256 = hashlib.sha256(summary_full.encode("utf-8")).hexdigest()
+            _emit_event(
+                AgentEvent(
+                    type="context_compacted",
+                    ts=_now_rfc3339(),
+                    run_id=run_id,
+                    turn_id=turn_id,
+                    payload={
+                        "reason": str(reason or "unknown"),
+                        "count": int(compactions_performed),
+                        "artifact_path": artifact_path,
+                        "summary_len": len(summary_full),
+                        "summary_sha256": sha256,
+                    },
+                )
+            )
+
+            # rebuild history：摘要（assistant）+ 最近 N 条 user/assistant 原文消息（保留即时语境）
+            kept_tail: List[Dict[str, Any]] = []
+            for m in history:
+                if not isinstance(m, dict):
+                    continue
+                if m.get("role") not in ("user", "assistant"):
+                    continue
+                content = m.get("content")
+                if not isinstance(content, str) or not content.strip():
+                    continue
+                kept_tail.append({"role": m.get("role"), "content": content})
+            kept_tail = kept_tail[-max(0, int(compaction_keep_last_messages)) :] if compaction_keep_last_messages else []
+
+            history.clear()
+            history.append({"role": "assistant", "content": summary_full})
+            history.extend(kept_tail)
+
+            _emit_event(
+                AgentEvent(
+                    type="compaction_finished",
+                    ts=_now_rfc3339(),
+                    run_id=run_id,
+                    turn_id=turn_id,
+                    payload={"reason": str(reason or "unknown"), "count": int(compactions_performed), "artifact_path": artifact_path},
+                )
+            )
+
+            return artifact_path
+
         try:
             while True:
                 if loop.is_cancelled():
@@ -1299,102 +1533,269 @@ class Agent:
                 assistant_text = ""
                 pending_tool_calls: List[ToolCall] = []
 
-                # 为了实现“硬 stop”（尽快中断正在进行的网络流读取），这里把 backend stream
-                # 放到独立 task 中消费，并用 queue + 短超时轮询 cancel_checker。
-                # 这样即使 SSE 长时间没有输出，也能在用户点击 Stop 后尽快退出 run。
-                agen = self._backend.stream_chat(model=self._executor_model, messages=messages, tools=tools)
-                q_backend: "asyncio.Queue[Any]" = asyncio.Queue()
-
-                async def _consume_backend() -> None:
-                    """消费 backend 事件流并写入队列；把异常也转为队列 item，便于主循环统一处理。"""
-
-                    try:
-                        async for item in agen:
-                            await q_backend.put(item)
-                    except asyncio.CancelledError:
-                        with contextlib.suppress(Exception):
-                            await agen.aclose()
-                        raise
-                    except BaseException as e:
-                        await q_backend.put(e)
-                    finally:
-                        await q_backend.put(None)
-
-                backend_task = asyncio.create_task(_consume_backend())
                 try:
-                    while True:
-                        if loop.is_cancelled():
-                            backend_task.cancel()
-                            with contextlib.suppress(BaseException):
-                                await asyncio.gather(backend_task, return_exceptions=True)
-                            _emit_cancelled()
-                            return
-                        if loop.wall_time_exceeded():
-                            backend_task.cancel()
-                            with contextlib.suppress(BaseException):
-                                await asyncio.gather(backend_task, return_exceptions=True)
-                            _emit_budget_exceeded(
-                                message=f"budget exceeded: max_wall_time_sec={max_wall_time_sec}",
-                            )
-                            return
+                    # 为了实现“硬 stop”（尽快中断正在进行的网络流读取），这里把 backend stream
+                    # 放到独立 task 中消费，并用 queue + 短超时轮询 cancel_checker。
+                    # 这样即使 SSE 长时间没有输出，也能在用户点击 Stop 后尽快退出 run。
+                    agen = self._backend.stream_chat(model=self._executor_model, messages=messages, tools=tools)
+                    q_backend: "asyncio.Queue[Any]" = asyncio.Queue()
+
+                    async def _consume_backend() -> None:
+                        """消费 backend 事件流并写入队列；把异常也转为队列 item，便于主循环统一处理。"""
 
                         try:
-                            item = await asyncio.wait_for(q_backend.get(), timeout=0.05)
-                        except asyncio.TimeoutError:
-                            continue
+                            async for item in agen:
+                                await q_backend.put(item)
+                        except asyncio.CancelledError:
+                            with contextlib.suppress(Exception):
+                                await agen.aclose()
+                            raise
+                        except BaseException as e:
+                            await q_backend.put(e)
+                        finally:
+                            await q_backend.put(None)
 
-                        if item is None:
-                            break
-                        if isinstance(item, BaseException):
-                            raise item
-
-                        ev = item
-                        # ChatStreamEvent 约定字段（来自 llm.chat_sse）
-                        t = getattr(ev, "type", None)
-                        if t == "text_delta":
-                            text = getattr(ev, "text", "") or ""
-                            assistant_text += text
-                            _emit_event(
-                                AgentEvent(
-                                    type="llm_response_delta",
-                                    ts=_now_rfc3339(),
-                                    run_id=run_id,
-                                    turn_id=turn_id,
-                                    payload={"delta_type": "text", "text": text},
+                    backend_task = asyncio.create_task(_consume_backend())
+                    try:
+                        while True:
+                            if loop.is_cancelled():
+                                backend_task.cancel()
+                                with contextlib.suppress(BaseException):
+                                    await asyncio.gather(backend_task, return_exceptions=True)
+                                _emit_cancelled()
+                                return
+                            if loop.wall_time_exceeded():
+                                backend_task.cancel()
+                                with contextlib.suppress(BaseException):
+                                    await asyncio.gather(backend_task, return_exceptions=True)
+                                _emit_budget_exceeded(
+                                    message=f"budget exceeded: max_wall_time_sec={max_wall_time_sec}",
                                 )
-                            )
-                        elif t == "tool_calls":
-                            calls = getattr(ev, "tool_calls", None) or []
-                            pending_tool_calls.extend(calls)
-                            redaction_values = list((self._env_store or {}).values())
+                                return
+
+                            try:
+                                item = await asyncio.wait_for(q_backend.get(), timeout=0.05)
+                            except asyncio.TimeoutError:
+                                continue
+
+                            if item is None:
+                                break
+                            if isinstance(item, BaseException):
+                                raise item
+
+                            ev = item
+                            # ChatStreamEvent 约定字段（来自 llm.chat_sse）
+                            t = getattr(ev, "type", None)
+                            if t == "text_delta":
+                                text = getattr(ev, "text", "") or ""
+                                assistant_text += text
+                                _emit_event(
+                                    AgentEvent(
+                                        type="llm_response_delta",
+                                        ts=_now_rfc3339(),
+                                        run_id=run_id,
+                                        turn_id=turn_id,
+                                        payload={"delta_type": "text", "text": text},
+                                    )
+                                )
+                            elif t == "tool_calls":
+                                calls = getattr(ev, "tool_calls", None) or []
+                                pending_tool_calls.extend(calls)
+                                redaction_values = list((self._env_store or {}).values())
+                                _emit_event(
+                                    AgentEvent(
+                                        type="llm_response_delta",
+                                        ts=_now_rfc3339(),
+                                        run_id=run_id,
+                                        turn_id=turn_id,
+                                        payload={
+                                            "delta_type": "tool_calls",
+                                            "tool_calls": [
+                                                {
+                                                    "call_id": c.call_id,
+                                                    "name": c.name,
+                                                    "arguments": _sanitize_tool_call_arguments_for_event(
+                                                        c.name, args=c.args, redaction_values=redaction_values
+                                                    ),
+                                                }
+                                                for c in calls
+                                            ],
+                                        },
+                                    )
+                                )
+                            elif t == "completed":
+                                break
+                    finally:
+                        if not backend_task.done():
+                            backend_task.cancel()
+                            with contextlib.suppress(BaseException):
+                                await asyncio.gather(backend_task, return_exceptions=True)
+
+                except BaseException as e:
+                    # 上下文溢出恢复（BL-037/BL-009）：按 run.context_recovery.mode 决定是否压缩/询问/失败。
+                    try:
+                        from agent_sdk.llm.errors import ContextLengthExceededError
+
+                        is_ctx = isinstance(e, ContextLengthExceededError)
+                    except Exception:
+                        is_ctx = False
+
+                    if not is_ctx:
+                        raise
+
+                    _emit_event(
+                        AgentEvent(
+                            type="context_length_exceeded",
+                            ts=_now_rfc3339(),
+                            run_id=run_id,
+                            turn_id=turn_id,
+                            payload={"mode": context_recovery_mode, "compactions": int(compactions_performed)},
+                        )
+                    )
+
+                    if context_recovery_mode == "fail_fast":
+                        raise
+
+                    effective_mode = context_recovery_mode
+                    decision: Optional[str] = None
+                    handoff_artifact_path: Optional[str] = None
+
+                    if context_recovery_mode == "ask_first":
+                        decision = await _ask_human_context_recovery_choice(turn_id=turn_id)
+                        if decision is None:
+                            effective_mode = ask_first_fallback_mode
                             _emit_event(
                                 AgentEvent(
-                                    type="llm_response_delta",
+                                    type="context_recovery_decided",
                                     ts=_now_rfc3339(),
                                     run_id=run_id,
                                     turn_id=turn_id,
                                     payload={
-                                        "delta_type": "tool_calls",
-                                        "tool_calls": [
-                                            {
-                                                "call_id": c.call_id,
-                                                "name": c.name,
-                                                "arguments": _sanitize_tool_call_arguments_for_event(
-                                                    c.name, args=c.args, redaction_values=redaction_values
-                                                ),
-                                            }
-                                            for c in calls
-                                        ],
+                                        "mode": "ask_first",
+                                        "decision": "no_human_provider",
+                                        "fallback_mode": effective_mode,
                                     },
                                 )
                             )
-                        elif t == "completed":
-                            break
-                finally:
-                    if not backend_task.done():
-                        backend_task.cancel()
-                        with contextlib.suppress(BaseException):
-                            await asyncio.gather(backend_task, return_exceptions=True)
+                        else:
+                            _emit_event(
+                                AgentEvent(
+                                    type="context_recovery_decided",
+                                    ts=_now_rfc3339(),
+                                    run_id=run_id,
+                                    turn_id=turn_id,
+                                    payload={"mode": "ask_first", "decision": decision},
+                                )
+                            )
+
+                            if decision == "terminate":
+                                _emit_event(
+                                    AgentEvent(
+                                        type="run_failed",
+                                        ts=_now_rfc3339(),
+                                        run_id=run_id,
+                                        payload={
+                                            "error_kind": "terminated",
+                                            "message": "terminated by user decision (ask_first)",
+                                            "retryable": False,
+                                            "events_path": str(events_path),
+                                        },
+                                    )
+                                )
+                                return
+
+                            if decision == "handoff_new_run":
+                                # handoff：生成摘要（可复制）并结束本次 run（不继续执行）。
+                                try:
+                                    handoff_artifact_path = await _perform_compaction_turn_and_rebuild_history(
+                                        reason="context_length_exceeded",
+                                        turn_id=turn_id,
+                                    )
+                                except Exception as ce:
+                                    _emit_event(
+                                        AgentEvent(
+                                            type="run_failed",
+                                            ts=_now_rfc3339(),
+                                            run_id=run_id,
+                                            payload={
+                                                "error_kind": "context_length_exceeded",
+                                                "message": f"context recovery failed: {ce}",
+                                                "retryable": False,
+                                                "events_path": str(events_path),
+                                            },
+                                        )
+                                    )
+                                    return
+
+                                _emit_event(
+                                    AgentEvent(
+                                        type="run_completed",
+                                        ts=_now_rfc3339(),
+                                        run_id=run_id,
+                                        payload={
+                                            "final_output": "",
+                                            "artifacts": list(compaction_artifacts),
+                                            "events_path": str(events_path),
+                                            "metadata": {
+                                                "notices": list(terminal_notices),
+                                                "handoff": {"artifact_path": handoff_artifact_path},
+                                            },
+                                        },
+                                    )
+                                )
+                                return
+
+                            if decision == "increase_budget_continue":
+                                old_steps = int(loop.max_steps)
+                                loop.max_steps = int(loop.max_steps) + int(max(0, increase_budget_extra_steps))
+                                old_wall = loop.max_wall_time_sec
+                                if old_wall is not None:
+                                    loop.max_wall_time_sec = float(old_wall) + float(max(0, increase_budget_extra_wall_time_sec))
+                                _emit_event(
+                                    AgentEvent(
+                                        type="budget_increased",
+                                        ts=_now_rfc3339(),
+                                        run_id=run_id,
+                                        turn_id=turn_id,
+                                        payload={
+                                            "reason": "context_recovery",
+                                            "old": {"max_steps": old_steps, "max_wall_time_sec": old_wall},
+                                            "new": {"max_steps": int(loop.max_steps), "max_wall_time_sec": loop.max_wall_time_sec},
+                                        },
+                                    )
+                                )
+                                # context_length_exceeded 本身无法通过“提高步骤预算”解决：仍需压缩再继续。
+                                effective_mode = "compact_first"
+
+                            if decision == "compact_continue":
+                                effective_mode = "compact_first"
+
+                    if effective_mode == "compact_first":
+                        try:
+                            await _perform_compaction_turn_and_rebuild_history(
+                                reason="context_length_exceeded",
+                                turn_id=turn_id,
+                            )
+                        except Exception as ce:
+                            _emit_event(
+                                AgentEvent(
+                                    type="run_failed",
+                                    ts=_now_rfc3339(),
+                                    run_id=run_id,
+                                    payload={
+                                        "error_kind": "context_length_exceeded",
+                                        "message": f"context recovery failed: {ce}",
+                                        "retryable": False,
+                                        "events_path": str(events_path),
+                                    },
+                                )
+                            )
+                            return
+                        # retry：进入下一轮 turn，重新构建 messages 并再次 sampling
+                        continue
+
+                    # 保守兜底：未知模式直接 fail-fast
+                    raise
 
                 if pending_tool_calls:
                     # 先把 assistant tool_calls message 写入 history（以便回注 tool outputs）
@@ -1422,6 +1823,19 @@ class Agent:
 
                         # tool_call_requested
                         redaction_values = list((self._env_store or {}).values())
+                        raw_arguments = (call.raw_arguments or "").strip()
+                        raw_arguments_len = len(raw_arguments)
+                        raw_arguments_sha256: Optional[str] = None
+                        raw_arguments_validation_error: Optional[str] = None
+                        if raw_arguments:
+                            raw_arguments_sha256 = hashlib.sha256(raw_arguments.encode("utf-8")).hexdigest()
+                            try:
+                                parsed = json.loads(raw_arguments)
+                                if not isinstance(parsed, dict):
+                                    raw_arguments_validation_error = "tool arguments must be a JSON object"
+                            except Exception as e:
+                                raw_arguments_validation_error = str(e)
+
                         _emit_event(
                             AgentEvent(
                                 type="tool_call_requested",
@@ -1435,9 +1849,48 @@ class Agent:
                                     "arguments": _sanitize_tool_call_arguments_for_event(
                                         call.name, args=call.args, redaction_values=redaction_values
                                     ),
+                                    **(
+                                        {
+                                            "arguments_valid": False,
+                                            "raw_arguments_len": raw_arguments_len,
+                                            "raw_arguments_sha256": raw_arguments_sha256,
+                                            "raw_arguments_error": raw_arguments_validation_error,
+                                        }
+                                        if raw_arguments_validation_error is not None
+                                        else {}
+                                    ),
                                 },
                             )
                         )
+
+                        # 约束（BL-008）：arguments JSON 解析失败必须 fail-closed（不执行工具），也不应进入 approvals/policy。
+                        if raw_arguments_validation_error is not None:
+                            validation_result = ToolResult.error_payload(
+                                error_kind="validation",
+                                stderr=f"invalid tool arguments JSON: {raw_arguments_validation_error}",
+                                data={
+                                    "raw_arguments_len": raw_arguments_len,
+                                    "raw_arguments_sha256": raw_arguments_sha256,
+                                },
+                            )
+                            _emit_event(
+                                AgentEvent(
+                                    type="tool_call_finished",
+                                    ts=_now_rfc3339(),
+                                    run_id=run_id,
+                                    turn_id=turn_id,
+                                    step_id=step_id,
+                                    payload={
+                                        "call_id": call.call_id,
+                                        "tool": call.name,
+                                        "result": validation_result.details or {},
+                                    },
+                                )
+                            )
+                            history.append(
+                                {"role": "tool", "tool_call_id": call.call_id, "content": validation_result.content}
+                            )
+                            continue
 
                         requires_approval = False
                         approval_reason: Optional[str] = None
@@ -1842,7 +2295,12 @@ class Agent:
                         type="run_completed",
                         ts=_now_rfc3339(),
                         run_id=run_id,
-                        payload={"final_output": assistant_text, "artifacts": [], "events_path": str(events_path)},
+                        payload={
+                            "final_output": assistant_text,
+                            "artifacts": list(compaction_artifacts),
+                            "events_path": str(events_path),
+                            "metadata": {"notices": list(terminal_notices)},
+                        },
                     )
                 )
                 return

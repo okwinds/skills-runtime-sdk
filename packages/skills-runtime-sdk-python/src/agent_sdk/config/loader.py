@@ -113,10 +113,35 @@ class AgentSdkRunConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    class ContextRecovery(BaseModel):
+        """
+        上下文恢复策略（context_length_exceeded）。
+
+        说明：
+        - `mode` 默认 `fail_fast`，保证不改变既有行为（兼容）。
+        - 其它字段用于 `compact_first/ask_first` 的可控性与可回归性（内部生产）。
+        """
+
+        model_config = ConfigDict(extra="allow")
+
+        mode: str = Field(default="fail_fast")  # compact_first|ask_first|fail_fast
+        max_compactions_per_run: int = Field(default=2, ge=0)
+        # ask_first 无 human provider 时的确定性降级：compact_first 或 fail_fast
+        ask_first_fallback_mode: str = Field(default="compact_first")
+
+        # compaction turn 的输入裁剪参数（按字符数与消息数保守控制）
+        compaction_history_max_chars: int = Field(default=24_000, ge=1_000)
+        compaction_keep_last_messages: int = Field(default=6, ge=0)
+
+        # “提高预算继续”的扩容策略（最小集合）
+        increase_budget_extra_steps: int = Field(default=20, ge=0)
+        increase_budget_extra_wall_time_sec: int = Field(default=600, ge=0)
+
     max_steps: int = Field(default=40, ge=1)
     max_wall_time_sec: Optional[int] = Field(default=None, ge=1)
     human_timeout_ms: Optional[int] = Field(default=None, ge=1)
     resume_strategy: str = Field(default="summary")  # summary|replay
+    context_recovery: ContextRecovery = Field(default_factory=ContextRecovery)
 
 
 class AgentSdkSafetyConfig(BaseModel):

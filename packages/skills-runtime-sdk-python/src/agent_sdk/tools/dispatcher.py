@@ -15,6 +15,8 @@ ToolDispatcher：工具派发封装（Agent Loop 使用）。
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import hashlib
 from typing import Callable, List
 
 from agent_sdk.core.contracts import AgentEvent
@@ -78,6 +80,35 @@ class ToolDispatcher:
         """
 
         call = inputs.call
+        pending_tool_events.clear()
+
+        # 重要：streaming tool_calls arguments 可能是碎片化的 JSON 字符串拼接。
+        # 若 raw_arguments 无法解析为 JSON object，必须 fail-closed（不得执行工具）。
+        # 注意：这里不发出 tool_call_started，避免“started 但未实际执行”的审计歧义。
+        raw_arguments = (call.raw_arguments or "").strip()
+        if raw_arguments:
+            try:
+                parsed = json.loads(raw_arguments)
+                if not isinstance(parsed, dict):
+                    raise ValueError("tool arguments must be a JSON object")
+            except Exception as e:
+                sha256 = hashlib.sha256(raw_arguments.encode("utf-8")).hexdigest()
+                result = ToolResult.error_payload(
+                    error_kind="validation",
+                    stderr=f"invalid tool arguments JSON: {e}",
+                    data={"raw_arguments_len": len(raw_arguments), "raw_arguments_sha256": sha256},
+                )
+                emit_event(
+                    AgentEvent(
+                        type="tool_call_finished",
+                        ts=self._now_rfc3339(),
+                        run_id=inputs.run_id,
+                        turn_id=inputs.turn_id,
+                        step_id=inputs.step_id,
+                        payload={"call_id": call.call_id, "tool": call.name, "result": result.details or {}},
+                    )
+                )
+                return result
 
         emit_event(
             AgentEvent(
@@ -90,8 +121,7 @@ class ToolDispatcher:
             )
         )
 
-        pending_tool_events.clear()
-        result: ToolResult = self._registry.dispatch(call, turn_id=inputs.turn_id, step_id=inputs.step_id)
+        result = self._registry.dispatch(call, turn_id=inputs.turn_id, step_id=inputs.step_id)
 
         # 注意：pending_tool_events 中的事件通常已经被 tool ctx 写入 WAL（ctx.emit_event），这里只负责 stream。
         for te in pending_tool_events:
@@ -109,4 +139,3 @@ class ToolDispatcher:
         )
 
         return result
-
