@@ -105,6 +105,11 @@ class AgentSdkSandboxConfig(BaseModel):
         bubblewrap: Bubblewrap = Field(default_factory=Bubblewrap)
 
     default_policy: str = Field(default="none")  # none|restricted
+    # 高层 profile（dev/balanced/prod）：用于“分阶段收紧”的可配置入口。
+    # 说明：
+    # - 当 profile 为 dev/balanced/prod 时，loader 会在 load 阶段把它展开为具体字段（default_policy/os.*）。
+    # - 当 profile 为 custom 或为空时：保持兼容，完全由 default_policy/os.* 决定行为。
+    profile: str = Field(default="custom")  # custom|dev|balanced|prod
     os: Os = Field(default_factory=Os)
 
 
@@ -315,7 +320,62 @@ def load_config_dicts(config_dicts: list[Dict[str, Any]]) -> AgentSdkConfig:
         if not overlay:
             continue
         _deep_merge(merged, overlay)
+    _apply_sandbox_profile_overrides(merged)
     return AgentSdkConfig.model_validate(merged)
+
+
+def _apply_sandbox_profile_overrides(merged: Dict[str, Any]) -> None:
+    """
+    将 `sandbox.profile`（dev/balanced/prod）展开为具体字段。
+
+    约束：
+    - 默认不改变既有行为：当 profile 缺失/为空/custom 时 no-op。
+    - profile 的展开结果会覆盖 `sandbox.default_policy` 与 `sandbox.os.*`（profile 是更高层的“宏”）。
+    """
+
+    sandbox = merged.get("sandbox")
+    if not isinstance(sandbox, dict):
+        return
+    raw = sandbox.get("profile")
+    if raw is None:
+        return
+    profile = str(raw or "").strip().lower()
+    if not profile or profile == "custom":
+        return
+
+    # 约定：三档 profile 的目标是从“可跑通”→“平衡”→“更偏生产硬化”，并提供可回归的默认值。
+    # 注意：seatbelt/bwrap 的细节策略仍建议通过 overlay 精细化；profile 只提供可复用的基线。
+    presets: Dict[str, Dict[str, Any]] = {
+        # dev：优先不打断（仍保留 os.mode 配置，便于显式 restricted 时可用）
+        "dev": {
+            "default_policy": "none",
+            "os": {"mode": "auto", "seatbelt": {"profile": "(version 1) (allow default)"}, "bubblewrap": {"unshare_net": False}},
+        },
+        # balanced：推荐默认（restricted + auto backend；Linux 默认隔离网络）
+        "balanced": {
+            "default_policy": "restricted",
+            "os": {"mode": "auto", "seatbelt": {"profile": "(version 1) (allow default)"}, "bubblewrap": {"unshare_net": True}},
+        },
+        # prod：更偏生产硬化（在 macOS 上提供一个“更可见的 deny 基线”，Linux 保持 unshare-net）
+        "prod": {
+            "default_policy": "restricted",
+            "os": {
+                "mode": "auto",
+                "seatbelt": {
+                    "profile": "(version 1)\n(allow default)\n; prod baseline: visible deny under /etc (adjust via overlay if needed)\n(deny file-read* (subpath \"/etc\"))\n(deny file-write* (subpath \"/etc\"))\n"
+                },
+                "bubblewrap": {"unshare_net": True},
+            },
+        },
+    }
+
+    preset = presets.get(profile)
+    if preset is None:
+        # 未知 profile：保持兼容，不做展开（避免默默改变行为）
+        return
+
+    # profile 展开：覆盖到 sandbox 下（宏级别优先）
+    _deep_merge(sandbox, preset)
 
 
 def load_config(config_paths: list[Path]) -> AgentSdkConfig:

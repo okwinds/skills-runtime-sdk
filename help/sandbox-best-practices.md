@@ -25,6 +25,26 @@ Use this for most integrations:
 - `sandbox.default_policy: restricted`
 - `sandbox.os.mode: auto`
 
+## 2.1 Profile gradients (dev/balanced/prod) and rollback
+
+For staged hardening, prefer `sandbox.profile` as a macro:
+
+- `dev`: availability-first (does not enforce OS sandbox by default)
+- `balanced`: recommended default (restricted + auto backend; Linux defaults to network isolation)
+- `prod`: production-hardening baseline (tighten further via overlays)
+
+Notes:
+- `sandbox.profile` is expanded by the config loader into `sandbox.default_policy` + `sandbox.os.*`.
+- Rollback is config-only (for example `prod -> balanced`), no code changes required.
+
+Minimal offline regression with auditable output:
+
+```bash
+bash scripts/integration/sandbox_profile_regression.sh dev
+bash scripts/integration/sandbox_profile_regression.sh balanced
+bash scripts/integration/sandbox_profile_regression.sh prod
+```
+
 ## 3. Studio MVP baseline (macOS dev + Linux prod)
 
 Current config location: `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`

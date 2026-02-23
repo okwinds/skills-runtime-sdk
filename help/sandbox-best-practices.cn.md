@@ -25,6 +25,26 @@
 - `sandbox.default_policy: restricted`
 - `sandbox.os.mode: auto`
 
+## 2.1 三档 profile（dev/balanced/prod）与回滚
+
+内部生产建议用 `sandbox.profile` 做“分阶段收紧”：
+
+- `dev`：可用性优先（默认不强制 OS sandbox）
+- `balanced`：推荐默认（restricted + auto backend；Linux 默认网络隔离）
+- `prod`：更偏生产硬化（提供更严格的基线；细节建议用 overlay 按业务调整）
+
+说明：
+- `sandbox.profile` 是高层宏，loader 会在 load 阶段将其展开为 `sandbox.default_policy` + `sandbox.os.*`；
+- 一旦进入误拦截排障，**可通过配置回滚**（例如 `prod -> balanced`），无需改代码。
+
+最小回归（离线、可审计输出）：
+
+```bash
+bash scripts/integration/sandbox_profile_regression.sh dev
+bash scripts/integration/sandbox_profile_regression.sh balanced
+bash scripts/integration/sandbox_profile_regression.sh prod
+```
+
 ## 3. Studio MVP 当前建议（macOS 开发 + Linux 生产）
 
 当前落点文件：`packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`
