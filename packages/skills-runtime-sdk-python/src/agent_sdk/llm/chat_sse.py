@@ -45,7 +45,8 @@ class _ToolCallState:
 
     说明：
     - `arguments` 为 OpenAI wire 中 `function.arguments` 的字符串拼接结果（可能是分片）。
-    - 在 flush 时会尝试 `json.loads(arguments)` 生成 `ToolCall.args`（失败则回退为空对象）。
+    - 在 flush 时会尝试 `json.loads(arguments)` 生成 `ToolCall.args`：
+      - 仅接受 JSON object；否则按空对象处理（上层必须 fail-closed，不得执行）。
     """
 
     id: Optional[str] = None
@@ -186,8 +187,13 @@ class ChatCompletionsSseParser:
         优先级：
         1) `tool_call_delta.index`（若为 int）
         2) `tool_call_delta.id`（若曾出现过，复用历史映射）
-        3) `self._last_tool_call_index`（尽量把连续分片拼到同一 call）
-        4) 新分配 index
+        3) `tool_call_delta.id`（若为新 id 且缺 index：视为新 call，分配新 index）
+        4) `self._last_tool_call_index`（尽量把连续分片拼到同一 call）
+        5) 新分配 index
+
+        额外启发式：
+        - 当 provider 未提供 index/id，但携带 `function.name` 时，通常意味着“新 call 的开始”。
+          若上一条 call 已经有 name，则分配新 index，避免两个 call 被错误拼接到一起。
         """
 
         index_val = tool_call_delta.get("index")
@@ -200,7 +206,22 @@ class ChatCompletionsSseParser:
             idx = self._tool_call_index_by_id[call_id]
 
         if idx is None:
-            idx = self._last_tool_call_index
+            # 若 id 存在但未出现过，且 provider 没有给 index：更可能是“新 tool call”，而不是上一条的延续。
+            if isinstance(call_id, str) and call_id:
+                idx = self._alloc_index()
+            else:
+                idx = self._last_tool_call_index
+
+        # 启发式：缺 index 且缺 id 时，若出现 function.name 且上一条 call 已经有 name，则认为是新 call。
+        if idx is not None and not isinstance(index_val, int) and not (isinstance(call_id, str) and call_id):
+            fn = tool_call_delta.get("function")
+            if isinstance(fn, dict):
+                name = fn.get("name")
+                if isinstance(name, str) and name:
+                    last_idx = self._last_tool_call_index
+                    last_state = self._tool_calls.get(last_idx) if last_idx is not None else None
+                    if last_state is not None and last_state.name:
+                        idx = self._alloc_index()
 
         if idx is None:
             idx = self._alloc_index()
@@ -255,7 +276,8 @@ class ChatCompletionsSseParser:
             call_id = st.id or f"tool-call-{idx}"
             raw_args = st.arguments or ""
             try:
-                args_obj = json.loads(raw_args) if raw_args.strip() else {}
+                parsed = json.loads(raw_args) if raw_args.strip() else {}
+                args_obj = parsed if isinstance(parsed, dict) else {}
             except Exception:
                 args_obj = {}
 

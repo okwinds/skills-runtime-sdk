@@ -63,6 +63,211 @@ def test_chat_sse_tool_calls_arguments_aggregated_and_flushed() -> None:
     assert completed_events[0].finish_reason == "done"
 
 
+def test_chat_sse_tool_calls_out_of_order_indices_preserve_first_seen_order() -> None:
+    data_lines = [
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 1,
+                                    "id": "call_2",
+                                    "type": "function",
+                                    "function": {"name": "file_read", "arguments": '{"path":"b.txt"}'},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"name": "file_read", "arguments": '{"path":"a.txt"}'},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}),
+    ]
+
+    events = list(iter_chat_completions_stream_events(data_lines))
+    tool_calls_events = [e for e in events if e.type == "tool_calls"]
+    assert len(tool_calls_events) == 1
+    calls = tool_calls_events[0].tool_calls or []
+    assert [c.call_id for c in calls] == ["call_2", "call_1"]
+
+
+def test_chat_sse_tool_calls_missing_index_merges_by_id() -> None:
+    data_lines = [
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "id": "call_x",
+                                    "type": "function",
+                                    "function": {"name": "file_read", "arguments": '{"path":"a'},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "id": "call_x",
+                                    "type": "function",
+                                    "function": {"arguments": '.txt"}'},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}),
+    ]
+
+    events = list(iter_chat_completions_stream_events(data_lines))
+    calls = next(e.tool_calls for e in events if e.type == "tool_calls") or []
+    assert len(calls) == 1
+    assert calls[0].call_id == "call_x"
+    assert calls[0].args == {"path": "a.txt"}
+    assert calls[0].raw_arguments == '{"path":"a.txt"}'
+
+
+def test_chat_sse_tool_calls_interleaved_fragments_by_index() -> None:
+    data_lines = [
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"index": 0, "id": "call_1", "type": "function", "function": {"name": "file_read", "arguments": '{"path":"a'}},
+                                {"index": 1, "id": "call_2", "type": "function", "function": {"name": "file_read", "arguments": '{"path":"b'}},
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"index": 0, "function": {"arguments": '.txt"}'}},
+                                {"index": 1, "function": {"arguments": '.txt"}'}},
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}),
+    ]
+
+    events = list(iter_chat_completions_stream_events(data_lines))
+    calls = next(e.tool_calls for e in events if e.type == "tool_calls") or []
+    assert len(calls) == 2
+    assert calls[0].call_id == "call_1"
+    assert calls[0].args == {"path": "a.txt"}
+    assert calls[1].call_id == "call_2"
+    assert calls[1].args == {"path": "b.txt"}
+
+
+def test_chat_sse_tool_calls_missing_index_and_id_uses_name_boundary_to_avoid_merge() -> None:
+    data_lines = [
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"type": "function", "function": {"name": "file_read", "arguments": '{"path":"a.txt"}'}},
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"type": "function", "function": {"name": "file_read", "arguments": '{"path":"b.txt"}'}},
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}),
+    ]
+
+    events = list(iter_chat_completions_stream_events(data_lines))
+    calls = next(e.tool_calls for e in events if e.type == "tool_calls") or []
+    assert len(calls) == 2
+    assert [c.args for c in calls] == [{"path": "a.txt"}, {"path": "b.txt"}]
+
+
+def test_chat_sse_tool_calls_invalid_json_keeps_raw_arguments_and_empty_args() -> None:
+    data_lines = [
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_bad",
+                                    "type": "function",
+                                    "function": {"name": "file_read", "arguments": '{"path":"a'},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        json.dumps({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}),
+    ]
+
+    events = list(iter_chat_completions_stream_events(data_lines))
+    calls = next(e.tool_calls for e in events if e.type == "tool_calls") or []
+    assert len(calls) == 1
+    assert calls[0].call_id == "call_bad"
+    assert calls[0].raw_arguments == '{"path":"a'
+    assert calls[0].args == {}
+
+
 def test_chat_sse_text_delta_emitted_and_stop_completes() -> None:
     data_lines = [
         json.dumps({"choices": [{"delta": {"content": "hello "}}]}),
