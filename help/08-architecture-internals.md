@@ -91,6 +91,41 @@ You need both; neither fully replaces the other.
 - fork / resume: reconstruct from `events.jsonl` and resume from checkpoints
 - Sandbox: staged tightening + improved observability (better failure attribution)
 
+## 8.10 Workspace runtime server (exec sessions / child agents)
+
+Purpose:
+- Host cross-process reusable exec sessions (PTY + child processes)
+- Provide a minimal collab child-agent primitive (early multi-agent/concurrency building blocks)
+
+Workspace paths:
+
+```text
+<workspace_root>/.skills_runtime_sdk/runtime/
+  - runtime.sock         # Unix socket (JSON RPC)
+  - server.json          # pid/secret/socket_path/created_at_ms
+  - server.stdout.log    # server stdout (for debugging)
+  - server.stderr.log    # server stderr (for debugging)
+  - exec_registry.json   # crash/restart orphan cleanup registry (pids + marker)
+```
+
+Observable RPCs:
+- `runtime.status`: server health + counts (active exec sessions / active children) + registry summary
+- `runtime.cleanup`: explicit stop/cleanup (close exec sessions + cancel children)
+
+Offline debugging example:
+
+```bash
+PYTHONPATH=packages/skills-runtime-sdk-python/src \
+  python3 - <<'PY'
+from pathlib import Path
+from agent_sdk.runtime.client import RuntimeClient
+
+ws = Path(".").resolve()
+client = RuntimeClient(workspace_root=ws)
+print(client.call(method="runtime.status"))
+PY
+```
+
 ---
 
 Prev: [`07-studio-guide.md`](./07-studio-guide.md)  

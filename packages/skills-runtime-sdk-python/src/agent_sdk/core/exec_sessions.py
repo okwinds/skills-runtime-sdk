@@ -21,6 +21,7 @@ import pty
 import select
 import subprocess
 import time
+import signal
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol, runtime_checkable
@@ -220,8 +221,13 @@ class ExecSessionManager:
         if sid not in self._sessions:
             return
         session = self._sessions[sid]
+        # 进程是新的 session leader（start_new_session=True），优先按进程组终止，避免子孙进程残留。
+        pid = int(getattr(session.proc, "pid", 0) or 0)
         try:
-            session.proc.terminate()
+            if pid > 0:
+                os.killpg(pid, signal.SIGTERM)
+            else:
+                session.proc.terminate()
         except Exception:
             pass
         self._cleanup_session(sid)

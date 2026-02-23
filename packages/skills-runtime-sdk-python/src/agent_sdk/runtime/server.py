@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import contextlib
 import os
+import signal
 import secrets
 import socket
 import stat
@@ -56,12 +57,19 @@ class RuntimeServer:
         self._idle_timeout_ms = int(idle_timeout_ms)
         self._paths = get_runtime_paths(workspace_root=self._workspace_root)
 
+        self._created_at_ms = int(time.time() * 1000)
+        self._started_monotonic = time.monotonic()
+        # 用于 orphan cleanup 的 “进程身份标记”。每次 server 启动都会生成新的 marker。
+        # 该 marker 会注入到 exec session 子进程 env，并落盘到 registry；restart 后可用于验证是否“本框架产物”。
+        self._exec_marker = secrets.token_hex(8)
+
         self._exec = ExecSessionManager()
         self._children_lock = threading.Lock()
         self._children: Dict[str, _ChildState] = {}
 
         self._shutdown = threading.Event()
         self._last_activity = time.monotonic()
+        self._last_orphan_cleanup: Dict[str, Any] = {"ok": True, "killed": 0, "skipped": 0, "errors": []}
 
     def _write_server_info(self) -> None:
         """写入 `server.json`（pid/secret/socket_path/created_at_ms）。"""
@@ -71,9 +79,235 @@ class RuntimeServer:
             "pid": os.getpid(),
             "secret": self._secret,
             "socket_path": str(self._paths.socket_path),
-            "created_at_ms": int(time.time() * 1000),
+            "created_at_ms": int(self._created_at_ms),
         }
         self._paths.server_info_path.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+
+    def _read_exec_registry(self) -> Dict[str, Any]:
+        """
+        读取 exec registry（用于 orphan cleanup 与 status 可观测）。
+
+        返回：
+        - dict：至少包含 `exec_sessions`（mapping）
+        """
+
+        p = self._paths.exec_registry_path
+        if not p.exists():
+            return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
+        try:
+            obj = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
+        if not isinstance(obj, dict):
+            return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
+        if not isinstance(obj.get("exec_sessions"), dict):
+            obj["exec_sessions"] = {}
+        if not isinstance(obj.get("workspace_root"), str):
+            obj["workspace_root"] = str(self._workspace_root)
+        if not isinstance(obj.get("schema"), int):
+            obj["schema"] = 1
+        return obj
+
+    def _write_exec_registry(self, obj: Dict[str, Any]) -> None:
+        """
+        原子写入 exec registry（best-effort）。
+
+        参数：
+        - obj：registry dict
+        """
+
+        self._paths.runtime_dir.mkdir(parents=True, exist_ok=True)
+        p = self._paths.exec_registry_path
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(p)
+
+    def _register_exec_session(self, *, session_id: int, pid: int, created_at_ms: int, argv: list[str], cwd: str) -> None:
+        """
+        将 exec session 记录到 registry（用于 crash/restart 后 orphan cleanup）。
+
+        参数：
+        - session_id：server 内部 session id（仅用于关联）
+        - pid：子进程 pid（同时也是 pgid；ExecSessionManager.spawn 使用 start_new_session=True）
+        - created_at_ms：创建时间（ms）
+        - argv：原始 argv（便于审计/排障）
+        - cwd：工作目录（绝对路径字符串）
+        """
+
+        reg = self._read_exec_registry()
+        sessions = reg.get("exec_sessions")
+        if not isinstance(sessions, dict):
+            sessions = {}
+            reg["exec_sessions"] = sessions
+        sessions[str(int(session_id))] = {
+            "pid": int(pid),
+            "pgid": int(pid),
+            "created_at_ms": int(created_at_ms),
+            "argv": [str(x) for x in list(argv)],
+            "cwd": str(cwd),
+            "marker": str(self._exec_marker),
+        }
+        reg["updated_at_ms"] = int(time.time() * 1000)
+        self._write_exec_registry(reg)
+
+    def _unregister_exec_session(self, session_id: int) -> None:
+        """从 registry 移除一个 session（best-effort）。"""
+
+        reg = self._read_exec_registry()
+        sessions = reg.get("exec_sessions")
+        if not isinstance(sessions, dict):
+            return
+        if str(int(session_id)) in sessions:
+            sessions.pop(str(int(session_id)), None)
+            reg["updated_at_ms"] = int(time.time() * 1000)
+            self._write_exec_registry(reg)
+
+    def _pid_alive(self, pid: int) -> bool:
+        """判断 pid 是否存活（best-effort）。"""
+
+        try:
+            os.kill(int(pid), 0)
+            return True
+        except Exception:
+            return False
+
+    def _ps_env_contains_marker(self, pid: int, marker: str) -> bool:
+        """
+        通过 `ps eww -p <pid>` 判断环境变量中是否包含 marker（best-effort）。
+
+        说明：
+        - 用于降低“pid 复用误杀”的风险；
+        - 若命令不可用或权限不足，返回 False（由上层决定是否 fallback）。
+        """
+
+        try:
+            import subprocess
+
+            cp = subprocess.run(  # noqa: S603
+                ["ps", "eww", "-p", str(int(pid))],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            out = (cp.stdout or "") + "\n" + (cp.stderr or "")
+            return str(marker) in out
+        except Exception:
+            return False
+
+    def _kill_process_group(self, pid: int) -> bool:
+        """
+        终止进程组（best-effort）。
+
+        参数：
+        - pid：进程 pid（也是 pgid）
+
+        返回：
+        - bool：是否发出了信号（不代表一定成功）
+        """
+
+        try:
+            os.killpg(int(pid), signal.SIGTERM)
+        except Exception:
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except Exception:
+                return False
+
+        deadline = time.monotonic() + 0.6
+        while time.monotonic() < deadline:
+            if not self._pid_alive(pid):
+                return True
+            time.sleep(0.05)
+
+        # 最后兜底：SIGKILL
+        try:
+            os.killpg(int(pid), signal.SIGKILL)
+        except Exception:
+            with contextlib.suppress(Exception):
+                os.kill(int(pid), signal.SIGKILL)
+        return True
+
+    def _orphan_cleanup_on_startup(self) -> None:
+        """
+        启动期 orphan cleanup（crash/restart 兜底）。
+
+        语义：
+        - 读取 registry 中记录的 pids；
+        - 尽量验证 marker（ps eww）后再 kill；若无法验证则 fallback 到 argv0 匹配；
+        - cleanup 后清空 registry（避免无限重试与误判）。
+        """
+
+        reg = self._read_exec_registry()
+        sessions = reg.get("exec_sessions") or {}
+        if not isinstance(sessions, dict) or not sessions:
+            self._last_orphan_cleanup = {"ok": True, "killed": 0, "skipped": 0, "errors": []}
+            return
+
+        killed = 0
+        skipped = 0
+        errors: list[str] = []
+        remaining: Dict[str, Any] = {}
+
+        for sid, item in list(sessions.items()):
+            if not isinstance(item, dict):
+                skipped += 1
+                continue
+            pid = int(item.get("pid") or 0)
+            marker = str(item.get("marker") or "").strip()
+            argv = item.get("argv") or []
+            argv0 = str(argv[0]) if isinstance(argv, list) and argv else ""
+            if pid <= 0:
+                skipped += 1
+                continue
+            if not self._pid_alive(pid):
+                killed += 1  # 视为已无残留（无需保留条目）
+                continue
+
+            verified = False
+            if marker:
+                verified = self._ps_env_contains_marker(pid, marker)
+
+            # fallback：当无法验证 env marker 时，尽量用 argv0 进行粗匹配（仍可能误判，但风险更低）
+            if not verified and argv0:
+                try:
+                    import subprocess
+
+                    cp = subprocess.run(  # noqa: S603
+                        ["ps", "-p", str(int(pid)), "-o", "command="],
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    cmdline = (cp.stdout or "").strip()
+                    if cmdline and argv0 in cmdline:
+                        verified = True
+                except Exception:
+                    verified = False
+
+            if not verified:
+                skipped += 1
+                remaining[str(sid)] = dict(item, needs_manual_cleanup=True, last_seen_alive_ms=int(time.time() * 1000))
+                continue
+
+            try:
+                if self._kill_process_group(pid):
+                    killed += 1
+                else:
+                    errors.append(f"failed_to_kill pid={pid}")
+                    remaining[str(sid)] = dict(item, last_kill_error="failed_to_kill", last_seen_alive_ms=int(time.time() * 1000))
+            except Exception as e:
+                errors.append(f"kill_error pid={pid} err={e}")
+                remaining[str(sid)] = dict(item, last_kill_error=str(e), last_seen_alive_ms=int(time.time() * 1000))
+
+        # 更新 registry：移除已确认不存活或已终止的条目；保留无法验证/终止失败的条目，供人工排障。
+        reg["exec_sessions"] = remaining
+        reg["updated_at_ms"] = int(time.time() * 1000)
+        with contextlib.suppress(Exception):
+            self._write_exec_registry(reg)
+
+        self._last_orphan_cleanup = {"ok": not errors, "killed": int(killed), "skipped": int(skipped), "errors": list(errors)}
 
     def _cleanup_files(self) -> None:
         """清理 socket 与 server.json（best-effort）。"""
@@ -124,8 +358,20 @@ class RuntimeServer:
                 raise ValueError("env must be dict")
             env_map = {str(k): str(v) for k, v in env.items()}
 
-        s = self._exec.spawn(argv=[str(x) for x in argv], cwd=Path(cwd), env=env_map, tty=tty)
-        return {"session_id": int(s.session_id), "created_at_ms": int(s.created_at_ms)}
+        # 注入 marker，便于 crash/restart 后 orphan cleanup 精准识别
+        env2 = dict(env_map or {})
+        env2["AGENT_SDK_RUNTIME_EXEC_SESSION_MARKER"] = str(self._exec_marker)
+        env2["AGENT_SDK_RUNTIME_WORKSPACE_ROOT"] = str(self._workspace_root)
+
+        s = self._exec.spawn(argv=[str(x) for x in argv], cwd=Path(cwd), env=env2, tty=tty)
+        self._register_exec_session(
+            session_id=int(s.session_id),
+            pid=int(getattr(s.proc, "pid", 0) or 0),
+            created_at_ms=int(s.created_at_ms),
+            argv=[str(x) for x in argv],
+            cwd=str(Path(cwd).resolve()),
+        )
+        return {"session_id": int(s.session_id), "created_at_ms": int(s.created_at_ms), "pid": int(getattr(s.proc, "pid", 0) or 0)}
 
     def _handle_exec_write(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -145,6 +391,10 @@ class RuntimeServer:
             yield_time_ms=yield_time_ms,
             max_output_bytes=max_output_bytes,
         )
+        if not wr.running:
+            # session 已退出：从 registry 移除，避免 restart 后误认为 orphan
+            with contextlib.suppress(Exception):
+                self._unregister_exec_session(session_id)
         return {
             "stdout": wr.stdout,
             "stderr": wr.stderr,
@@ -166,8 +416,10 @@ class RuntimeServer:
         """
 
         session_id = int(params.get("session_id"))
+        existed = bool(self._exec.has(session_id))
         self._exec.close(session_id)
-        return {"ok": True, "session_id": int(session_id)}
+        self._unregister_exec_session(session_id)
+        return {"ok": True, "session_id": int(session_id), "found": bool(existed)}
 
     def _handle_exec_close_all(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -179,7 +431,82 @@ class RuntimeServer:
 
         _ = params
         self._exec.close_all()
+        with contextlib.suppress(Exception):
+            reg = self._read_exec_registry()
+            reg["exec_sessions"] = {}
+            reg["updated_at_ms"] = int(time.time() * 1000)
+            self._write_exec_registry(reg)
         return {"ok": True}
+
+    def _handle_runtime_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        RPC：runtime.status。
+
+        返回：
+        - server pid/created_at_ms/uptime_ms
+        - active_exec_sessions / active_children
+        - exec_registry 摘要（便于审计/排障）
+        """
+
+        _ = params
+        with self._children_lock:
+            children = list(self._children.values())
+        active_children = sum(1 for c in children if c.status == "running")
+
+        # ExecSessionManager 当前未公开 list API，先走 best-effort 私有字段快照（单线程 server 内使用可接受）。
+        sessions = list(getattr(self._exec, "_sessions", {}).keys())
+        active_exec = sum(1 for sid in sessions if self._exec.has(sid))
+
+        reg = self._read_exec_registry()
+        reg_sessions = reg.get("exec_sessions") or {}
+        reg_count = len(reg_sessions) if isinstance(reg_sessions, dict) else 0
+
+        return {
+            "ok": True,
+            "pid": int(os.getpid()),
+            "created_at_ms": int(self._created_at_ms),
+            "uptime_ms": int((time.monotonic() - self._started_monotonic) * 1000),
+            "active_exec_sessions": int(active_exec),
+            "active_children": int(active_children),
+            "exec_registry": {
+                "path": str(self._paths.exec_registry_path),
+                "count": int(reg_count),
+                "last_orphan_cleanup": dict(self._last_orphan_cleanup),
+            },
+        }
+
+    def _handle_runtime_cleanup(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        RPC：runtime.cleanup（显式 stop/cleanup 汇总入口）。
+
+        参数：
+        - exec：是否关闭 exec sessions（默认 true）
+        - children：是否取消 child agents（默认 true）
+        """
+
+        close_exec = bool(params.get("exec", True))
+        close_children = bool(params.get("children", True))
+
+        if close_exec:
+            self._exec.close_all()
+            with contextlib.suppress(Exception):
+                reg = self._read_exec_registry()
+                reg["exec_sessions"] = {}
+                reg["updated_at_ms"] = int(time.time() * 1000)
+                self._write_exec_registry(reg)
+
+        cancelled_children = 0
+        if close_children:
+            with self._children_lock:
+                for cid, child in list(self._children.items()):
+                    if child.status == "running":
+                        cancelled_children += 1
+                    child.cancel_event.set()
+                    child.status = "cancelled"
+                # cleanup 的目标是“快速回收”，不保证保留历史；直接清空，避免无限增长。
+                self._children.clear()
+
+        return {"ok": True, "exec": bool(close_exec), "children": bool(close_children), "cancelled_children": int(cancelled_children)}
 
     def _cli_default_runner(self, message: str, child: _ChildState) -> str:
         """
@@ -364,6 +691,11 @@ class RuntimeServer:
             self._shutdown.set()
             return {"ok": True}
 
+        if method == "runtime.status":
+            return self._handle_runtime_status(params)
+        if method == "runtime.cleanup":
+            return self._handle_runtime_cleanup(params)
+
         if method == "exec.spawn":
             return self._handle_exec_spawn(params)
         if method == "exec.write":
@@ -386,12 +718,42 @@ class RuntimeServer:
 
         raise ValueError(f"unknown method: {method}")
 
+    def _format_rpc_error(self, e: Exception) -> Dict[str, Any]:
+        """
+        将异常映射为稳定的 RPC 错误结构。
+
+        返回：
+        - error_kind：validation|permission|not_found|internal
+        - error：稳定可读错误信息
+        """
+
+        kind = "internal"
+        if isinstance(e, ValueError):
+            kind = "validation"
+        elif isinstance(e, PermissionError):
+            kind = "permission"
+        elif isinstance(e, KeyError):
+            kind = "not_found"
+
+        msg = str(e)
+        # KeyError 默认会带引号："'session not found'"，这里做一个稳定化处理，便于上层做字符串匹配。
+        if isinstance(e, KeyError):
+            msg = msg.strip()
+            if msg.startswith("'") and msg.endswith("'") and len(msg) >= 2:
+                msg = msg[1:-1]
+        if not msg:
+            msg = kind
+        return {"error_kind": kind, "error": msg}
+
     def serve_forever(self) -> None:
         """
         监听 Unix socket 并处理请求，直到 shutdown 或 idle auto-exit。
         """
 
         self._paths.runtime_dir.mkdir(parents=True, exist_ok=True)
+        # crash/restart 兜底：启动期先做 orphan cleanup，再进入 accept loop
+        with contextlib.suppress(Exception):
+            self._orphan_cleanup_on_startup()
         # 清理旧 socket（可能来自异常退出）
         with contextlib.suppress(Exception):
             if self._paths.socket_path.exists():
@@ -440,9 +802,17 @@ class RuntimeServer:
                         data = self._dispatch(method, params)
                         resp = {"ok": True, "data": data}
                     except Exception as e:
-                        resp = {"ok": False, "error": str(e)}
+                        resp = {"ok": False, **self._format_rpc_error(e)}
                     conn.sendall(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
         finally:
+            # 进程正常退出时尽量回收资源，避免遗留 orphan。
+            with contextlib.suppress(Exception):
+                self._exec.close_all()
+            with contextlib.suppress(Exception):
+                with self._children_lock:
+                    for c in self._children.values():
+                        c.cancel_event.set()
+                    self._children.clear()
             with contextlib.suppress(Exception):
                 s.close()
             self._cleanup_files()

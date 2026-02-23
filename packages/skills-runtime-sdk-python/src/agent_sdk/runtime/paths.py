@@ -13,6 +13,7 @@ class RuntimePaths:
     runtime_dir: Path
     socket_path: Path
     server_info_path: Path
+    exec_registry_path: Path
 
 
 def get_runtime_paths(*, workspace_root: Path) -> RuntimePaths:
@@ -33,4 +34,10 @@ def get_runtime_paths(*, workspace_root: Path) -> RuntimePaths:
         h = hashlib.sha256(str(ws).encode("utf-8", errors="replace")).hexdigest()[:16]
         socket_path = (Path(tempfile.gettempdir()) / f"agent_sdk_runtime_{h}.sock").resolve()
     server_info_path = (runtime_dir / "server.json").resolve()
-    return RuntimePaths(runtime_dir=runtime_dir, socket_path=socket_path, server_info_path=server_info_path)
+    exec_registry_path = (runtime_dir / "exec_registry.json").resolve()
+    return RuntimePaths(
+        runtime_dir=runtime_dir,
+        socket_path=socket_path,
+        server_info_path=server_info_path,
+        exec_registry_path=exec_registry_path,
+    )

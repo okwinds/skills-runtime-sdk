@@ -89,6 +89,41 @@ PromptManager 负责：
 - fork / resume：基于 `events.jsonl` 的逐事件重建与断点续跑
 - Sandbox：profile/策略分阶段收紧 + 更强可观测性（失败归因更细）
 
+## 8.10 Workspace runtime server（exec sessions / child agents）
+
+用途：
+- 托管“跨进程可复用”的 exec sessions（PTY + 子进程）
+- 承载最小的 collab child agents（用于多 agent/并发雏形）
+
+位置（workspace 级）：
+
+```text
+<workspace_root>/.skills_runtime_sdk/runtime/
+  - runtime.sock                # Unix socket（JSON RPC）
+  - server.json                 # pid/secret/socket_path/created_at_ms
+  - server.stdout.log           # server 后台 stdout（便于排障）
+  - server.stderr.log           # server 后台 stderr（便于排障）
+  - exec_registry.json          # crash/restart orphan cleanup 注册表（pids + marker）
+```
+
+可观测接口（JSON RPC）：
+- `runtime.status`：返回 server 健康与计数（active exec sessions / active children），并包含 registry 摘要
+- `runtime.cleanup`：显式 stop/cleanup（关闭 exec sessions + 取消 children）
+
+排障示例（离线）：
+
+```bash
+PYTHONPATH=packages/skills-runtime-sdk-python/src \
+  python3 - <<'PY'
+from pathlib import Path
+from agent_sdk.runtime.client import RuntimeClient
+
+ws = Path(".").resolve()
+client = RuntimeClient(workspace_root=ws)
+print(client.call(method="runtime.status"))
+PY
+```
+
 ---
 
 上一章：[`07-studio-guide.cn.md`](./07-studio-guide.cn.md)  
