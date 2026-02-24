@@ -45,7 +45,6 @@ def _write_overlay(workspace_root: Path, *, skills_root: Path) -> Path:
                 "  approval_timeout_ms: 2000",
                 "skills:",
                 "  mode: \"explicit\"",
-                "  roots: []",
                 "  max_auto: 0",
                 "  spaces:",
                 "    - id: \"local-space\"",
@@ -179,4 +178,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

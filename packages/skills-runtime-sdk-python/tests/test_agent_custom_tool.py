@@ -56,7 +56,7 @@ def test_agent_custom_tool_default_ask_fails_fast_without_provider(tmp_path: Pat
     result = agent.run("use add tool")
     assert result.status == "failed"
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     failed = [e for e in events if e.type == "run_failed"]
     assert failed
     assert failed[-1].payload.get("error_kind") == "config_error"
@@ -93,7 +93,7 @@ def test_agent_custom_tool_requires_approvals_when_provider_is_configured(tmp_pa
     assert result.final_output == "ok"
     assert called["n"] == 1
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     req = [e for e in events if e.type == "approval_requested"]
     dec = [e for e in events if e.type == "approval_decided"]
     req_add = [e for e in req if (e.payload or {}).get("tool") == "add"]
@@ -148,7 +148,7 @@ def test_agent_custom_tool_allowlist_runs_without_approvals(tmp_path: Path) -> N
     assert result.final_output == "ok"
     assert called["n"] == 1
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     assert not any(e.type == "approval_requested" for e in events)
     finished = [e for e in events if e.type == "tool_call_finished"]
     assert finished
@@ -197,7 +197,7 @@ def test_agent_custom_tool_denylist_blocks_without_approvals(tmp_path: Path) -> 
     assert result.final_output == "ok"
     assert called["n"] == 0
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     assert not any(e.type == "approval_requested" for e in events)
     finished = [e for e in events if e.type == "tool_call_finished"]
     assert finished
@@ -259,7 +259,7 @@ def test_agent_register_tool_is_dispatchable_and_obeys_allowlist(tmp_path: Path)
     result = agent.run("use hello_tool")
     assert result.final_output == "ok"
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     assert not any(e.type == "approval_requested" for e in events)
     finished = [e for e in events if e.type == "tool_call_finished"]
     assert finished
@@ -315,7 +315,7 @@ def test_agent_register_tool_requires_approvals_when_provider_is_configured(tmp_
     assert result.final_output == "ok"
     assert called["n"] == 1
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     req = [e for e in events if e.type == "approval_requested"]
     dec = [e for e in events if e.type == "approval_decided"]
     req_tool = [e for e in req if (e.payload or {}).get("tool") == "hello_tool"]
@@ -362,7 +362,7 @@ def test_agent_register_tool_default_ask_fails_fast_without_provider(tmp_path: P
     result = agent.run("use hello_tool")
     assert result.status == "failed"
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     failed = [e for e in events if e.type == "run_failed"]
     assert failed
     assert failed[-1].payload.get("error_kind") == "config_error"
@@ -414,7 +414,7 @@ def test_agent_register_tool_denylist_blocks_without_approvals(tmp_path: Path) -
     assert result.final_output == "ok"
     assert called["n"] == 0
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     assert not any(e.type == "approval_requested" for e in events)
     finished = [e for e in events if e.type == "tool_call_finished"]
     assert finished

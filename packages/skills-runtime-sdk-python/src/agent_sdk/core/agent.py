@@ -448,9 +448,9 @@ class ChatBackend(Protocol):
     LLM backend 抽象（Phase 2：chat.completions streaming）。
     """
 
-    async def stream_chat_v2(self, request: ChatRequest) -> AsyncIterator[Any]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[Any]:
         """
-        v2 入口：以单一 ChatRequest 参数包承载请求信息。
+        唯一入口：以单一 ChatRequest 参数包承载请求信息。
 
         约束：
         - 返回的 item 需满足 `agent_sdk.llm.chat_sse` 的事件约定（例如 `type=text_delta/tool_calls/completed`）。
@@ -458,66 +458,50 @@ class ChatBackend(Protocol):
 
         ...
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[Any]:
-        """
-        以 streaming 方式产出模型输出事件流。
 
-        约束（Phase 2）：
-        - 返回的 item 需满足 `agent_sdk.llm.chat_sse` 的事件约定（例如 `type=text_delta/tool_calls/completed`）。
-        - 本接口只负责“把 wire 流解析成事件”；重试/超时策略由具体 backend 决定。
-        """
-
-        ...
-
-
-class _ChatBackendV2Shim:
+def _validate_chat_backend_protocol(backend: Any) -> None:
     """
-    v2 shim：让 v1-only backend 在 v2 Agent loop 下仍可用。
+    校验 ChatBackend 协议（fail-fast）。
 
     约束：
-    - Agent loop 只调用 `stream_chat_v2`；
-    - 若底层 backend 不提供 v2，则 shim 退化为调用 v1 的 `stream_chat(...)`；
-    - v1 不支持的字段（max_tokens/top_p/response_format/extra）在 shim 路径下会被忽略（可观测且确定）。
+    - backend 必须实现 `stream_chat(request: ChatRequest)`；
+    - 不允许 legacy `stream_chat(model, messages, ...)` 签名被当作“可用协议”。
+
+    参数：
+    - backend：待校验的 backend 实例
+
+    异常：
+    - ValueError：协议不匹配（将被映射为 run_failed 的 `config_error`）
     """
 
-    def __init__(self, backend: Any) -> None:
-        """
-        创建 v2 shim。
+    fn = getattr(backend, "stream_chat", None)
+    if not callable(fn):
+        raise ValueError("ChatBackend protocol mismatch: missing stream_chat(request: ChatRequest)")
 
-        参数：
-        - backend：底层 backend 实例（可能仅实现 v1 `stream_chat`）。
-        """
+    try:
+        sig = inspect.signature(fn)
+    except Exception:
+        # fail-open：无法可靠 introspect 时，至少确保可调用；实际调用失败会被 run_failed 捕获并分类
+        return
 
-        self._backend = backend
+    params = list(sig.parameters.values())
+    if params and params[0].name in ("self", "cls"):
+        params = params[1:]
 
-    def stream_chat_v2(self, request: ChatRequest) -> AsyncIterator[Any]:
-        """
-        以 v2 入口发起 streaming chat。
+    if not params:
+        raise ValueError("ChatBackend.stream_chat must accept a `request` parameter")
 
-        参数：
-        - request：ChatRequest 参数包
+    # 允许 request 为 positional/keyword-only，但必须存在名为 request 的参数。
+    request_param = params[0]
+    if request_param.name != "request":
+        raise ValueError("ChatBackend.stream_chat must be stream_chat(request=...) (legacy signatures are not supported)")
 
-        返回：
-        - AsyncIterator：backend streaming 事件流（ChatStreamEvent 约定形态）
-
-        异常：
-        - ValueError：当底层 backend 同时不实现 v2 与 v1 接口时抛出
-        """
-
-        v2 = getattr(self._backend, "stream_chat_v2", None)
-        if callable(v2):
-            return v2(request)
-        v1 = getattr(self._backend, "stream_chat", None)
-        if not callable(v1):
-            raise ValueError("backend does not implement stream_chat_v2 or stream_chat")
-        return v1(model=request.model, messages=request.messages, tools=request.tools, temperature=request.temperature)
+    # 除 request 外，不允许出现“无默认值的额外参数”（避免误把 legacy 签名当成可用）。
+    for p in params[1:]:
+        if p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        if p.default is inspect.Parameter.empty:
+            raise ValueError("ChatBackend.stream_chat must accept only `request` (additional required params are not supported)")
 
 
 @dataclass(frozen=True)
@@ -528,6 +512,7 @@ class RunResult:
     final_output: str
     artifacts: List[str]
     events_path: str
+    wal_locator: str
 
 
 class Agent:
@@ -546,7 +531,6 @@ class Agent:
         planner_model: Optional[str] = None,
         executor_model: Optional[str] = None,
         workspace_root: Optional[Path] = None,
-        skills_roots: Optional[List[Path]] = None,
         skills_disabled_paths: Optional[List[Path]] = None,
         skills_manager: Optional[SkillsManager] = None,
         env_vars: Optional[Dict[str, str]] = None,
@@ -616,26 +600,7 @@ class Agent:
         self._planner_model = planner_model or self._config.models.planner
         self._executor_model = executor_model or chosen_model
 
-        if skills_roots:
-            raise FrameworkError(
-                code="SKILL_CONFIG_LEGACY_ROOTS_UNSUPPORTED",
-                message="Legacy skills_roots is not supported. Use skills.spaces + skills.sources via config overlays.",
-                details={"arg": "skills_roots"},
-            )
-        if self._config.skills.roots:
-            raise FrameworkError(
-                code="SKILL_CONFIG_LEGACY_ROOTS_UNSUPPORTED",
-                message="Legacy skills.roots is not supported. Use skills.spaces + skills.sources.",
-                details={"path": "skills.roots"},
-            )
-        if self._config.skills.mode != "explicit":
-            raise FrameworkError(
-                code="SKILL_CONFIG_LEGACY_MODE_UNSUPPORTED",
-                message="Legacy skills.mode is not supported. Use explicit spaces/sources only.",
-                details={"path": "skills.mode", "actual": self._config.skills.mode, "expected": "explicit"},
-            )
-
-        self._backend = _ChatBackendV2Shim(backend) if backend is not None else None
+        self._backend = backend
         self._executor = Executor()
         self._human_io = human_io
         self._approval_provider = approval_provider
@@ -1003,21 +968,27 @@ class Agent:
 
         final_output = ""
         events_path = ""
+        wal_locator = ""
         status = "completed"
         for ev in self.run_stream(task, run_id=run_id, initial_history=initial_history):
             if ev.type == "run_completed":
                 final_output = str(ev.payload.get("final_output") or "")
-                events_path = str(ev.payload.get("events_path") or "")
+                events_path = str(ev.payload.get("events_path") or ev.payload.get("wal_locator") or "")
+                wal_locator = str(ev.payload.get("wal_locator") or "")
                 status = "completed"
             if ev.type == "run_failed":
                 final_output = str(ev.payload.get("message") or "")
-                events_path = str(ev.payload.get("events_path") or events_path or "")
+                events_path = str(ev.payload.get("events_path") or ev.payload.get("wal_locator") or events_path or "")
+                wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
                 status = "failed"
             if ev.type == "run_cancelled":
                 final_output = str(ev.payload.get("message") or "")
-                events_path = str(ev.payload.get("events_path") or events_path or "")
+                events_path = str(ev.payload.get("events_path") or ev.payload.get("wal_locator") or events_path or "")
+                wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
                 status = "cancelled"
-        return RunResult(status=status, final_output=final_output, artifacts=[], events_path=events_path)
+        if not events_path:
+            events_path = str(wal_locator or "")
+        return RunResult(status=status, final_output=final_output, artifacts=[], events_path=events_path, wal_locator=wal_locator)
 
     def run_stream(
         self,
@@ -1130,37 +1101,30 @@ class Agent:
         - emit：事件输出回调（同步函数），用于把事件推到调用方（run_stream 通过 queue 实现流式）
         """
 
-        if self._backend is None:
-            raise ValueError("未配置 LLM backend（backend=None）")
-
         run_id = run_id or f"run_{uuid.uuid4().hex}"
         run_dir = (self._workspace_root / ".skills_runtime_sdk" / "runs" / run_id).resolve()
         run_dir.mkdir(parents=True, exist_ok=True)
-        events_path = run_dir / "events.jsonl"
+        wal_jsonl_path = run_dir / "events.jsonl"
         injected_wal = self._wal_backend
         if injected_wal is not None:
             wal = injected_wal
             wal_locator = f"{wal.locator()}#run_id={run_id}"
         else:
-            wal = JsonlWal(events_path)
-            wal_locator = str(events_path)
+            wal = JsonlWal(wal_jsonl_path)
+            wal_locator = str(wal_jsonl_path)
         wal_emitter = WalEmitter(wal=wal, stream=emit, hooks=list(self._event_hooks))
         started_monotonic = time.monotonic()
 
         max_steps = int(self._config.run.max_steps)
         max_wall_time_sec = self._config.run.max_wall_time_sec
-        cr = getattr(self._config.run, "context_recovery", None)
-        context_recovery_mode = str(getattr(cr, "mode", "fail_fast") or "fail_fast").strip().lower()
-        if context_recovery_mode not in ("compact_first", "ask_first", "fail_fast"):
-            context_recovery_mode = "fail_fast"
-        max_compactions_per_run = int(getattr(cr, "max_compactions_per_run", 2) or 0)
-        ask_first_fallback_mode = str(getattr(cr, "ask_first_fallback_mode", "compact_first") or "compact_first").strip().lower()
-        if ask_first_fallback_mode not in ("compact_first", "fail_fast"):
-            ask_first_fallback_mode = "compact_first"
-        compaction_history_max_chars = int(getattr(cr, "compaction_history_max_chars", 24_000) or 24_000)
-        compaction_keep_last_messages = int(getattr(cr, "compaction_keep_last_messages", 6) or 6)
-        increase_budget_extra_steps = int(getattr(cr, "increase_budget_extra_steps", 20) or 0)
-        increase_budget_extra_wall_time_sec = int(getattr(cr, "increase_budget_extra_wall_time_sec", 600) or 0)
+        cr = self._config.run.context_recovery
+        context_recovery_mode = str(cr.mode)
+        max_compactions_per_run = int(cr.max_compactions_per_run)
+        ask_first_fallback_mode = str(cr.ask_first_fallback_mode)
+        compaction_history_max_chars = int(cr.compaction_history_max_chars)
+        compaction_keep_last_messages = int(cr.compaction_keep_last_messages)
+        increase_budget_extra_steps = int(cr.increase_budget_extra_steps)
+        increase_budget_extra_wall_time_sec = int(cr.increase_budget_extra_wall_time_sec)
 
         compactions_performed = 0
         compaction_artifacts: List[str] = []
@@ -1170,9 +1134,7 @@ class Agent:
         existing_events_count = len(existing_events_all)
         existing_events_tail: List[AgentEvent] = list(deque(existing_events_all, maxlen=200))
 
-        resume_strategy = str(getattr(self._config.run, "resume_strategy", "summary") or "summary").strip().lower()
-        if resume_strategy not in ("summary", "replay"):
-            resume_strategy = "summary"
+        resume_strategy = str(self._config.run.resume_strategy)
 
         resume_replay_history: Optional[List[Dict[str, Any]]] = None
         resume_replay_denied: Dict[str, int] = {}
@@ -1407,7 +1369,7 @@ class Agent:
         )
 
         def _emit_cancelled() -> None:
-            """发出 `run_cancelled` 事件并包含 events_path，供调用方定位审计日志。"""
+            """发出 `run_cancelled` 事件并包含 wal_locator，供调用方定位审计日志。"""
 
             _emit_event(
                 AgentEvent(
@@ -1521,7 +1483,7 @@ class Agent:
 
             summary_text = ""
             try:
-                agen = self._backend.stream_chat_v2(
+                agen = self._backend.stream_chat(
                     ChatRequest(
                         model=self._executor_model,
                         messages=compaction_messages,
@@ -1606,6 +1568,10 @@ class Agent:
             return artifact_path
 
         try:
+            if self._backend is None:
+                raise ValueError("未配置 LLM backend（backend=None）")
+            _validate_chat_backend_protocol(self._backend)
+
             while True:
                 if loop.is_cancelled():
                     _emit_cancelled()
@@ -1691,7 +1657,7 @@ class Agent:
                             # fail-open：观测不应影响主链路
                             pass
 
-                    agen = self._backend.stream_chat_v2(
+                    agen = self._backend.stream_chat(
                         ChatRequest(
                             model=self._executor_model,
                             messages=messages,

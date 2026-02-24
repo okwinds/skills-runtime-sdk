@@ -364,11 +364,15 @@ def _build_parser() -> argparse.ArgumentParser:
     runs = root_sub.add_parser("runs", help="Run-related commands")
     runs_sub = runs.add_subparsers(dest="runs_cmd", required=True)
 
-    metrics = runs_sub.add_parser("metrics", help="Compute run metrics summary from events.jsonl")
+    metrics = runs_sub.add_parser("metrics", help="Compute run metrics summary from wal_locator (filesystem only)")
     metrics.add_argument("--workspace-root", default=".", help="Workspace root directory (default: .)")
     group2 = metrics.add_mutually_exclusive_group(required=True)
     group2.add_argument("--run-id", default=None, help="Run id under workspace_root/.skills_runtime_sdk/runs/<run_id>/events.jsonl")
-    group2.add_argument("--events-path", default=None, help="Explicit events.jsonl path (relative to workspace root if not absolute).")
+    group2.add_argument(
+        "--wal-locator",
+        default=None,
+        help="Explicit wal_locator (filesystem path is supported; relative paths are resolved under workspace root).",
+    )
     metrics.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
 
     return parser
@@ -1691,24 +1695,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _dump_json_to_stdout(payload2, pretty=bool(getattr(args, "pretty", False)))
             return 20
 
-        events_path: Path
-        if args.events_path is not None:
-            p = Path(str(args.events_path)).expanduser()
-            events_path = p.resolve() if p.is_absolute() else (ws / p).resolve()
+        wal_locator: str
+        if args.wal_locator is not None:
+            raw = str(args.wal_locator)
+            # filesystem path：允许相对路径；非文件 locator 交由 metrics 返回 not_supported
+            if "://" not in raw:
+                p = Path(raw).expanduser()
+                wal_locator = str(p.resolve() if p.is_absolute() else (ws / p).resolve())
+            else:
+                wal_locator = raw
         else:
             run_id = str(args.run_id or "").strip()
-            events_path = (ws / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
+            wal_locator = str((ws / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve())
 
-        if not events_path.exists():
-            summary = compute_run_metrics_summary(events_path=events_path)
-            _dump_json_to_stdout(summary, pretty=bool(getattr(args, "pretty", False)))
-            return 22
+        summary = compute_run_metrics_summary(wal_locator=wal_locator)
+        _dump_json_to_stdout(summary, pretty=bool(getattr(args, "pretty", False)))
 
-        summary2 = compute_run_metrics_summary(events_path=events_path)
-        _dump_json_to_stdout(summary2, pretty=bool(getattr(args, "pretty", False)))
-        # 若 summary 自身已记录 invalid_wal，则视为 validation（20）
-        if any((it or {}).get("kind") == "invalid_wal" for it in (summary2.get("errors") or [])):
+        kinds = [str((it or {}).get("kind") or "") for it in (summary.get("errors") or [])]
+        if any(k in {"invalid_wal", "validation"} for k in kinds):
             return 20
+        if any(k == "not_supported" for k in kinds):
+            return 23
+        if any(k == "not_found" for k in kinds):
+            return 22
         return 0
 
     if args.command != "skills":

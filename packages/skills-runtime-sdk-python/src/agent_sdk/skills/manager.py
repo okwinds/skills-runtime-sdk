@@ -45,40 +45,14 @@ def _utc_from_timestamp_rfc3339(ts: float) -> str:
 
 
 def _scan_options_from_config(skills_config: AgentSdkSkillsConfig) -> dict[str, int | bool]:
-    """从 skills 配置读取扫描参数（兼容旧 `skills.scan.*` 扩展字段）。"""
+    """从 skills 配置读取扫描参数（显式 schema；拒绝隐式扩展字段）。"""
 
-    extra = getattr(skills_config, "model_extra", None) or {}
-    scan = extra.get("scan") if isinstance(extra, dict) else None
-    if not isinstance(scan, dict):
-        scan = {}
-
-    def _safe_int(raw: Any, *, default: int, min_value: int) -> int:
-        """
-        将 raw 安全解析为 int（fail-open），并应用最小值约束。
-
-        说明：
-        - 运行时解析必须避免在构造期抛出 ValueError（例如 int("deep")）。
-        - 对于非法值：回退到 default；对于过小值：回退到 min_value。
-        """
-
-        if raw is None:
-            return default
-        # bool 是 int 的子类；避免 True/False 被意外当作数字配置。
-        if isinstance(raw, bool):
-            return default
-        try:
-            value = int(raw)
-        except Exception:
-            return default
-        if value < min_value:
-            return min_value
-        return value
-
+    scan = skills_config.scan
     return {
-        "ignore_dot_entries": bool(scan.get("ignore_dot_entries", True)),
-        "max_depth": _safe_int(scan.get("max_depth", 99), default=99, min_value=0),
-        "max_dirs_per_root": _safe_int(scan.get("max_dirs_per_root", 100000), default=100000, min_value=0),
-        "max_frontmatter_bytes": _safe_int(scan.get("max_frontmatter_bytes", 65536), default=65536, min_value=1),
+        "ignore_dot_entries": bool(scan.ignore_dot_entries),
+        "max_depth": int(scan.max_depth),
+        "max_dirs_per_root": int(scan.max_dirs_per_root),
+        "max_frontmatter_bytes": int(scan.max_frontmatter_bytes),
     }
 
 
@@ -93,7 +67,6 @@ class SkillsManager:
         *,
         workspace_root: Path,
         skills_config: Optional[AgentSdkSkillsConfig | Dict[str, Any]] = None,
-        roots: Optional[List[Path]] = None,
         in_memory_registry: Optional[Dict[str, List[Dict[str, Any]]]] = None,
         source_clients: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -102,7 +75,6 @@ class SkillsManager:
         参数：
         - `workspace_root`：工作区根目录
         - `skills_config`：V2 skills 配置
-        - `roots`：兼容旧接口；会映射成 filesystem source
         - `in_memory_registry`：in-memory source 注入注册表
         - `source_clients`：按 source_id 注入 redis/pgsql 客户端（用于离线测试/嵌入）
         """
@@ -113,45 +85,11 @@ class SkillsManager:
         self._runtime_source_clients: Dict[str, Any] = {}
 
         if skills_config is None:
-            legacy_roots = [str(Path(p)) for p in (roots or [])]
-            spaces: List[AgentSdkSkillsConfig.Space] = []
-            sources: List[AgentSdkSkillsConfig.Source] = []
-            if legacy_roots:
-                source_ids: List[str] = []
-                for i, root in enumerate(legacy_roots):
-                    sid = f"legacy-fs-{i}"
-                    source_ids.append(sid)
-                    sources.append(
-                        AgentSdkSkillsConfig.Source.model_validate(
-                            {"id": sid, "type": "filesystem", "options": {"root": root}}
-                        )
-                    )
-                spaces.append(
-                    AgentSdkSkillsConfig.Space.model_validate(
-                        {
-                            "id": "legacy-space",
-                            "account": "legacy",
-                            "domain": "local",
-                            "sources": source_ids,
-                            "enabled": True,
-                        }
-                    )
-                )
-            self._skills_config = AgentSdkSkillsConfig.model_validate(
-                {
-                    "roots": legacy_roots,
-                    "mode": "explicit",
-                    "max_auto": 3,
-                    "spaces": [s.model_dump() for s in spaces],
-                    "sources": [s.model_dump() for s in sources],
-                    "injection": {"max_bytes": None},
-                }
-            )
+            self._skills_config = AgentSdkSkillsConfig()
+        elif isinstance(skills_config, dict):
+            self._skills_config = AgentSdkSkillsConfig.model_validate(skills_config)
         else:
-            if isinstance(skills_config, dict):
-                self._skills_config = AgentSdkSkillsConfig.model_validate(skills_config)
-            else:
-                self._skills_config = skills_config
+            self._skills_config = skills_config
 
         self._skills_by_key: Dict[Tuple[str, str, str], Skill] = {}
         self._skills_by_path: Dict[Path, Skill] = {}
@@ -177,14 +115,6 @@ class SkillsManager:
         return self._workspace_root
 
     @property
-    def scan_warnings(self) -> List[str]:
-        """兼容旧接口：返回 warning messages。"""
-
-        if self._scan_report is None:
-            return []
-        return [w.message for w in self._scan_report.warnings]
-
-    @property
     def last_scan_report(self) -> Optional[ScanReport]:
         """
         返回最近一次 scan 过程中生成的 ScanReport（只读快照）。
@@ -198,31 +128,15 @@ class SkillsManager:
 
     def _scan_refresh_policy_from_config(self) -> tuple[str, int]:
         """
-        从 skills.scan 读取 refresh_policy/ttl_sec（fail-open，保证默认不改变既有行为）。
+        从 skills.scan 读取 refresh_policy/ttl_sec。
 
         返回：
-        - refresh_policy：always|ttl|manual（默认 always）
-        - ttl_sec：int（默认 300；仅 ttl 生效；最小 1）
+        - refresh_policy：always|ttl|manual
+        - ttl_sec：int（仅 ttl 生效）
         """
 
-        extra = getattr(self._skills_config, "model_extra", None) or {}
-        scan = extra.get("scan") if isinstance(extra, dict) else None
-        if not isinstance(scan, dict):
-            scan = {}
-
-        refresh_policy = scan.get("refresh_policy")
-        if not isinstance(refresh_policy, str) or refresh_policy not in {"always", "ttl", "manual"}:
-            refresh_policy = "always"
-
-        ttl_raw = scan.get("ttl_sec", 300)
-        try:
-            ttl_sec = int(ttl_raw)
-        except Exception:
-            ttl_sec = 300
-        if ttl_sec < 1:
-            ttl_sec = 1
-
-        return str(refresh_policy), int(ttl_sec)
+        scan = self._skills_config.scan
+        return str(scan.refresh_policy), int(scan.ttl_sec)
 
     def _scan_cache_key_for_current_config(self) -> str:
         """为 scan 缓存生成 key（绑定 skills 配置 + scan options）。"""
@@ -315,24 +229,6 @@ class SkillsManager:
         """验证 V2 skills 配置完整性。"""
 
         errors: List[FrameworkIssue] = []
-
-        # Legacy fields：框架级不支持隐式 roots/auto discovery。
-        if self._skills_config.roots:
-            errors.append(
-                FrameworkIssue(
-                    code="SKILL_SCAN_METADATA_INVALID",
-                    message="Legacy skills.roots is not supported. Use skills.spaces + skills.sources.",
-                    details={"field": "skills.roots", "roots_total": len(self._skills_config.roots)},
-                )
-            )
-        if self._skills_config.mode != "explicit":
-            errors.append(
-                FrameworkIssue(
-                    code="SKILL_SCAN_METADATA_INVALID",
-                    message="Legacy skills.mode is not supported. Use explicit spaces/sources only.",
-                    details={"field": "skills.mode", "actual": self._skills_config.mode, "expected": "explicit"},
-                )
-            )
 
         sources_map = self._build_sources_map()
         spaces: List[AgentSdkSkillsConfig.Space] = []
@@ -427,208 +323,23 @@ class SkillsManager:
             return FrameworkIssue(code=code, message=message, details=payload)
 
         issues: List[FrameworkIssue] = []
+        spaces = list(self._skills_config.spaces)
+        sources = list(self._skills_config.sources)
 
-        # Legacy fields：避免“隐式发现/默认注入 roots”的误解（框架级不支持）。
-        if self._skills_config.roots:
+        # versioning 目前仅占位：允许额外字段（fail-open），但应提示“这些字段将被忽略”，避免误以为生效。
+        try:
+            extra = dict(getattr(self._skills_config.versioning, "model_extra", None) or {})
+        except Exception:
+            extra = {}
+        if extra:
             issues.append(
                 _issue(
-                    code="SKILL_CONFIG_LEGACY_ROOTS_UNSUPPORTED",
-                    message="Legacy skills.roots is not supported. Use skills.spaces + skills.sources.",
-                    path="skills.roots",
-                    details={"roots_total": len(self._skills_config.roots)},
+                    code="SKILL_CONFIG_VERSIONING_UNKNOWN_KEYS",
+                    message="Unknown keys under skills.versioning are ignored (versioning is a placeholder).",
+                    path="skills.versioning",
+                    details={"level": "warning", "unknown_keys": sorted(list(extra.keys()))},
                 )
             )
-        if self._skills_config.mode != "explicit":
-            issues.append(
-                _issue(
-                    code="SKILL_CONFIG_LEGACY_MODE_UNSUPPORTED",
-                    message="Legacy skills.mode is not supported. Use explicit spaces/sources only.",
-                    path="skills.mode",
-                    details={"actual": self._skills_config.mode, "expected": "explicit"},
-                )
-            )
-
-        skills_extra = getattr(self._skills_config, "model_extra", None) or {}
-        if isinstance(skills_extra, dict):
-            for key in sorted(skills_extra.keys()):
-                if key == "scan":
-                    continue
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_UNKNOWN_TOP_LEVEL_KEY",
-                        message=f"Unknown skills config key: {key}",
-                        path=f"skills.{key}",
-                        details={"key": key, "allowed_extra_keys": ["scan"]},
-                    )
-                )
-
-        scan_extra = skills_extra.get("scan") if isinstance(skills_extra, dict) else None
-        if scan_extra is not None and not isinstance(scan_extra, dict):
-            issues.append(
-                _issue(
-                    code="SKILL_CONFIG_INVALID_SCAN_OPTION",
-                    message="Skills scan config must be an object.",
-                    path="skills.scan",
-                    details={"expected": "object", "actual": type(scan_extra).__name__},
-                )
-            )
-        elif isinstance(scan_extra, dict):
-            allowed_scan_keys = {
-                "ignore_dot_entries",
-                "max_depth",
-                "max_dirs_per_root",
-                "max_frontmatter_bytes",
-                "refresh_policy",
-                "ttl_sec",
-            }
-            for key in sorted(scan_extra.keys()):
-                if key in allowed_scan_keys:
-                    continue
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_UNKNOWN_SCAN_OPTION",
-                        message=f"Unknown skills.scan option: {key}",
-                        path=f"skills.scan.{key}",
-                        details={"key": key, "allowed_keys": sorted(allowed_scan_keys)},
-                    )
-                )
-
-            def _invalid_scan_option(*, key: str, expected: str, actual_value: Any) -> None:
-                """追加一条 scan option 校验错误（fail-closed）。"""
-
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_INVALID_SCAN_OPTION",
-                        message="Invalid skills.scan option.",
-                        path=f"skills.scan.{key}",
-                        details={"key": key, "expected": expected, "actual": type(actual_value).__name__},
-                    )
-                )
-
-            ignore_dot_entries = scan_extra.get("ignore_dot_entries")
-            if ignore_dot_entries is not None and not isinstance(ignore_dot_entries, bool):
-                _invalid_scan_option(key="ignore_dot_entries", expected="bool", actual_value=ignore_dot_entries)
-
-            max_depth = scan_extra.get("max_depth")
-            if max_depth is not None and (not isinstance(max_depth, int) or isinstance(max_depth, bool) or max_depth < 0):
-                _invalid_scan_option(key="max_depth", expected="int >= 0", actual_value=max_depth)
-
-            max_dirs_per_root = scan_extra.get("max_dirs_per_root")
-            if max_dirs_per_root is not None and (
-                not isinstance(max_dirs_per_root, int) or isinstance(max_dirs_per_root, bool) or max_dirs_per_root < 0
-            ):
-                _invalid_scan_option(key="max_dirs_per_root", expected="int >= 0", actual_value=max_dirs_per_root)
-
-            max_frontmatter_bytes = scan_extra.get("max_frontmatter_bytes")
-            if max_frontmatter_bytes is not None and (
-                not isinstance(max_frontmatter_bytes, int)
-                or isinstance(max_frontmatter_bytes, bool)
-                or max_frontmatter_bytes < 1
-            ):
-                _invalid_scan_option(key="max_frontmatter_bytes", expected="int >= 1", actual_value=max_frontmatter_bytes)
-
-            refresh_policy = scan_extra.get("refresh_policy")
-            if refresh_policy is not None and (
-                not isinstance(refresh_policy, str) or refresh_policy not in {"always", "ttl", "manual"}
-            ):
-                _invalid_scan_option(key="refresh_policy", expected="\"always\"|\"ttl\"|\"manual\"", actual_value=refresh_policy)
-
-            ttl_sec = scan_extra.get("ttl_sec")
-            if ttl_sec is not None and (not isinstance(ttl_sec, int) or isinstance(ttl_sec, bool) or ttl_sec < 1):
-                _invalid_scan_option(key="ttl_sec", expected="int >= 1", actual_value=ttl_sec)
-
-        def _unknown_nested_keys(
-            *,
-            obj: Any,
-            base_path: str,
-            code: str,
-            message_prefix: str,
-            level: str,
-        ) -> None:
-            """
-            发现并记录对象 `model_extra` 中的未知配置键。
-
-            用途：
-            - Pydantic 模型可能携带 `model_extra`（未在 schema 中声明的键）；
-            - 本函数将这些键转换为 `FrameworkIssue` 并追加到外层 `issues` 列表。
-
-            参数：
-            - obj：待检查对象（期望可通过 `getattr(obj, "model_extra", None)` 取到额外字段）。
-            - base_path：`path` 的基准点路径（例如 `skills.versioning`）。
-            - code：写入 `FrameworkIssue.code` 的错误码。
-            - message_prefix：拼接到 message 的前缀（后续会追加具体键名）。
-            - level：问题级别（写入 `details.level`，例如 `warning`）。
-
-            返回：
-            - 无。
-
-            异常：
-            - 无（不会主动抛出；仅在 `model_extra` 为 dict 时遍历）。
-            """
-            extra = getattr(obj, "model_extra", None) or {}
-            if not isinstance(extra, dict):
-                return
-            for k in sorted(extra.keys()):
-                issues.append(
-                    _issue(
-                        code=code,
-                        message=f"{message_prefix}{k}",
-                        path=f"{base_path}.{k}",
-                        details={"key": k, "level": level},
-                    )
-                )
-
-        _unknown_nested_keys(
-            obj=self._skills_config.versioning,
-            base_path="skills.versioning",
-            code="SKILL_CONFIG_UNKNOWN_NESTED_KEY",
-            message_prefix="Unknown skills.versioning config key: ",
-            level="warning",
-        )
-        _unknown_nested_keys(
-            obj=self._skills_config.strictness,
-            base_path="skills.strictness",
-            code="SKILL_CONFIG_UNKNOWN_NESTED_KEY",
-            message_prefix="Unknown skills.strictness config key: ",
-            level="warning",
-        )
-
-        spaces: List[AgentSdkSkillsConfig.Space] = []
-        for idx, space in enumerate(self._skills_config.spaces):
-            if isinstance(space, dict):
-                spaces.append(AgentSdkSkillsConfig.Space.model_validate(space))
-            else:
-                spaces.append(space)
-            _unknown_nested_keys(
-                obj=spaces[-1],
-                base_path=f"skills.spaces[{idx}]",
-                code="SKILL_CONFIG_UNKNOWN_NESTED_KEY",
-                message_prefix="Unknown skills.spaces[] config key: ",
-                level="error",
-            )
-
-        sources: List[AgentSdkSkillsConfig.Source] = []
-        for idx, source in enumerate(self._skills_config.sources):
-            if isinstance(source, dict):
-                sources.append(AgentSdkSkillsConfig.Source.model_validate(source))
-            else:
-                sources.append(source)
-            _unknown_nested_keys(
-                obj=sources[-1],
-                base_path=f"skills.sources[{idx}]",
-                code="SKILL_CONFIG_UNKNOWN_NESTED_KEY",
-                message_prefix="Unknown skills.sources[] config key: ",
-                level="error",
-            )
-
-        injection = self._skills_config.injection
-        _unknown_nested_keys(
-            obj=injection,
-            base_path="skills.injection",
-            code="SKILL_CONFIG_UNKNOWN_NESTED_KEY",
-            message_prefix="Unknown skills.injection config key: ",
-            level="error",
-        )
 
         seen_space_ids: Dict[str, int] = {}
         for idx, space in enumerate(spaces):

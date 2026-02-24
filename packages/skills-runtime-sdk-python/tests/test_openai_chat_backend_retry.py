@@ -106,7 +106,8 @@ def _run_stream(backend: OpenAIChatCompletionsBackend) -> List[str]:
 
     async def _go() -> List[str]:
         types: List[str] = []
-        async for ev in backend.stream_chat(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None):
+        req = ChatRequest(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None)
+        async for ev in backend.stream_chat(req):
             types.append(str(getattr(ev, "type", "")))
         return types
 
@@ -136,7 +137,12 @@ def test_openai_chat_retries_on_429_with_retry_after(monkeypatch) -> None:  # ty
     monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
     monkeypatch.setattr(mod.asyncio, "sleep", _fake_sleep)
 
-    cfg = AgentSdkLlmConfig(base_url="http://example.test/v1", api_key_env="OPENAI_API_KEY", max_retries=3, timeout_sec=1)
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        timeout_sec=1,
+        retry={"max_retries": 3},
+    )
     backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
     types = _run_stream(backend)
 
@@ -172,7 +178,12 @@ def test_openai_chat_retries_on_request_error_before_emitting(monkeypatch) -> No
 
     monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
 
-    cfg = AgentSdkLlmConfig(base_url="http://example.test/v1", api_key_env="OPENAI_API_KEY", max_retries=3, timeout_sec=1)
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        timeout_sec=1,
+        retry={"max_retries": 3},
+    )
     backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
     types = _run_stream(backend)
 
@@ -196,11 +207,17 @@ def test_openai_chat_does_not_retry_after_emitting_any_event(monkeypatch) -> Non
     scenario = _Scenario([_FakeStreamResponse(status_code=200, lines=lines, raise_in_aiter=err)])
     monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
 
-    cfg = AgentSdkLlmConfig(base_url="http://example.test/v1", api_key_env="OPENAI_API_KEY", max_retries=3, timeout_sec=1)
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        timeout_sec=1,
+        retry={"max_retries": 3},
+    )
     backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
 
     async def _go() -> None:
-        async for _ in backend.stream_chat(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None):
+        req = ChatRequest(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None)
+        async for _ in backend.stream_chat(req):
             pass
 
     with pytest.raises(httpx.RequestError):
@@ -227,7 +244,12 @@ def test_openai_chat_retries_on_500_then_success(monkeypatch) -> None:  # type: 
 
     monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
 
-    cfg = AgentSdkLlmConfig(base_url="http://example.test/v1", api_key_env="OPENAI_API_KEY", max_retries=2, timeout_sec=1)
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        timeout_sec=1,
+        retry={"max_retries": 2},
+    )
     backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
     types = _run_stream(backend)
 
@@ -242,11 +264,17 @@ def test_openai_chat_does_not_retry_on_400(monkeypatch) -> None:  # type: ignore
     scenario = _Scenario([_FakeStreamResponse(status_code=400, lines=[])])
     monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
 
-    cfg = AgentSdkLlmConfig(base_url="http://example.test/v1", api_key_env="OPENAI_API_KEY", max_retries=3, timeout_sec=1)
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        timeout_sec=1,
+        retry={"max_retries": 3},
+    )
     backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
 
     async def _go() -> None:
-        async for _ in backend.stream_chat(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None):
+        req = ChatRequest(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None)
+        async for _ in backend.stream_chat(req):
             pass
 
     with pytest.raises(httpx.HTTPStatusError):
@@ -279,14 +307,14 @@ def test_openai_chat_enforces_retry_max_retries(monkeypatch) -> None:  # type: i
     cfg = AgentSdkLlmConfig(
         base_url="http://example.test/v1",
         api_key_env="OPENAI_API_KEY",
-        max_retries=99,  # legacy 字段不应影响 retry.max_retries 显式覆盖
         timeout_sec=1,
         retry={"max_retries": 1, "base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.0},
     )
     backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
 
     async def _go() -> None:
-        async for _ in backend.stream_chat(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None):
+        req = ChatRequest(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None)
+        async for _ in backend.stream_chat(req):
             pass
 
     with pytest.raises(httpx.HTTPStatusError):
@@ -333,7 +361,7 @@ def test_openai_chat_retry_is_observable_via_on_retry_callback(monkeypatch) -> N
 
     async def _go() -> None:
         req = ChatRequest(model="gpt-test", messages=[{"role": "user", "content": "hi"}], extra={"on_retry": _on_retry})
-        async for _ in backend.stream_chat_v2(req):
+        async for _ in backend.stream_chat(req):
             pass
 
     asyncio.run(_go())

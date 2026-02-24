@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from agent_sdk import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.tools.protocol import ToolCall
 
 
@@ -18,22 +19,15 @@ class _AssertReplayHistoryBackend:
         self._expected_tool_call_id = expected_tool_call_id
         self._response_text = response_text
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Any]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
         # 不应再看到 Phase 2 的 resume summary 注入。
-        for m in messages:
+        for m in request.messages:
             if m.get("role") == "assistant" and isinstance(m.get("content"), str):
                 assert "[Resume Summary]" not in str(m.get("content"))
 
         # 必须能看到之前的 tool message（由 tool_call_finished 事件重建）。
         found_tool = False
-        for m in messages:
+        for m in request.messages:
             if m.get("role") != "tool":
                 continue
             if m.get("tool_call_id") != self._expected_tool_call_id:
@@ -187,7 +181,7 @@ def test_agent_resume_replay_restores_approved_for_session_cache(tmp_path: Path)
     assert (tmp_path / "approved.txt").read_text(encoding="utf-8") == "v1"
 
     # WAL 侧也应记录第二次 run 的 "cached"（验证行为可观测）
-    events = list(JsonlWal(Path(r2.events_path)).iter_events())
+    events = list(JsonlWal(Path(r2.wal_locator)).iter_events())
     last_run_started_idx = -1
     for i, ev in enumerate(events):
         if ev.type == "run_started":

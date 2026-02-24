@@ -8,10 +8,10 @@ Fake LLM backend（离线回归夹具）。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
+from typing import Any, AsyncIterator, List, Sequence
 
 from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.tools.protocol import ToolSpec
+from agent_sdk.llm.protocol import ChatRequest
 
 
 @dataclass(frozen=True)
@@ -42,21 +42,17 @@ class FakeChatBackend:
         self._idx = 0
 
     async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
+        self, request: ChatRequest
     ) -> AsyncIterator[ChatStreamEvent]:
         """
         按预设事件序列产出 streaming 事件。
 
         说明：
-        - `model/messages/tools/temperature` 仅为接口兼容；Fake backend 不做真实推理。
+        - `request` 仅为接口兼容；Fake backend 不做真实推理。
         - 若预设序列未包含 `completed`，会在末尾自动补齐一个 `completed`。
         """
 
+        _ = request
         if self._idx >= len(self._calls):
             raise ValueError("FakeChatBackend calls 已耗尽")
         call = self._calls[self._idx]

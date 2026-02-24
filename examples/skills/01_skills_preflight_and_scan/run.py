@@ -37,7 +37,6 @@ def main() -> int:
 
     cfg = AgentSdkSkillsConfig.model_validate(
         {
-            "roots": [],
             "mode": "explicit",
             "max_auto": 0,
             "spaces": [
@@ -78,4 +77,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

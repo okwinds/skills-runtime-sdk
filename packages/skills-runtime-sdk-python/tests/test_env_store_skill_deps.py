@@ -11,6 +11,7 @@ import pytest
 from agent_sdk.core.agent import Agent
 from agent_sdk.core.contracts import AgentEvent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.skills.loader import load_skill_from_path
 from agent_sdk.tools.protocol import ToolSpec
 
@@ -19,16 +20,9 @@ class _StubBackend:
     def __init__(self) -> None:
         self.last_messages: Optional[List[Dict[str, Any]]] = None
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
-        self.last_messages = messages
-        yield ChatStreamEvent(type="text_delta", text=f"ok({model})")
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        self.last_messages = request.messages
+        yield ChatStreamEvent(type="text_delta", text=f"ok({request.model})")
         yield ChatStreamEvent(type="completed", finish_reason="stop")
 
 
@@ -320,14 +314,8 @@ def test_tool_output_is_redacted_from_env_store_values(tmp_path: Path, monkeypat
         def __init__(self) -> None:
             self._called = 0
 
-        async def stream_chat(  # type: ignore[override]
-            self,
-            *,
-            model: str,
-            messages: List[Dict[str, Any]],
-            tools: Optional[List[ToolSpec]] = None,
-            temperature: Optional[float] = None,
-        ) -> AsyncIterator[ChatStreamEvent]:
+        async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:  # type: ignore[override]
+            _ = request
             self._called += 1
             if self._called == 1:
                 yield ChatStreamEvent(

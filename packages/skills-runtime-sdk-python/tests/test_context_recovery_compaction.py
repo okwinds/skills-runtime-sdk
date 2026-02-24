@@ -8,6 +8,7 @@ import pytest
 from agent_sdk import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.errors import ContextLengthExceededError
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.tools.protocol import HumanIOProvider, ToolSpec
 
 
@@ -15,15 +16,8 @@ class _CtxOnceThenOkBackend:
     def __init__(self) -> None:
         self._normal_calls = 0
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,  # noqa: ARG002
-        messages: List[Dict[str, Any]],  # noqa: ARG002
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,  # noqa: ARG002
-    ) -> AsyncIterator[ChatStreamEvent]:
-        if tools is None:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        if request.tools is None:
             yield ChatStreamEvent(type="text_delta", text="compacted summary")
             yield ChatStreamEvent(type="completed", finish_reason="stop")
             return
@@ -37,15 +31,8 @@ class _CtxOnceThenOkBackend:
 
 
 class _AlwaysCtxBackend:
-    async def stream_chat(
-        self,
-        *,
-        model: str,  # noqa: ARG002
-        messages: List[Dict[str, Any]],  # noqa: ARG002
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,  # noqa: ARG002
-    ) -> AsyncIterator[ChatStreamEvent]:
-        if tools is None:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        if request.tools is None:
             yield ChatStreamEvent(type="text_delta", text="handoff summary")
             yield ChatStreamEvent(type="completed", finish_reason="stop")
             return
@@ -161,4 +148,3 @@ run:
     failed = [e for e in events if e.type == "run_failed"]
     assert len(failed) == 1
     assert failed[0].payload.get("error_kind") == "context_length_exceeded"
-

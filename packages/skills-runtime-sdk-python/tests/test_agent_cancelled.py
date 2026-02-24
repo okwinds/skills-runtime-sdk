@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from agent_sdk.core.agent import Agent
 from agent_sdk.core.contracts import AgentEvent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.tools.protocol import ToolSpec
 
 
@@ -13,16 +14,9 @@ class _StubBackend:
     def __init__(self, *_args: Any, **_kwargs: Any) -> None:
         pass
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
         # 若取消逻辑正确，测试不应走到这里（但即使到这里也不影响断言）
-        yield ChatStreamEvent(type="text_delta", text=f"echo({model})")
+        yield ChatStreamEvent(type="text_delta", text=f"echo({request.model})")
         yield ChatStreamEvent(type="completed", finish_reason="stop")
 
 
@@ -32,7 +26,6 @@ def test_agent_cancelled_emits_run_cancelled(tmp_path: Path, monkeypatch) -> Non
     agent = Agent(
         backend=_StubBackend(),
         workspace_root=tmp_path,
-        skills_roots=[],
         cancel_checker=lambda: True,
     )
 
@@ -44,14 +37,8 @@ def test_agent_cancelled_emits_run_cancelled(tmp_path: Path, monkeypatch) -> Non
 
 
 class _BlockingBackend:
-    async def stream_chat(  # type: ignore[override]
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        _ = request
         # 模拟真实网络 SSE：长时间无输出（等待会被 task.cancel() 打断）
         import asyncio
 
@@ -72,7 +59,6 @@ def test_agent_cancel_interrupts_blocking_stream(tmp_path: Path, monkeypatch) ->
     agent = Agent(
         backend=_BlockingBackend(),
         workspace_root=tmp_path,
-        skills_roots=[],
         cancel_checker=cancel_checker,
     )
 

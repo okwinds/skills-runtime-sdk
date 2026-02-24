@@ -59,9 +59,9 @@ class OpenAIChatCompletionsBackend:
             raise ValueError(f"缺少 API key 环境变量：{self._cfg.api_key_env}")
         return {"Authorization": f"Bearer {key}"}
 
-    async def stream_chat_v2(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
         """
-        v2：发起 streaming chat.completions 请求，并解析 SSE 事件流。
+        发起 streaming chat.completions 请求，并解析 SSE 事件流。
 
         说明：
         - 通过 ChatRequest 承载请求参数；
@@ -117,8 +117,7 @@ class OpenAIChatCompletionsBackend:
         if jitter_ratio > 1:
             jitter_ratio = 1.0
 
-        max_retries_cfg = getattr(retry_cfg, "max_retries", None) if retry_cfg is not None else None
-        max_retries = int(max_retries_cfg) if max_retries_cfg is not None else int(getattr(self._cfg, "max_retries", 0) or 0)
+        max_retries = int(getattr(retry_cfg, "max_retries", 0) or 0) if retry_cfg is not None else 0
 
         on_retry = request.extra.get("on_retry")
 
@@ -232,18 +231,4 @@ class OpenAIChatCompletionsBackend:
                 attempt += 1
                 continue
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
-        """
-        v1（legacy）：保持兼容；内部转到 v2 的 ChatRequest。
-        """
-
-        req = ChatRequest(model=model, messages=messages, tools=tools, temperature=temperature)
-        async for ev in self.stream_chat_v2(req):
-            yield ev
+    # 说明：本仓库不再提供 legacy `stream_chat(model, messages, ...)` 兼容入口。

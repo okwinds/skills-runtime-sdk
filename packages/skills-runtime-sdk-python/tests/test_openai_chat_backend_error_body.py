@@ -7,6 +7,7 @@ import httpx
 
 from agent_sdk.config.loader import AgentSdkLlmConfig
 from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
+from agent_sdk.llm.protocol import ChatRequest
 
 
 class _FakeResponse:
@@ -63,7 +64,8 @@ def test_openai_chat_backend_reads_error_body_before_raise(monkeypatch) -> None:
 
     async def _run() -> None:
         with pytest.raises(httpx.HTTPStatusError):
-            async for _ in backend.stream_chat(model="gpt-4", messages=[{"role": "user", "content": "hi"}], tools=None):
+            req = ChatRequest(model="gpt-4", messages=[{"role": "user", "content": "hi"}], tools=None)
+            async for _ in backend.stream_chat(req):
                 pass
 
     import pytest

@@ -48,10 +48,10 @@ def test_agent_minimal_loop_executes_tool_and_completes(tmp_path: Path) -> None:
     assert (tmp_path / "hello.txt").read_text(encoding="utf-8") == "hi"
     assert result.final_output == "done"
 
-    events_path = Path(result.events_path)
-    assert events_path.exists()
+    wal_path = Path(result.wal_locator)
+    assert wal_path.exists()
 
-    events = list(JsonlWal(events_path).iter_events())
+    events = list(JsonlWal(wal_path).iter_events())
     assert any(e.type == "run_started" for e in events)
     assert any(e.type == "tool_call_requested" for e in events)
     assert any(e.type == "tool_call_finished" for e in events)
@@ -78,9 +78,9 @@ def test_agent_denied_approval_does_not_execute_tool(tmp_path: Path) -> None:
     result = agent.run("try write")
 
     assert not (tmp_path / "blocked.txt").exists()
-    assert result.events_path
+    assert result.wal_locator
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     finished = [e for e in events if e.type == "tool_call_finished"]
     assert finished
     assert finished[0].payload["result"]["error_kind"] == "permission"
@@ -113,7 +113,7 @@ def test_agent_no_approval_provider_fails_fast_when_approval_required(tmp_path: 
     result = agent.run("try shell")
 
     assert result.status == "failed"
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     failed = [e for e in events if e.type == "run_failed"]
     assert failed
     assert failed[-1].payload.get("error_kind") == "config_error"
@@ -148,7 +148,7 @@ def test_agent_repeated_denied_approval_aborts_to_prevent_loop(tmp_path: Path) -
     result = agent.run("retry denied")
 
     assert result.status == "failed"
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     failed = [e for e in events if e.type == "run_failed"]
     assert failed
     assert failed[-1].payload.get("error_kind") == "approval_denied"

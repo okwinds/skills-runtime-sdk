@@ -59,9 +59,9 @@ def fork_run_events_jsonl(
             if isinstance(obj, dict):
                 obj["run_id"] = str(new_run_id)
                 payload = obj.get("payload")
-                if isinstance(payload, dict) and isinstance(payload.get("events_path"), str):
-                    # best-effort：把 events_path 指向新路径，避免 fork 后 UI/审计展示误导。
-                    payload["events_path"] = str(dst)
+                if isinstance(payload, dict) and isinstance(payload.get("wal_locator"), str):
+                    # best-effort：把 wal_locator 指向新路径，避免 fork 后 UI/审计展示误导。
+                    payload["wal_locator"] = str(dst)
                 out_lines.append(json.dumps(obj, ensure_ascii=False))
 
     with dst.open("w", encoding="utf-8") as f2:
@@ -98,4 +98,3 @@ def fork_run(
         up_to_index_inclusive=up_to_index_inclusive,
     )
     return dst_events
-

@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from agent_sdk import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.state.jsonl_wal import JsonlWal
 from agent_sdk.tools.protocol import ToolCall
 
@@ -24,14 +25,8 @@ class _SleepingBackend:
     def __init__(self, *, sleep_sec: float) -> None:
         self._sleep_sec = float(sleep_sec)
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Any]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        _ = request
         await asyncio.sleep(self._sleep_sec)
         yield ChatStreamEvent(type="text_delta", text="late")
         yield ChatStreamEvent(type="completed", finish_reason="stop")
@@ -78,7 +73,7 @@ def test_agent_respects_max_steps_budget(tmp_path: Path) -> None:
 
     assert result.status == "failed"
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     failed = [e for e in events if e.type == "run_failed"]
     assert failed, "expected run_failed when max_steps budget exceeded"
     assert failed[-1].payload["error_kind"] == "budget_exceeded"
@@ -93,8 +88,7 @@ def test_agent_respects_max_wall_time_budget(tmp_path: Path) -> None:
 
     assert result.status == "failed"
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     failed = [e for e in events if e.type == "run_failed"]
     assert failed, "expected run_failed when max_wall_time_sec budget exceeded"
     assert failed[-1].payload["error_kind"] == "budget_exceeded"
-

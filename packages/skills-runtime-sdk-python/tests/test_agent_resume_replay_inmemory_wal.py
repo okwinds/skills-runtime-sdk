@@ -5,6 +5,7 @@ from pathlib import Path
 from agent_sdk import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.state.wal_protocol import InMemoryWal
 from agent_sdk.tools.protocol import ToolCall
 
@@ -21,7 +22,8 @@ class _AssertReplayHistoryBackend:
         self._expected_tool_call_id = expected_tool_call_id
         self._response_text = response_text
 
-    async def stream_chat(self, *, model, messages, tools=None, temperature=None):  # type: ignore[no-untyped-def]
+    async def stream_chat(self, request: ChatRequest):  # type: ignore[no-untyped-def]
+        messages = request.messages
         # 不应再看到 Phase 2 的 resume summary 注入。
         for m in messages:
             if m.get("role") == "assistant" and isinstance(m.get("content"), str):
@@ -91,4 +93,3 @@ def test_agent_resume_replay_reconstructs_history_from_injected_inmemory_wal(tmp
     ).run("task-2", run_id=run_id)
     assert r2.status == "completed"
     assert r2.final_output == "second-output"
-

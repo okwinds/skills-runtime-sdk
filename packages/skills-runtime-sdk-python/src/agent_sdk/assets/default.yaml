@@ -12,6 +12,8 @@ safety:
   approval_timeout_ms: 60000
 
 sandbox:
+  # profile（dev/balanced/prod）：用于“分阶段收紧”的可配置入口（未知值 fail-fast）
+  profile: "dev"
   # none：默认不强制 OS sandbox（可用性优先；SDK 缺省）
   # restricted：默认强制 OS sandbox（安全优先；推荐生产）
   default_policy: "none" # none|restricted
@@ -34,7 +36,11 @@ llm:
   # 仅声明“从哪个环境变量读取 key”；不要把真实 key 写入配置文件
   api_key_env: "OPENAI_API_KEY"
   timeout_sec: 60
-  max_retries: 3
+  retry:
+    max_retries: 3
+    base_delay_sec: 0.5
+    cap_delay_sec: 8.0
+    jitter_ratio: 0.1
 
 models:
   # best-practice 默认值（调用方可通过 overlay 替换为实际可用模型名）
@@ -42,9 +48,24 @@ models:
   executor: "gpt-4"
 
 skills:
-  roots: []
-  mode: "explicit"
-  max_auto: 3
+  # skills 仅允许显式配置：spaces + sources
+  spaces: []
+  sources: []
+  scan:
+    ignore_dot_entries: true
+    max_depth: 99
+    max_dirs_per_root: 100000
+    max_frontmatter_bytes: 65536
+    refresh_policy: "always"
+    ttl_sec: 300
+  injection:
+    max_bytes: null
+  actions:
+    enabled: false
+  references:
+    enabled: false
+    allow_assets: false
+    default_max_bytes: 65536
 
 prompt:
   template: "default"

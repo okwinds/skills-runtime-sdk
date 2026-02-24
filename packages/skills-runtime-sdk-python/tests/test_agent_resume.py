@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from agent_sdk import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from agent_sdk.llm.protocol import ChatRequest
 
 
 class _AssertResumeSummaryBackend:
@@ -21,16 +22,9 @@ class _AssertResumeSummaryBackend:
         self._expected = expected_substring
         self._response_text = response_text
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Any]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
         found = False
-        for m in messages:
+        for m in request.messages:
             if m.get("role") != "assistant":
                 continue
             content = m.get("content")
@@ -69,4 +63,3 @@ def test_agent_resume_injects_summary_from_existing_wal(tmp_path: Path) -> None:
 
     assert r2.status == "completed"
     assert r2.final_output == "second-output"
-

@@ -84,5 +84,4 @@ def test_agent_run_with_in_memory_wal_does_not_write_events_jsonl(tmp_path: Path
     assert completed, "expected run_completed to be written into injected WAL"
     assert completed[-1].payload.get("wal_locator") == "wal://in-memory/test-run#run_id=r_inmem"
 
-    # backward-compatible surface: RunResult.events_path becomes a locator for injected WAL
-    assert result.events_path == "wal://in-memory/test-run#run_id=r_inmem"
+    assert result.wal_locator == "wal://in-memory/test-run#run_id=r_inmem"

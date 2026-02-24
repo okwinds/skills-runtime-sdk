@@ -22,7 +22,7 @@ def _base_config(skills: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_skills_config(skills: dict[str, Any]) -> AgentSdkSkillsConfig:
-    """从 dict 构造 `AgentSdkSkillsConfig`，确保 extra 字段可进入 model_extra。"""
+    """从 dict 构造 `AgentSdkSkillsConfig`（严格 schema；未知/legacy 字段应 fail-fast）。"""
 
     return load_config_dicts([_base_config(skills)]).skills
 
@@ -81,70 +81,62 @@ def test_preflight_valid_config_returns_empty_list(tmp_path: Path) -> None:
 
 
 def test_preflight_legacy_skills_roots_is_error(tmp_path: Path) -> None:
-    """legacy skills.roots → SKILL_CONFIG_LEGACY_ROOTS_UNSUPPORTED。"""
+    """legacy skills.roots 必须被严格拒绝（fail-fast）。"""
 
-    mgr = _mk_manager(
-        tmp_path,
-        skills={
-            "roots": ["./skills"],
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
-            "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
-        },
-    )
-    issues = mgr.preflight()
-    _assert_has_issue(issues, code="SKILL_CONFIG_LEGACY_ROOTS_UNSUPPORTED", path="skills.roots")
+    with pytest.raises(Exception):
+        _build_skills_config(
+            {
+                "roots": ["./skills"],
+                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
+            }
+        )
 
 
 def test_preflight_legacy_skills_mode_is_error(tmp_path: Path) -> None:
-    """legacy skills.mode != explicit → SKILL_CONFIG_LEGACY_MODE_UNSUPPORTED。"""
+    """legacy skills.mode 必须被严格拒绝（fail-fast）。"""
 
-    mgr = _mk_manager(
-        tmp_path,
-        skills={
-            "mode": "auto",
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
-            "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
-        },
-    )
-    issues = mgr.preflight()
-    _assert_has_issue(issues, code="SKILL_CONFIG_LEGACY_MODE_UNSUPPORTED", path="skills.mode")
+    with pytest.raises(Exception):
+        _build_skills_config(
+            {
+                "mode": "auto",
+                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
+            }
+        )
 
 
 def test_preflight_unknown_top_level_key_is_error(tmp_path: Path) -> None:
-    """skills 顶层未知 key → SKILL_CONFIG_UNKNOWN_TOP_LEVEL_KEY。"""
+    """skills 顶层未知 key 必须被严格拒绝（fail-fast）。"""
 
-    mgr = _mk_manager(
-        tmp_path,
-        skills={
-            "soruces": [],  # typo
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
-            "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
-        },
-    )
-    issues = mgr.preflight()
-    _assert_has_issue(issues, code="SKILL_CONFIG_UNKNOWN_TOP_LEVEL_KEY", path="skills.soruces")
+    with pytest.raises(Exception):
+        _build_skills_config(
+            {
+                "soruces": [],  # typo
+                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
+            }
+        )
 
 
 def test_preflight_unknown_space_key_is_error(tmp_path: Path) -> None:
-    """space 未知 key → SKILL_CONFIG_UNKNOWN_NESTED_KEY。"""
+    """space 未知 key 必须被严格拒绝（fail-fast）。"""
 
-    mgr = _mk_manager(
-        tmp_path,
-        skills={
-            "spaces": [
-                {
-                    "id": "space-eng",
-                    "account": "alice",
-                    "domain": "engineering",
-                    "sources": ["src-fs"],
-                    "accout": "typo",  # extra
-                }
-            ],
-            "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
-        },
-    )
-    issues = mgr.preflight()
-    _assert_has_issue(issues, code="SKILL_CONFIG_UNKNOWN_NESTED_KEY", path="skills.spaces[0].accout")
+    with pytest.raises(Exception):
+        _build_skills_config(
+            {
+                "spaces": [
+                    {
+                        "id": "space-eng",
+                        "account": "alice",
+                        "domain": "engineering",
+                        "sources": ["src-fs"],
+                        "accout": "typo",  # extra
+                    }
+                ],
+                "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
+            }
+        )
 
 
 def test_preflight_space_references_unknown_source_id(tmp_path: Path) -> None:
@@ -259,44 +251,30 @@ def test_preflight_pgsql_missing_schema_and_table(tmp_path: Path) -> None:
 
 
 def test_preflight_guard_scan_semantics_unchanged(tmp_path: Path) -> None:
-    """护栏：新增 preflight 不应改变 scan 的既有容错语义。"""
+    """护栏：非法配置必须在加载阶段 fail-fast（不再允许“尽力而为”的隐式容错）。"""
 
-    fs_root = tmp_path / "skills"
-    _write_fs_skill(fs_root, name="python_testing", description="pytest patterns")
-
-    mgr = _mk_manager(
-        tmp_path,
-        skills={
-            "soruces": [],  # unknown top-level key（preflight error），但 scan 应保持尽力而为
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
-            "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
-        },
-    )
-
-    # preflight 报错不应影响 scan（scan 不应隐式调用 preflight）
-    issues = mgr.preflight()
-    assert _find_issues(issues, code="SKILL_CONFIG_UNKNOWN_TOP_LEVEL_KEY")
-
-    report = mgr.scan()
-    assert report.stats["skills_total"] == 1
-    assert report.skills[0].skill_name == "python_testing"
+    with pytest.raises(Exception):
+        _build_skills_config(
+            {
+                "soruces": [],  # typo
+                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
+            }
+        )
 
 
 def test_preflight_versioning_and_strictness_unknown_keys_are_warnings(tmp_path: Path) -> None:
-    """versioning/strictness 未知字段 → 只产生 warning（不得导致 preflight 失败）。"""
+    """versioning/strictness 未知字段必须被严格拒绝（fail-fast）。"""
 
-    mgr = _mk_manager(
-        tmp_path,
-        skills={
-            "versioning": {"enabled": False, "strategy": "TODO", "rollout": {"pct": 10}},
-            "strictness": {"unknown_mention": "error", "extra_flag": True},
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
-            "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
-        },
-    )
-    issues = mgr.preflight()
-    assert issues, "expected warnings for versioning/strictness extras"
-    assert all(getattr(it, "details", {}).get("level") == "warning" for it in issues)
+    with pytest.raises(Exception):
+        _build_skills_config(
+            {
+                "versioning": {"enabled": False, "strategy": "TODO", "rollout": {"pct": 10}},
+                "strictness": {"unknown_mention": "error", "extra_flag": True},
+                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
+            }
+        )
 
 
 def test_preflight_in_memory_missing_namespace(tmp_path: Path) -> None:
@@ -314,54 +292,56 @@ def test_preflight_in_memory_missing_namespace(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "scan_value, expected_code, expected_path",
+    "scan_value",
     [
-        ("always", "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan"),
-        ({"unknown_key": 1}, "SKILL_CONFIG_UNKNOWN_SCAN_OPTION", "skills.scan.unknown_key"),
-        ({"refresh_policy": "sometimes"}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.refresh_policy"),
-        ({"refresh_policy": 1}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.refresh_policy"),
-        ({"ttl_sec": "300"}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.ttl_sec"),
-        ({"ttl_sec": 0}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.ttl_sec"),
-        ({"max_frontmatter_bytes": "65536"}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.max_frontmatter_bytes"),
-        ({"max_frontmatter_bytes": 0}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.max_frontmatter_bytes"),
-        ({"max_depth": "deep"}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.max_depth"),
-        ({"max_depth": -1}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.max_depth"),
-        ({"max_dirs_per_root": "10"}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.max_dirs_per_root"),
-        ({"max_dirs_per_root": -1}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.max_dirs_per_root"),
-        ({"ignore_dot_entries": "true"}, "SKILL_CONFIG_INVALID_SCAN_OPTION", "skills.scan.ignore_dot_entries"),
+        "always",
+        {"unknown_key": 1},
+        {"refresh_policy": "sometimes"},
+        {"refresh_policy": 1},
+        {"ttl_sec": "300"},
+        {"ttl_sec": 0},
+        {"max_frontmatter_bytes": "65536"},
+        {"max_frontmatter_bytes": 0},
+        {"max_depth": "deep"},
+        {"max_depth": -1},
+        {"max_dirs_per_root": "10"},
+        {"max_dirs_per_root": -1},
+        {"ignore_dot_entries": "true"},
     ],
 )
-def test_preflight_skills_scan_validation(tmp_path: Path, scan_value: Any, expected_code: str, expected_path: str) -> None:
-    """skills.scan：未知字段/类型/范围错误 → SKILL_CONFIG_*_SCAN_OPTION。"""
+def test_skills_scan_config_invalid_fails_fast(tmp_path: Path, scan_value: Any) -> None:
+    """skills.scan：未知字段/类型/范围错误必须 fail-fast（由 schema 负责拒绝）。"""
 
-    mgr = _mk_manager(
-        tmp_path,
-        skills={
-            "scan": scan_value,
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
-            "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
-        },
-    )
-    issues = mgr.preflight()
-    _assert_has_issue(issues, code=expected_code, path=expected_path)
+    with pytest.raises(Exception):
+        _build_skills_config(
+            {
+                "scan": scan_value,
+                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
+            }
+        )
 
 
-def test_runtime_skills_scan_invalid_ints_do_not_raise_value_error(tmp_path: Path) -> None:
-    """runtime：非法 scan int 值不应在构造期触发 ValueError（应回退默认值）。"""
+def test_skills_scan_config_valid_is_applied_to_manager(tmp_path: Path) -> None:
+    """runtime：显式 skills.scan 配置必须确定性生效。"""
 
     mgr = _mk_manager(
         tmp_path,
         skills={
             "scan": {
-                "max_depth": "deep",
-                "max_dirs_per_root": "a-lot",
-                "max_frontmatter_bytes": "huge",
+                "max_depth": 1,
+                "max_dirs_per_root": 2,
+                "max_frontmatter_bytes": 4096,
+                "ignore_dot_entries": False,
+                "refresh_policy": "ttl",
+                "ttl_sec": 10,
             },
             "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
         },
     )
 
-    assert mgr._scan_options["max_depth"] == 99
-    assert mgr._scan_options["max_dirs_per_root"] == 100000
-    assert mgr._scan_options["max_frontmatter_bytes"] == 65536
+    assert mgr._scan_options["max_depth"] == 1
+    assert mgr._scan_options["max_dirs_per_root"] == 2
+    assert mgr._scan_options["max_frontmatter_bytes"] == 4096
+    assert mgr._scan_options["ignore_dot_entries"] is False

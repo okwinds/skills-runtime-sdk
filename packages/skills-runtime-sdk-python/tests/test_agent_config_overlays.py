@@ -40,7 +40,7 @@ def test_agent_config_paths_are_overlays_on_default(tmp_path: Path) -> None:
     agent = Agent(backend=backend, workspace_root=tmp_path, config_paths=[overlay])
     result = agent.run("hi", initial_history=[{"role": "user", "content": "prev"}])
 
-    events = list(JsonlWal(Path(result.events_path)).iter_events())
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
     started = next(e for e in events if e.type == "run_started")
     models = started.payload["config_summary"]["models"]
     assert models["planner"] == "planner-override"

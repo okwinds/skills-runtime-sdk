@@ -23,13 +23,13 @@ class ChildResult:
     - summary：子 agent 的最终输出（作为主 agent 的上下文摘要注入）。
     - status：completed/failed/cancelled（透传 RunResult.status）。
     - artifacts：子 agent 产物路径列表（Phase 2 可能为空）。
-    - events_path：子 agent 的 WAL 路径（用于审计/调试；可能为空字符串）。
+    - wal_locator：子 agent 的 WAL 定位符（用于审计/调试；可能为空字符串）。
     """
 
     summary: str
     status: str
     artifacts: List[str]
-    events_path: str
+    wal_locator: str
 
 
 class Coordinator:
@@ -88,7 +88,7 @@ class Coordinator:
         - child_index：子 agent 下标（默认 1，即 `agents[1]`）。
 
         返回：
-        - ChildResult：包含 summary/status/artifacts/events_path。
+        - ChildResult：包含 summary/status/artifacts/wal_locator。
 
         异常：
         - ValueError：child_index 越界。
@@ -102,7 +102,7 @@ class Coordinator:
             summary=str(r.final_output or ""),
             status=str(r.status or ""),
             artifacts=list(r.artifacts or []),
-            events_path=str(r.events_path or ""),
+            wal_locator=str(r.wal_locator or ""),
         )
 
     def run_with_child(
@@ -132,7 +132,7 @@ class Coordinator:
             "[ChildAgent Summary]\n"
             f"child_index: {child_index}\n"
             f"status: {child.status}\n"
-            f"events_path: {child.events_path}\n"
+            f"wal_locator: {child.wal_locator}\n"
             f"summary: {child.summary}"
         )
         history: List[dict] = []
@@ -140,4 +140,3 @@ class Coordinator:
             history.extend(primary_initial_history)
         history.append({"role": "assistant", "content": injected_summary})
         return self._agents[0].run(task, initial_history=history)
-

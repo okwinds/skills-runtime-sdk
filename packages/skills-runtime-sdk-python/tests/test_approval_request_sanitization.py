@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 from agent_sdk.core.agent import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
 from agent_sdk.tools.protocol import ToolCall, ToolSpec
 
@@ -15,14 +16,8 @@ class _Backend:
         self._call = tool_call
         self._count = 0
 
-    async def stream_chat(  # type: ignore[override]
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:  # type: ignore[override]
+        _ = request
         # 第一次请求：要求调用 tool
         if self._count == 0:
             self._count += 1

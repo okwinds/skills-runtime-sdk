@@ -7,6 +7,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from agent_sdk import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.state.fork import fork_run
 from agent_sdk.tools.protocol import ToolCall
 
@@ -17,14 +18,8 @@ class _AssertHasToolMessageBackend:
     def __init__(self, *, expected_tool_call_id: str) -> None:
         self._expected_tool_call_id = expected_tool_call_id
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Any]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        messages = request.messages
         found = False
         for m in messages:
             if m.get("role") == "tool" and m.get("tool_call_id") == self._expected_tool_call_id:
@@ -77,4 +72,3 @@ def test_fork_run_then_replay_resume(tmp_path: Path) -> None:
     r = Agent(model="fake-model", backend=backend2, workspace_root=tmp_path, config_paths=[overlay]).run("t2", run_id=dst_run_id)
     assert r.status == "completed"
     assert r.final_output == "ok"
-

@@ -21,8 +21,8 @@ class _AlwaysApprove(ApprovalProvider):
         return ApprovalDecision.APPROVED
 
 
-def _get_tool_finished_result(*, events_path: Path, tool: str) -> dict:
-    for e in JsonlWal(events_path).iter_events():
+def _get_tool_finished_result(*, wal_path: Path, tool: str) -> dict:
+    for e in JsonlWal(wal_path).iter_events():
         if e.type != "tool_call_finished":
             continue
         payload = e.payload or {}
@@ -58,7 +58,7 @@ def test_agent_exec_sessions_injection_allows_exec_command(tmp_path: Path) -> No
     r = agent.run("run exec_command")
     assert r.status == "completed"
 
-    result = _get_tool_finished_result(events_path=Path(r.events_path), tool="exec_command")
+    result = _get_tool_finished_result(wal_path=Path(r.wal_locator), tool="exec_command")
     assert result.get("ok") is True
 
 
@@ -94,7 +94,7 @@ def test_agent_collab_manager_injection_allows_spawn_and_wait(tmp_path: Path) ->
     r1 = agent1.run("spawn")
     assert r1.status == "completed"
 
-    spawn_result = _get_tool_finished_result(events_path=Path(r1.events_path), tool="spawn_agent")
+    spawn_result = _get_tool_finished_result(wal_path=Path(r1.wal_locator), tool="spawn_agent")
     assert spawn_result.get("ok") is True
     child_id: Optional[str] = None
     data = spawn_result.get("data") or {}
@@ -125,8 +125,7 @@ def test_agent_collab_manager_injection_allows_spawn_and_wait(tmp_path: Path) ->
     r2 = agent2.run("wait")
     assert r2.status == "completed"
 
-    wait_result = _get_tool_finished_result(events_path=Path(r2.events_path), tool="wait")
+    wait_result = _get_tool_finished_result(wal_path=Path(r2.wal_locator), tool="wait")
     assert wait_result.get("ok") is True
     results = (wait_result.get("data") or {}).get("results")  # type: ignore[union-attr]
     assert isinstance(results, list) and results
-

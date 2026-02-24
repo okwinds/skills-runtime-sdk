@@ -8,6 +8,7 @@ import pytest
 
 from agent_sdk.core.executor import Executor
 from agent_sdk.llm.chat_sse import ChatStreamEvent
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.tools.protocol import ToolCall, ToolSpec
 from agent_sdk.tools.builtin.shell_exec import shell_exec
 from agent_sdk.tools.registry import ToolExecutionContext
@@ -161,14 +162,8 @@ def test_agent_cancelled_during_shell_exec_emits_run_cancelled(tmp_path: Path, m
     monkeypatch.chdir(tmp_path)
 
     class _Backend:
-        async def stream_chat(  # type: ignore[override]
-            self,
-            *,
-            model: str,
-            messages: list[dict[str, Any]],
-            tools: list[ToolSpec] | None = None,
-            temperature: float | None = None,
-        ) -> AsyncIterator[ChatStreamEvent]:
+        async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:  # type: ignore[override]
+            _ = request
             yield ChatStreamEvent(
                 type="tool_calls",
                 tool_calls=[

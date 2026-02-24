@@ -17,7 +17,7 @@ def test_sandbox_profile_dev_expands_to_none_policy() -> None:
     assert cfg.sandbox.profile == "dev"
     assert cfg.sandbox.default_policy == "none"
     assert cfg.sandbox.os.mode == "auto"
-    assert cfg.sandbox.os.bubblewrap.unshare_net is False
+    assert cfg.sandbox.os.bubblewrap.unshare_net is True
 
 
 def test_sandbox_profile_balanced_expands_to_restricted_policy() -> None:
@@ -54,7 +54,8 @@ def test_sandbox_profile_is_macro_and_overrides_lower_fields() -> None:
     assert cfg.sandbox.os.bubblewrap.unshare_net is True
 
 
-def test_sandbox_unknown_profile_is_noop_for_compat() -> None:
-    cfg = load_config_dicts([_base_cfg() | {"sandbox": {"profile": "???unknown", "default_policy": "restricted"}}])
-    assert cfg.sandbox.default_policy == "restricted"
+def test_sandbox_unknown_profile_fails_fast() -> None:
+    import pytest
 
+    with pytest.raises(ValueError):
+        load_config_dicts([_base_cfg() | {"sandbox": {"profile": "???unknown", "default_policy": "restricted"}}])

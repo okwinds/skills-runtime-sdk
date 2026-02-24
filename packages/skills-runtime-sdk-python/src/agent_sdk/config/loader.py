@@ -9,17 +9,17 @@
 
 设计目标（M1）：
 - 支持加载多个 YAML，并按顺序做深度合并（后者覆盖前者）。
-- 使用 pydantic 做 schema 校验；未知字段允许保留（避免默认配置新增字段导致加载失败）。
+- 使用 pydantic 做 schema 校验；默认拒绝未知字段（避免拼写错误与误配置被静默吞掉）。
 """
 
 from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional
+from typing import Any, Dict, Iterable, List, Literal, Mapping, MutableMapping, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 
 def _deep_merge(base: MutableMapping[str, Any], overlay: Mapping[str, Any]) -> MutableMapping[str, Any]:
@@ -47,20 +47,19 @@ def _deep_merge(base: MutableMapping[str, Any], overlay: Mapping[str, Any]) -> M
 class AgentSdkLlmConfig(BaseModel):
     """LLM 连接配置（最小集合）。"""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     class Retry(BaseModel):
         """
         LLM 重试/退避策略（生产级可控）。
 
         说明：
-        - `max_retries` 为可选覆盖：未显式配置时回退到根字段 `llm.max_retries`（兼容旧配置）。
         - base/cap/jitter 只影响“无 Retry-After 头”时的指数退避计算。
         """
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
-        max_retries: Optional[int] = Field(default=None, ge=0)
+        max_retries: int = Field(default=3, ge=0)
         base_delay_sec: float = Field(default=0.5, ge=0.0)
         cap_delay_sec: float = Field(default=8.0, ge=0.0)
         jitter_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
@@ -68,14 +67,13 @@ class AgentSdkLlmConfig(BaseModel):
     base_url: str
     api_key_env: str
     timeout_sec: int = Field(default=60, ge=1)
-    max_retries: int = Field(default=3, ge=0)
     retry: Retry = Field(default_factory=Retry)
 
 
 class AgentSdkModelsConfig(BaseModel):
     """模型选择（planner/executor）。"""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     planner: str
     executor: str
@@ -95,45 +93,42 @@ class AgentSdkSandboxConfig(BaseModel):
     - 本 SDK 不支持 Windows（配置可写，但执行不会进入 Windows 分支）。
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     class Os(BaseModel):
         """平台 sandbox backend 选择与参数。"""
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
         class Seatbelt(BaseModel):
             """macOS seatbelt（sandbox-exec）配置。"""
 
-            model_config = ConfigDict(extra="allow")
+            model_config = ConfigDict(extra="forbid")
 
             profile: str = Field(default="(version 1) (allow default)")
 
         class Bubblewrap(BaseModel):
             """Linux bubblewrap（bwrap）配置。"""
 
-            model_config = ConfigDict(extra="allow")
+            model_config = ConfigDict(extra="forbid")
 
             bwrap_path: str = Field(default="bwrap")
             unshare_net: bool = True
 
-        mode: str = Field(default="auto")  # auto|none|seatbelt|bubblewrap
+        mode: Literal["auto", "none", "seatbelt", "bubblewrap"] = Field(default="auto")
         seatbelt: Seatbelt = Field(default_factory=Seatbelt)
         bubblewrap: Bubblewrap = Field(default_factory=Bubblewrap)
 
-    default_policy: str = Field(default="none")  # none|restricted
-    # 高层 profile（dev/balanced/prod）：用于“分阶段收紧”的可配置入口。
-    # 说明：
-    # - 当 profile 为 dev/balanced/prod 时，loader 会在 load 阶段把它展开为具体字段（default_policy/os.*）。
-    # - 当 profile 为 custom 或为空时：保持兼容，完全由 default_policy/os.* 决定行为。
-    profile: str = Field(default="custom")  # custom|dev|balanced|prod
+    default_policy: Literal["none", "restricted"] = Field(default="none")
+    # 高层 profile（dev/balanced/prod）：用于“分阶段收紧”的可配置入口（必须可回归）。
+    profile: Literal["dev", "balanced", "prod"] = Field(default="dev")
     os: Os = Field(default_factory=Os)
 
 
 class AgentSdkRunConfig(BaseModel):
     """运行参数（最小集合）。"""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     class ContextRecovery(BaseModel):
         """
@@ -144,12 +139,12 @@ class AgentSdkRunConfig(BaseModel):
         - 其它字段用于 `compact_first/ask_first` 的可控性与可回归性（内部生产）。
         """
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
-        mode: str = Field(default="fail_fast")  # compact_first|ask_first|fail_fast
+        mode: Literal["compact_first", "ask_first", "fail_fast"] = Field(default="fail_fast")
         max_compactions_per_run: int = Field(default=2, ge=0)
         # ask_first 无 human provider 时的确定性降级：compact_first 或 fail_fast
-        ask_first_fallback_mode: str = Field(default="compact_first")
+        ask_first_fallback_mode: Literal["compact_first", "fail_fast"] = Field(default="compact_first")
 
         # compaction turn 的输入裁剪参数（按字符数与消息数保守控制）
         compaction_history_max_chars: int = Field(default=24_000, ge=1_000)
@@ -162,7 +157,7 @@ class AgentSdkRunConfig(BaseModel):
     max_steps: int = Field(default=40, ge=1)
     max_wall_time_sec: Optional[int] = Field(default=None, ge=1)
     human_timeout_ms: Optional[int] = Field(default=None, ge=1)
-    resume_strategy: str = Field(default="summary")  # summary|replay
+    resume_strategy: Literal["summary", "replay"] = Field(default="summary")
     context_recovery: ContextRecovery = Field(default_factory=ContextRecovery)
 
 
@@ -179,9 +174,9 @@ class AgentSdkSafetyConfig(BaseModel):
     - `approval_timeout_ms` 用于限制“等待人类审批”的最长时间，超时按 denied 处理。
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
-    mode: str = Field(default="ask")  # allow|ask|deny
+    mode: Literal["allow", "ask", "deny"] = Field(default="ask")
     allowlist: List[str] = Field(default_factory=list)
     denylist: List[str] = Field(default_factory=list)
     tool_allowlist: List[str] = Field(default_factory=list)
@@ -190,9 +185,15 @@ class AgentSdkSafetyConfig(BaseModel):
 
 
 class AgentSdkSkillsConfig(BaseModel):
-    """Skills 配置（兼容旧配置 + V2 spaces/sources/injection）。"""
+    """Skills 配置（spaces/sources/injection 为唯一入口）。"""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
+
+    # 兼容字段（已弃用但仍允许出现在配置中）：
+    # - 历史 examples/ 文档使用 `skills.mode/max_auto` 来表达“只允许显式 mention 注入”。
+    # - 当前实现以 `skills.strictness` 为主；这里保留字段仅用于避免配置校验硬失败（fail-open）。
+    mode: str = Field(default="explicit")
+    max_auto: int = Field(default=0, ge=0)
 
     class Versioning(BaseModel):
         """
@@ -211,7 +212,7 @@ class AgentSdkSkillsConfig(BaseModel):
     class Strictness(BaseModel):
         """Skills 严格模式配置（V2 固定约束，可读性字段）。"""
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
         unknown_mention: str = Field(default="error")
         duplicate_name: str = Field(default="error")
@@ -220,7 +221,7 @@ class AgentSdkSkillsConfig(BaseModel):
     class Space(BaseModel):
         """Skills space 配置。"""
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
         id: str
         account: str
@@ -231,7 +232,7 @@ class AgentSdkSkillsConfig(BaseModel):
     class Source(BaseModel):
         """Skills source 配置。"""
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
         id: str
         type: str
@@ -240,35 +241,46 @@ class AgentSdkSkillsConfig(BaseModel):
     class Injection(BaseModel):
         """Skills 注入配置。"""
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
         max_bytes: Optional[int] = Field(default=None, ge=1)
 
     class Actions(BaseModel):
         """Skills actions（skill_exec）能力开关。"""
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
         enabled: bool = False
 
     class References(BaseModel):
         """Skills references（skill_ref_read）能力开关与读取限制。"""
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
         enabled: bool = False
         allow_assets: bool = False
         default_max_bytes: int = Field(default=64 * 1024, ge=1)
 
-    roots: List[str] = Field(default_factory=list)
-    mode: str = Field(default="explicit")  # explicit|auto
-    max_auto: int = Field(default=0, ge=0)
+    class Scan(BaseModel):
+        """Skills 扫描参数（必须可回归；拒绝隐式扩展字段）。"""
+
+        model_config = ConfigDict(extra="forbid")
+
+        ignore_dot_entries: StrictBool = True
+        max_depth: StrictInt = Field(default=99, ge=0)
+        max_dirs_per_root: StrictInt = Field(default=100000, ge=0)
+        max_frontmatter_bytes: StrictInt = Field(default=65536, ge=1)
+
+        refresh_policy: Literal["always", "ttl", "manual"] = Field(default="always")
+        ttl_sec: StrictInt = Field(default=300, ge=1)
+
     # skill 依赖的 env var 缺失时的处理策略（云端无人值守建议 fail_fast 或 skip_skill）。
-    env_var_missing_policy: str = Field(default="ask_human")  # fail_fast|ask_human|skip_skill
+    env_var_missing_policy: Literal["fail_fast", "ask_human", "skip_skill"] = Field(default="ask_human")
     versioning: Versioning = Field(default_factory=Versioning)
     strictness: Strictness = Field(default_factory=Strictness)
     spaces: List[Space] = Field(default_factory=list)
     sources: List[Source] = Field(default_factory=list)
+    scan: Scan = Field(default_factory=Scan)
     injection: Injection = Field(default_factory=Injection)
     actions: Actions = Field(default_factory=Actions)
     references: References = Field(default_factory=References)
@@ -277,7 +289,7 @@ class AgentSdkSkillsConfig(BaseModel):
 class AgentSdkPromptHistoryConfig(BaseModel):
     """对话历史滑窗配置。"""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     max_messages: int = Field(default=40, ge=1)
     max_chars: int = Field(default=120_000, ge=1)
@@ -286,7 +298,7 @@ class AgentSdkPromptHistoryConfig(BaseModel):
 class AgentSdkPromptConfig(BaseModel):
     """Prompt 配置（模板来源 + 注入开关）。"""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     template: str = Field(default="default")
     system_text: Optional[str] = None
@@ -301,7 +313,7 @@ class AgentSdkPromptConfig(BaseModel):
 class AgentSdkConfig(BaseModel):
     """SDK 配置根对象（M1 最小字段 + 允许扩展）。"""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     config_version: int = Field(default=1, ge=1)
     run: AgentSdkRunConfig
@@ -355,20 +367,18 @@ def _apply_sandbox_profile_overrides(merged: Dict[str, Any]) -> None:
     sandbox = merged.get("sandbox")
     if not isinstance(sandbox, dict):
         return
-    raw = sandbox.get("profile")
-    if raw is None:
-        return
+    raw = sandbox.get("profile", "dev")
     profile = str(raw or "").strip().lower()
-    if not profile or profile == "custom":
-        return
+    if not profile:
+        raise ValueError("sandbox.profile must be one of: dev|balanced|prod")
 
     # 约定：三档 profile 的目标是从“可跑通”→“平衡”→“更偏生产硬化”，并提供可回归的默认值。
     # 注意：seatbelt/bwrap 的细节策略仍建议通过 overlay 精细化；profile 只提供可复用的基线。
     presets: Dict[str, Dict[str, Any]] = {
-        # dev：优先不打断（仍保留 os.mode 配置，便于显式 restricted 时可用）
+        # dev：优先可用性（与默认配置保持一致，避免“默认更严格”造成误拦截）
         "dev": {
             "default_policy": "none",
-            "os": {"mode": "auto", "seatbelt": {"profile": "(version 1) (allow default)"}, "bubblewrap": {"unshare_net": False}},
+            "os": {"mode": "auto", "seatbelt": {"profile": "(version 1) (allow default)"}, "bubblewrap": {"unshare_net": True}},
         },
         # balanced：推荐默认（restricted + auto backend；Linux 默认隔离网络）
         "balanced": {
@@ -390,8 +400,7 @@ def _apply_sandbox_profile_overrides(merged: Dict[str, Any]) -> None:
 
     preset = presets.get(profile)
     if preset is None:
-        # 未知 profile：保持兼容，不做展开（避免默默改变行为）
-        return
+        raise ValueError(f"sandbox.profile must be one of: {sorted(presets.keys())}; got: {profile}")
 
     # profile 展开：覆盖到 sandbox 下（宏级别优先）
     _deep_merge(sandbox, preset)

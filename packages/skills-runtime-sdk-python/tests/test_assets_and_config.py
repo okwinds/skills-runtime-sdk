@@ -5,6 +5,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 from agent_sdk.core.agent import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.tools.protocol import ToolSpec
 
 
@@ -12,15 +13,8 @@ class _StubBackend:
     def __init__(self) -> None:
         self.last_messages: Optional[List[Dict[str, Any]]] = None
 
-    async def stream_chat(  # type: ignore[override]
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
-        self.last_messages = messages
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:  # type: ignore[override]
+        self.last_messages = request.messages
         yield ChatStreamEvent(type="text_delta", text="ok")
         yield ChatStreamEvent(type="completed", finish_reason="stop")
 

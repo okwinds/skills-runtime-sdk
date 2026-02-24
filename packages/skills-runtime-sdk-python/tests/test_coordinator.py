@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from agent_sdk import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from agent_sdk.llm.protocol import ChatRequest
 
 
 class _AssertAssistantHistoryContainsBackend:
@@ -20,14 +21,8 @@ class _AssertAssistantHistoryContainsBackend:
         self._expected = list(expected_substrings)
         self._response_text = response_text
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Any]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        messages = request.messages
         found = False
         for m in messages:
             if m.get("role") != "assistant":

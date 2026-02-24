@@ -58,19 +58,30 @@ def _new_summary() -> Dict[str, Any]:
     }
 
 
-def compute_run_metrics_summary(*, events_path: Path) -> Dict[str, Any]:
+def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
     """
     从 events.jsonl 计算 RunMetricsSummary（离线可重算）。
 
     参数：
-    - events_path：WAL 路径（`.skills_runtime_sdk/runs/<run_id>/events.jsonl`）
+    - wal_locator：WAL 定位符；仅支持本地文件路径（当为 `wal://...` 等非文件 locator 时返回 not_supported）
 
     返回：
     - dict：RunMetricsSummary（JSONable）
     """
 
     summary = _new_summary()
-    if not Path(events_path).exists():
+    loc = str(wal_locator or "").strip()
+    if not loc:
+        summary["errors"].append({"kind": "validation", "message": "wal_locator is empty"})
+        return summary
+
+    # 非文件 locator：明确 not_supported（不得静默产出错误统计）
+    if "://" in loc:
+        summary["errors"].append({"kind": "not_supported", "message": f"metrics only supports filesystem wal_locator, got: {loc}"})
+        return summary
+
+    events_path = Path(loc)
+    if not events_path.exists():
         summary["errors"].append({"kind": "not_found", "message": f"events file not found: {events_path}"})
         return summary
 
@@ -201,4 +212,3 @@ def compute_run_metrics_summary(*, events_path: Path) -> Dict[str, Any]:
             _add_invalid_wal(f"failed to parse timestamps: {exc}")
 
     return summary
-

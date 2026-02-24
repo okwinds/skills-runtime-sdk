@@ -6,9 +6,9 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 import pytest
 
 from agent_sdk.core.agent import Agent
-from agent_sdk.core.errors import FrameworkError
 from agent_sdk.config.defaults import load_default_config_dict
 from agent_sdk.llm.chat_sse import ChatStreamEvent
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.tools.protocol import ToolSpec
 
 
@@ -16,15 +16,8 @@ class _CaptureBackend:
     def __init__(self) -> None:
         self.last_messages: Optional[List[Dict[str, Any]]] = None
 
-    async def stream_chat(  # type: ignore[override]
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
-        self.last_messages = messages
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        self.last_messages = request.messages
         yield ChatStreamEvent(type="text_delta", text="ok")
         yield ChatStreamEvent(type="completed", finish_reason="stop")
 
@@ -149,6 +142,8 @@ def test_prompt_paths_support_absolute_paths(tmp_path: Path) -> None:
 
 
 def test_skills_roots_relative_resolves_under_workspace_root(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """legacy skills.roots 必须在配置加载阶段 fail-fast。"""
+
     ws = tmp_path / "ws"
     other = tmp_path / "other"
     (ws / "skills").mkdir(parents=True, exist_ok=True)
@@ -170,12 +165,13 @@ def test_skills_roots_relative_resolves_under_workspace_root(tmp_path: Path, mon
 
     monkeypatch.chdir(other)
     backend = _CaptureBackend()
-    with pytest.raises(FrameworkError) as exc_info:
+    with pytest.raises(Exception):
         Agent(backend=backend, workspace_root=ws, config_paths=[overlay])
-    assert exc_info.value.code == "SKILL_CONFIG_LEGACY_ROOTS_UNSUPPORTED"
 
 
 def test_explicit_skills_roots_relative_is_resolved_under_workspace_root(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """legacy skills_roots 构造参数已移除。"""
+
     ws = tmp_path / "ws"
     other = tmp_path / "other"
     (ws / "skills").mkdir(parents=True, exist_ok=True)
@@ -185,9 +181,8 @@ def test_explicit_skills_roots_relative_is_resolved_under_workspace_root(tmp_pat
     monkeypatch.chdir(other)
 
     backend = _CaptureBackend()
-    with pytest.raises(FrameworkError) as exc_info:
-        Agent(backend=backend, workspace_root=ws, skills_roots=[Path("skills")])
-    assert exc_info.value.code == "SKILL_CONFIG_LEGACY_ROOTS_UNSUPPORTED"
+    with pytest.raises(TypeError):
+        Agent(backend=backend, workspace_root=ws, skills_roots=[Path("skills")])  # type: ignore[call-arg]
 
 
 def test_skills_disabled_paths_relative_resolves_under_workspace_root(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

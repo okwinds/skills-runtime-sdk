@@ -12,11 +12,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator
 
 from agent_sdk import Agent
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.state.fork import fork_run
 from agent_sdk.tools.protocol import ToolCall
 
@@ -27,14 +28,8 @@ class _CheckHasToolMessageBackend:
     def __init__(self, *, expected_tool_call_id: str) -> None:
         self._expected_tool_call_id = expected_tool_call_id
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Any]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
+        messages = request.messages
         found = any(m.get("role") == "tool" and m.get("tool_call_id") == self._expected_tool_call_id for m in messages)
         if not found:
             raise AssertionError("expected tool message in replayed history")
@@ -117,4 +112,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

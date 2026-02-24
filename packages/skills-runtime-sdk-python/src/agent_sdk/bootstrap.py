@@ -23,33 +23,19 @@ from agent_sdk.config.defaults import load_default_config_dict
 from agent_sdk.config.loader import AgentSdkConfig, load_config_dicts
 
 
-def _get_env_prefer_new(*, new_key: str, old_key: str) -> Tuple[Optional[str], Optional[str]]:
-    """读取 env：新 key 优先，旧 key fallback。
-
-    约定：
-    - 当值为空串或仅空白时，视为“未设置”。
+def _get_env_nonempty(key: str) -> Optional[str]:
+    """
+    读取 env 并返回非空白字符串（否则视为未设置）。
 
     参数：
-    - new_key：新前缀 env key（例如 `SKILLS_RUNTIME_SDK_EXECUTOR_MODEL`）
-    - old_key：旧前缀 env key（例如 `AGENT_SDK_EXECUTOR_MODEL`）
-
-    返回：
-    - (value, hit_key)：若命中则返回值与命中的 key 名；否则返回 (None, None)。
+    - key：环境变量名
     """
 
-    v_new = os.environ.get(new_key)
-    if v_new is not None:
-        s = v_new.strip()
-        if s:
-            return s, new_key
-
-    v_old = os.environ.get(old_key)
-    if v_old is not None:
-        s = v_old.strip()
-        if s:
-            return s, old_key
-
-    return None, None
+    v = os.environ.get(key)
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
 
 
 def _split_paths(raw: str) -> list[str]:
@@ -128,7 +114,7 @@ def _load_dotenv(*, path: Path, override: bool) -> int:
 def load_dotenv_if_present(*, workspace_root: Path, override: bool = False) -> Optional[Path]:
     """
     约定加载：
-    1) 若设置 `SKILLS_RUNTIME_SDK_ENV_FILE`（新优先旧兼容），加载其指向的文件（相对路径相对 workspace_root）
+    1) 若设置 `SKILLS_RUNTIME_SDK_ENV_FILE`，加载其指向的文件（相对路径相对 workspace_root）
     2) 否则若 `<workspace_root>/.env` 存在，加载之
 
     参数：
@@ -137,9 +123,9 @@ def load_dotenv_if_present(*, workspace_root: Path, override: bool = False) -> O
     """
 
     ws = Path(workspace_root).resolve()
-    p, _hit = _get_env_prefer_new(new_key="SKILLS_RUNTIME_SDK_ENV_FILE", old_key="AGENT_SDK_ENV_FILE")
-    if p is not None:
-        env_path = Path(p).expanduser()
+    p = _get_env_nonempty("SKILLS_RUNTIME_SDK_ENV_FILE")
+    if p:
+        env_path = Path(str(p)).expanduser()
         if not env_path.is_absolute():
             env_path = (ws / env_path).resolve()
         if not env_path.exists():
@@ -156,11 +142,10 @@ def load_dotenv_if_present(*, workspace_root: Path, override: bool = False) -> O
 
 def _discover_default_overlay_path(*, workspace_root: Path) -> Optional[Path]:
     """
-    发现默认 overlay 文件路径（优先 `runtime.yaml`，兼容 `llm.yaml`）。
+    发现默认 overlay 文件路径（仅 `runtime.yaml`）。
 
     发现顺序：
     1) `<workspace_root>/config/runtime.yaml`
-    2) `<workspace_root>/config/llm.yaml`（legacy fallback）
 
     参数：
     - workspace_root：工作区根目录。
@@ -174,18 +159,14 @@ def _discover_default_overlay_path(*, workspace_root: Path) -> Optional[Path]:
     if runtime_yaml.exists():
         return runtime_yaml
 
-    legacy_llm_yaml = (ws / "config" / "llm.yaml").resolve()
-    if legacy_llm_yaml.exists():
-        return legacy_llm_yaml
-
     return None
 
 
 def discover_overlay_paths(*, workspace_root: Path) -> list[Path]:
     """
     overlay 路径发现规则（固定，顺序稳定）：
-    1) 默认 overlay：优先 `<workspace_root>/config/runtime.yaml`，兼容 `<workspace_root>/config/llm.yaml`
-    2) `SKILLS_RUNTIME_SDK_CONFIG_PATHS`（新优先旧兼容；逗号/分号分隔；作为显式 overlay）
+    1) 默认 overlay：`<workspace_root>/config/runtime.yaml`
+    2) `SKILLS_RUNTIME_SDK_CONFIG_PATHS`（逗号/分号分隔；作为显式 overlay）
     """
 
     ws = Path(workspace_root).resolve()
@@ -195,8 +176,7 @@ def discover_overlay_paths(*, workspace_root: Path) -> list[Path]:
     if default_overlay is not None:
         overlays.append(default_overlay)
 
-    raw, _hit = _get_env_prefer_new(new_key="SKILLS_RUNTIME_SDK_CONFIG_PATHS", old_key="AGENT_SDK_CONFIG_PATHS")
-    raw = raw or ""
+    raw = _get_env_nonempty("SKILLS_RUNTIME_SDK_CONFIG_PATHS") or ""
     for p in _split_paths(raw):
         pp = Path(p).expanduser()
         if not pp.is_absolute():
@@ -340,10 +320,10 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         planner_model = str(models["planner"])
         sources["models.planner"] = "session_settings:models.planner"
     else:
-        v, hit = _get_env_prefer_new(new_key="SKILLS_RUNTIME_SDK_PLANNER_MODEL", old_key="AGENT_SDK_PLANNER_MODEL")
-        if v is not None and hit is not None:
+        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_PLANNER_MODEL")
+        if v is not None:
             planner_model = str(v)
-            sources["models.planner"] = f"env:{hit}"
+            sources["models.planner"] = "env:SKILLS_RUNTIME_SDK_PLANNER_MODEL"
         else:
             planner_model = str(cfg.models.planner)
             sources["models.planner"] = f"yaml:{yaml_sources.get('models.planner','embedded_default')}#models.planner"
@@ -353,10 +333,10 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         executor_model = str(models["executor"])
         sources["models.executor"] = "session_settings:models.executor"
     else:
-        v, hit = _get_env_prefer_new(new_key="SKILLS_RUNTIME_SDK_EXECUTOR_MODEL", old_key="AGENT_SDK_EXECUTOR_MODEL")
-        if v is not None and hit is not None:
+        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_EXECUTOR_MODEL")
+        if v is not None:
             executor_model = str(v)
-            sources["models.executor"] = f"env:{hit}"
+            sources["models.executor"] = "env:SKILLS_RUNTIME_SDK_EXECUTOR_MODEL"
         else:
             executor_model = str(cfg.models.executor)
             sources["models.executor"] = f"yaml:{yaml_sources.get('models.executor','embedded_default')}#models.executor"
@@ -366,10 +346,10 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         base_url = str(llm["base_url"])
         sources["llm.base_url"] = "session_settings:llm.base_url"
     else:
-        v, hit = _get_env_prefer_new(new_key="SKILLS_RUNTIME_SDK_LLM_BASE_URL", old_key="AGENT_SDK_LLM_BASE_URL")
-        if v is not None and hit is not None:
+        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_LLM_BASE_URL")
+        if v is not None:
             base_url = str(v)
-            sources["llm.base_url"] = f"env:{hit}"
+            sources["llm.base_url"] = "env:SKILLS_RUNTIME_SDK_LLM_BASE_URL"
         else:
             base_url = str(cfg.llm.base_url)
             sources["llm.base_url"] = f"yaml:{yaml_sources.get('llm.base_url','embedded_default')}#llm.base_url"
@@ -379,10 +359,10 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         api_key_env = str(llm["api_key_env"])
         sources["llm.api_key_env"] = "session_settings:llm.api_key_env"
     else:
-        v, hit = _get_env_prefer_new(new_key="SKILLS_RUNTIME_SDK_LLM_API_KEY_ENV", old_key="AGENT_SDK_LLM_API_KEY_ENV")
-        if v is not None and hit is not None:
+        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_LLM_API_KEY_ENV")
+        if v is not None:
             api_key_env = str(v)
-            sources["llm.api_key_env"] = f"env:{hit}"
+            sources["llm.api_key_env"] = "env:SKILLS_RUNTIME_SDK_LLM_API_KEY_ENV"
         else:
             api_key_env = str(cfg.llm.api_key_env)
             sources["llm.api_key_env"] = f"yaml:{yaml_sources.get('llm.api_key_env','embedded_default')}#llm.api_key_env"
