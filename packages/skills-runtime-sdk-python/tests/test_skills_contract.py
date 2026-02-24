@@ -64,7 +64,7 @@ def _mk_manager(
     skills: dict[str, Any],
     in_memory_registry: dict[str, list[dict[str, Any]]] | None = None,
 ) -> SkillsManager:
-    """构建 SkillsManager（V2 配置驱动）。"""
+    """构建 SkillsManager（配置驱动）。"""
 
     return SkillsManager(
         workspace_root=tmp_path,
@@ -101,11 +101,11 @@ def _mk_manager(
         ("link [$python_testing](./skills/python_testing)", []),
     ],
 )
-def test_skills_v2_mention_conformance(
+def test_skills_mention_conformance(
     text: str,
     expected: list[tuple[str, str, str]],
 ) -> None:
-    """V2 mention 契约：自由文本中仅提取合法 `$[account:domain].skill_name`。"""
+    """mention 契约：自由文本中仅提取合法 `$[account:domain].skill_name`。"""
 
     mentions = extract_skill_mentions(text)
     got = [(m.account, m.domain, m.skill_name) for m in mentions]
@@ -127,7 +127,7 @@ def test_skills_v2_mention_conformance(
         "K-010",  # unknown structure
     ],
 )
-def test_skills_v2_unknown_and_space_errors(case_id: str, tmp_path: Path) -> None:
+def test_skills_unknown_and_space_errors(case_id: str, tmp_path: Path) -> None:
     """Unknown/未配置类错误：必须报框架错误且包含英文 code/message/details。"""
 
     fs_root = tmp_path / "skills"
@@ -267,7 +267,7 @@ def test_skills_v2_unknown_and_space_errors(case_id: str, tmp_path: Path) -> Non
         ]),
     ],
 )
-def test_skills_v2_duplicate_name_early_fail(
+def test_skills_duplicate_name_early_fail(
     case_id: str,
     payload_builder: Callable[[Path], list[tuple[str, str, str, dict[str, Any], list[str]]]],
     tmp_path: Path,
@@ -370,7 +370,7 @@ def test_skills_v2_duplicate_name_early_fail(
         (1, 2, "SKILL_BODY_TOO_LARGE"),
     ],
 )
-def test_skills_v2_lazy_load_and_max_bytes(
+def test_skills_lazy_load_and_max_bytes(
     tmp_path: Path,
     max_bytes: int | None,
     body_size: int,
@@ -427,7 +427,7 @@ def test_skills_v2_lazy_load_and_max_bytes(
         assert reads["count"] == 1
 
 
-def test_skills_v2_body_read_failed(tmp_path: Path) -> None:
+def test_skills_body_read_failed(tmp_path: Path) -> None:
     """正文读取失败必须返回 `SKILL_BODY_READ_FAILED`。"""
 
     def _boom() -> str:
@@ -459,7 +459,7 @@ def test_skills_v2_body_read_failed(tmp_path: Path) -> None:
     assert "locator" in exc_info.value.details
 
 
-def test_skills_v2_scan_report_shape_and_types(tmp_path: Path) -> None:
+def test_skills_scan_report_shape_and_types(tmp_path: Path) -> None:
     """ScanReport 结构必须包含 scan_id/stats/errors/warnings，并保持稳定字段类型。"""
 
     fs_root = tmp_path / "skills"

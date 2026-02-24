@@ -72,7 +72,7 @@ def test_readme_offline_minimal_example_runs(tmp_path: Path) -> None:
     """
     README 离线最小示例护栏：
     - 代码片段必须可执行（exit code=0）
-    - 输出必须包含 final_output 与 events_path 作为证据指针
+    - 输出必须包含 final_output 与 wal_locator 作为证据指针
     """
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -84,24 +84,22 @@ def test_readme_offline_minimal_example_runs(tmp_path: Path) -> None:
         p = _run_python_snippet(repo_root=repo_root, snippet=snippet, tmp_path=tmp_path / rel.replace(".", "_"))
         assert p.returncode == 0, (rel, p.stdout, p.stderr)
         assert "final_output=" in p.stdout, (rel, p.stdout, p.stderr)
-        assert "events_path=" in p.stdout, (rel, p.stdout, p.stderr)
+        assert "wal_locator=" in p.stdout, (rel, p.stdout, p.stderr)
 
 
-def test_docs_terms_events_path_locator_and_wal_locator_are_consistent() -> None:
+def test_docs_terms_wal_locator_term_is_consistent() -> None:
     """
     关键术语护栏（避免文档口径漂移）：
-    - Help API 文档必须说明 events_path 的 locator 语义，并提及 wal_locator
+    - Help API 文档必须说明 wal_locator 的 locator 语义
     - coding-agent 教学材料必须跟随上述口径
     """
 
     repo_root = Path(__file__).resolve().parents[1]
 
     help_cn = (repo_root / "help" / "03-sdk-python-api.cn.md").read_text(encoding="utf-8")
-    assert "events_path" in help_cn
     assert "locator" in help_cn
     assert "wal_locator" in help_cn
 
     cap = (repo_root / "docs_for_coding_agent" / "capability-inventory.md").read_text(encoding="utf-8")
-    assert "events_path" in cap
     assert "locator" in cap
     assert "wal_locator" in cap

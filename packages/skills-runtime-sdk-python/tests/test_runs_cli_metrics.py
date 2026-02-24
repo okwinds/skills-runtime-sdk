@@ -19,9 +19,9 @@ def _parse_last_json(stdout: str) -> Dict[str, Any]:
 def test_cli_runs_metrics_by_run_id_ok(tmp_path: Path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.chdir(tmp_path)
     run_id = "r1"
-    events_path = tmp_path / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl"
-    events_path.parent.mkdir(parents=True, exist_ok=True)
-    events_path.write_text(
+    events_jsonl_path = tmp_path / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl"
+    events_jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    events_jsonl_path.write_text(
         "\n".join(
             [
                 json.dumps({"type": "run_started", "timestamp": "2026-02-09T00:00:00Z", "run_id": run_id, "payload": {}}),
@@ -40,13 +40,13 @@ def test_cli_runs_metrics_by_run_id_ok(tmp_path: Path, monkeypatch, capsys) -> N
 
 
 def test_cli_runs_metrics_wal_locator_ok(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
-    events_path = tmp_path / "events.jsonl"
-    events_path.write_text(
+    events_jsonl_path = tmp_path / "events.jsonl"
+    events_jsonl_path.write_text(
         json.dumps({"type": "run_started", "timestamp": "2026-02-09T00:00:00Z", "run_id": "r1", "payload": {}})
         + "\n",
         encoding="utf-8",
     )
-    code = main(["runs", "metrics", "--workspace-root", str(tmp_path), "--wal-locator", str(events_path)])
+    code = main(["runs", "metrics", "--workspace-root", str(tmp_path), "--wal-locator", str(events_jsonl_path)])
     payload = _parse_last_json(capsys.readouterr().out)
     assert code == 0
     assert payload["run_id"] == "r1"

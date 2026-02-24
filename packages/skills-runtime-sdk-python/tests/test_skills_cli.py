@@ -45,8 +45,6 @@ def _clear_bootstrap_env(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     for k in [
         "SKILLS_RUNTIME_SDK_CONFIG_PATHS",
         "SKILLS_RUNTIME_SDK_ENV_FILE",
-        "AGENT_SDK_CONFIG_PATHS",
-        "AGENT_SDK_ENV_FILE",
     ]:
         monkeypatch.delenv(k, raising=False)
 
@@ -115,7 +113,7 @@ def test_cli_preflight_warning_only_exit_12(tmp_path: Path, capsys, monkeypatch)
         overlay,
         {
             "skills": {
-                "versioning": {"enabled": False, "unknown_key": 1},
+                "versioning": {"enabled": True, "strategy": "TODO"},
             }
         },
     )
@@ -129,6 +127,28 @@ def test_cli_preflight_warning_only_exit_12(tmp_path: Path, capsys, monkeypatch)
     assert obj["stats"]["errors_total"] == 0
     assert obj["stats"]["warnings_total"] >= 1
     assert obj["stats"]["issues_total"] == obj["stats"]["warnings_total"]
+
+
+def test_cli_preflight_unknown_versioning_key_is_error_exit_10(tmp_path: Path, capsys, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """skills.versioning 未知 key 必须被严格拒绝（fail-fast）。"""
+
+    overlay = tmp_path / "bad.yaml"
+    _write_yaml(
+        overlay,
+        {
+            "skills": {
+                "versioning": {"enabled": False, "unknown_key": 1},
+            }
+        },
+    )
+    _clear_bootstrap_env(monkeypatch)
+
+    code, obj, _out = _run_cli(
+        ["skills", "preflight", "--workspace-root", str(tmp_path), "--config", overlay.name],
+        capsys,
+    )
+    assert code == 10
+    assert obj["stats"]["errors_total"] >= 1
 
 
 def test_cli_preflight_error_exit_10(tmp_path: Path, capsys, monkeypatch) -> None:  # type: ignore[no-untyped-def]

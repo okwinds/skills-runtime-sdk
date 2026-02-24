@@ -55,7 +55,7 @@ def test_coordinator_run_with_child_injects_summary(tmp_path: Path) -> None:
 
     # primary：断言 messages 中包含 child summary，并返回最终输出
     primary_backend = _AssertAssistantHistoryContainsBackend(
-        expected_substrings=["[ChildAgent Summary]", "summary: child:plan-v1"],
+        expected_substrings=["[ChildAgent Summary]", "wal_locator:", "summary: child:plan-v1"],
         response_text="primary:done",
     )
     primary = Agent(model="fake-model", backend=primary_backend, workspace_root=tmp_path)

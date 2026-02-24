@@ -269,15 +269,15 @@ def test_env_store_persists_across_runs_when_dict_is_shared(tmp_path: Path, monk
     overlay = _write_skills_overlay(tmp_path, skills_root=skills_root)
 
     env_store: Dict[str, str] = {}
-    human = _StubHumanIO({"PERSIST": "v1"})
+    human = _StubHumanIO({"PERSIST": "persist_1"})
     backend = _StubBackend()
     agent = Agent(backend=backend, workspace_root=tmp_path, config_paths=[overlay], human_io=human, env_vars=env_store)
 
     list(agent.run_stream("use $[demo:local].dep-skill"))
-    assert env_store.get("PERSIST") == "v1"
+    assert env_store.get("PERSIST") == "persist_1"
 
     # 第二次不应再 prompt（使用同一个 env_store）
-    human2 = _StubHumanIO({"PERSIST": "v2"})
+    human2 = _StubHumanIO({"PERSIST": "persist_2"})
     agent2 = Agent(backend=backend, workspace_root=tmp_path, config_paths=[overlay], human_io=human2, env_vars=env_store)
     list(agent2.run_stream("use $[demo:local].dep-skill"))
     assert human2.requests == []

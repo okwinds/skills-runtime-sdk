@@ -14,7 +14,7 @@ from agent_sdk.skills.manager import SkillsManager
 pytestmark = pytest.mark.integration
 
 
-run_integration = os.environ.get("SKILLS_RUNTIME_SDK_RUN_INTEGRATION") or os.environ.get("AGENT_SDK_RUN_INTEGRATION")
+run_integration = os.environ.get("SKILLS_RUNTIME_SDK_RUN_INTEGRATION")
 if run_integration != "1":
     pytest.skip(
         "integration tests disabled (set SKILLS_RUNTIME_SDK_RUN_INTEGRATION=1)",

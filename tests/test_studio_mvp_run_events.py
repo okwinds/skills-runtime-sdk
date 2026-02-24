@@ -55,7 +55,7 @@ def test_create_run_always_emits_terminal_event_on_worker_exception(tmp_path: Pa
     studio_app = _reload_studio_api_app()
 
     storage = getattr(studio_app, "_STORAGE")
-    session = storage.create_session(title=None, skills_roots=None)
+    session = storage.create_session(title=None, filesystem_sources=None)
 
     create_run_fn = getattr(studio_app, "create_run")
     create_run_req = getattr(studio_app, "CreateRunReq")
@@ -64,8 +64,8 @@ def test_create_run_always_emits_terminal_event_on_worker_exception(tmp_path: Pa
     run_id = str(out.get("run_id") or "")
     assert run_id.startswith("run_")
 
-    events_path = (tmp_path / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
-    assert events_path.exists(), "events.jsonl 必须在 create_run 返回 run_id 前存在（允许为空文件）"
+    events_jsonl_path = (tmp_path / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
+    assert events_jsonl_path.exists(), "events.jsonl 必须在 create_run 返回 run_id 前存在（允许为空文件）"
 
     class _DummyRequest:
         client = ("test", 0)
@@ -75,7 +75,7 @@ def test_create_run_always_emits_terminal_event_on_worker_exception(tmp_path: Pa
 
     async def _read_first_sse_chunk() -> bytes:
         stream_jsonl_as_sse = getattr(studio_app, "stream_jsonl_as_sse")
-        agen = stream_jsonl_as_sse(request=_DummyRequest(), jsonl_path=events_path, poll_interval_sec=0.01)
+        agen = stream_jsonl_as_sse(request=_DummyRequest(), jsonl_path=events_jsonl_path, poll_interval_sec=0.01)
         async for chunk in agen:
             return chunk
         return b""
@@ -95,4 +95,4 @@ def test_create_run_always_emits_terminal_event_on_worker_exception(tmp_path: Pa
     assert isinstance(payload, dict)
     assert isinstance(payload.get("error_kind"), str) and payload["error_kind"]
     assert isinstance(payload.get("message"), str) and payload["message"]
-    assert payload.get("events_path") == str(events_path)
+    assert payload.get("wal_locator") == str(events_jsonl_path)

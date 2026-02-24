@@ -23,7 +23,7 @@ def _write_skill(dir_path: Path, *, name: str, description: str, body: str = "bo
 
 
 def _manager(tmp_path: Path, root: Path) -> SkillsManager:
-    """创建 V2 manager。"""
+    """创建 SkillsManager fixture。"""
 
     return SkillsManager(
         workspace_root=tmp_path,

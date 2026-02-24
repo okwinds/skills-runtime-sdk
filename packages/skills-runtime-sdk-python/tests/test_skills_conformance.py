@@ -20,8 +20,8 @@ def _write_skill(dir_path: Path, *, name: str, description: str, body: str = "bo
     return p
 
 
-def _v2_manager(tmp_path: Path, skills_root: Path) -> SkillsManager:
-    """创建 V2 配置的 SkillsManager。"""
+def _manager(tmp_path: Path, skills_root: Path) -> SkillsManager:
+    """创建 SkillsManager fixture。"""
 
     return SkillsManager(
         workspace_root=tmp_path,
@@ -63,7 +63,7 @@ def test_extract_skill_mentions_cases(
     text: str,
     expected: list[tuple[str, str, str]],
 ) -> None:
-    """V2 mention 解析回归。"""
+    """mention 解析回归。"""
 
     mentions = extract_skill_mentions(text)
     got = [(m.account, m.domain, m.skill_name) for m in mentions]
@@ -71,12 +71,12 @@ def test_extract_skill_mentions_cases(
 
 
 def test_skills_selection_respects_mention_order(tmp_path: Path) -> None:
-    """V2 解析输出顺序按 mention 顺序。"""
+    """解析输出顺序按 mention 顺序。"""
 
     root = tmp_path / "skills_root"
     _write_skill(root / "a", name="python_testing", description="a")
     _write_skill(root / "b", name="redis_cache", description="b")
-    mgr = _v2_manager(tmp_path, root)
+    mgr = _manager(tmp_path, root)
     mgr.scan()
 
     selected = mgr.resolve_mentions("$[alice:engineering].redis_cache then $[alice:engineering].python_testing")
@@ -88,7 +88,7 @@ def test_injected_skill_envelope_matches_minimal_shape(tmp_path: Path) -> None:
 
     root = tmp_path / "skills_root"
     _write_skill(root / "a", name="python_testing", description="a", body="hello\n")
-    mgr = _v2_manager(tmp_path, root)
+    mgr = _manager(tmp_path, root)
     skills = mgr.scan()
     assert skills
 

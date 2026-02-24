@@ -345,3 +345,10 @@ def test_skills_scan_config_valid_is_applied_to_manager(tmp_path: Path) -> None:
     assert mgr._scan_options["max_dirs_per_root"] == 2
     assert mgr._scan_options["max_frontmatter_bytes"] == 4096
     assert mgr._scan_options["ignore_dot_entries"] is False
+
+
+def test_skills_manager_roots_constructor_argument_is_rejected(tmp_path: Path) -> None:
+    """SkillsManager 不得再接受 roots 兼容构造参数。"""
+
+    with pytest.raises(TypeError):
+        SkillsManager(workspace_root=tmp_path, roots=[tmp_path])  # type: ignore[call-arg]

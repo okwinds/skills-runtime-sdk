@@ -56,6 +56,18 @@ def test_load_dotenv_if_present_uses_skills_runtime_sdk_env_file_relative_to_wor
     assert os.environ.get("X_BOOT") == "2"
 
 
+def test_load_dotenv_if_present_missing_skills_runtime_sdk_env_file_fails_fast(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """env file 指定了但不存在时必须 fail-fast（不得静默忽略）。"""
+
+    ws = tmp_path / "ws"
+    ws.mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("SKILLS_RUNTIME_SDK_ENV_FILE", "config/missing.env")
+    with pytest.raises(ValueError):
+        __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+
+
 def test_load_dotenv_if_present_ignores_legacy_env_file_key(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """仅设置 legacy env key 时不得生效（必须忽略）。"""
 
@@ -157,6 +169,22 @@ def test_discover_overlay_paths_does_not_discover_legacy_llm_yaml(tmp_path: Path
     (ws / "config" / "llm.yaml").write_text("config_version: 1\n", encoding="utf-8")
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_CONFIG_PATHS", raising=False)
+    paths = __import__("agent_sdk.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
+    assert paths == []
+
+
+def test_discover_overlay_paths_ignores_legacy_config_paths_env(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """仅设置 legacy config paths env 时不得生效（必须忽略）。"""
+
+    ws = tmp_path / "ws"
+    ws.mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "overlay.yaml").write_text("config_version: 1\n", encoding="utf-8")
+
+    monkeypatch.delenv("SKILLS_RUNTIME_SDK_CONFIG_PATHS", raising=False)
+    legacy_key = "AGENT" + "_SDK_CONFIG_PATHS"
+    monkeypatch.setenv(legacy_key, "overlay.yaml")
+
     paths = __import__("agent_sdk.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
     assert paths == []
 

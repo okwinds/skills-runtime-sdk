@@ -385,10 +385,13 @@ def test_skill_exec_executes_via_shell_exec_and_records_env(tmp_path: Path) -> N
     assert env.get("SKILLS_RUNTIME_SDK_SKILL_BUNDLE_ROOT") == str(bundle.resolve())
     assert env.get("SKILLS_RUNTIME_SDK_SKILL_MENTION") == "$[alice:engineering].python_testing"
     assert env.get("SKILLS_RUNTIME_SDK_SKILL_ACTION_ID") == "run_tests"
-    assert env.get("AGENT_SDK_WORKSPACE_ROOT") == env.get("SKILLS_RUNTIME_SDK_WORKSPACE_ROOT")
-    assert env.get("AGENT_SDK_SKILL_BUNDLE_ROOT") == env.get("SKILLS_RUNTIME_SDK_SKILL_BUNDLE_ROOT")
-    assert env.get("AGENT_SDK_SKILL_MENTION") == env.get("SKILLS_RUNTIME_SDK_SKILL_MENTION")
-    assert env.get("AGENT_SDK_SKILL_ACTION_ID") == env.get("SKILLS_RUNTIME_SDK_SKILL_ACTION_ID")
+    assert set(env.keys()) == {
+        "X",
+        "SKILLS_RUNTIME_SDK_WORKSPACE_ROOT",
+        "SKILLS_RUNTIME_SDK_SKILL_BUNDLE_ROOT",
+        "SKILLS_RUNTIME_SDK_SKILL_MENTION",
+        "SKILLS_RUNTIME_SDK_SKILL_ACTION_ID",
+    }
 
 
 def test_skill_exec_action_missing_script_is_validation(tmp_path: Path) -> None:

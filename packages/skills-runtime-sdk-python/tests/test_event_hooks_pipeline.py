@@ -38,7 +38,7 @@ def test_wal_emitter_pipeline_order_emit_and_stream_only() -> None:
         marks.append("stream")
 
     emitter = WalEmitter(wal=wal, stream=_stream, hooks=[_hook])
-    ev = AgentEvent(type="unit_test_event", ts="2026-01-01T00:00:00Z", run_id="r1", payload={"x": 1})
+    ev = AgentEvent(type="unit_test_event", timestamp="2026-01-01T00:00:00Z", run_id="r1", payload={"x": 1})
 
     emitter.emit(ev)
     assert marks == ["hook", "stream"]
@@ -107,4 +107,3 @@ def test_event_hooks_receive_tool_side_events_once_and_in_stream_order(tmp_path:
     assert hook_types == stream_types
     assert any(e.type == "run_completed" for e in stream_events)
     assert sum(1 for e in wal.iter_events() if e.type == "plan_updated") == 1
-

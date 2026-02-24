@@ -24,8 +24,8 @@ def test_in_memory_wal_append_and_iter_events_order() -> None:
     # 使用最小 AgentEvent 形状（避免依赖额外字段）。
     from agent_sdk.core.contracts import AgentEvent
 
-    e1 = AgentEvent(type="run_started", ts="2026-02-05T00:00:00Z", run_id="r1", payload={"n": 1})
-    e2 = AgentEvent(type="run_completed", ts="2026-02-05T00:00:01Z", run_id="r1", payload={"n": 2})
+    e1 = AgentEvent(type="run_started", timestamp="2026-02-05T00:00:00Z", run_id="r1", payload={"n": 1})
+    e2 = AgentEvent(type="run_completed", timestamp="2026-02-05T00:00:01Z", run_id="r1", payload={"n": 2})
 
     i0 = wal.append(e1)
     i1 = wal.append(e2)
@@ -75,8 +75,8 @@ def test_agent_run_with_in_memory_wal_does_not_write_events_jsonl(tmp_path: Path
     assert (tmp_path / "hello.txt").read_text(encoding="utf-8") == "hi"
 
     # injected wal_backend: no local events.jsonl should be required
-    events_path = tmp_path / ".skills_runtime_sdk" / "runs" / "r_inmem" / "events.jsonl"
-    assert not events_path.exists()
+    events_jsonl_path = tmp_path / ".skills_runtime_sdk" / "runs" / "r_inmem" / "events.jsonl"
+    assert not events_jsonl_path.exists()
 
     events = list(wal.iter_events())
     assert any(e.type == "run_started" for e in events)

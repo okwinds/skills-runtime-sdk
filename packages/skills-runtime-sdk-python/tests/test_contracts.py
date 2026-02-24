@@ -5,10 +5,10 @@ import json
 from agent_sdk.core.contracts import AgentEvent
 
 
-def test_agent_event_json_roundtrip_fixed_ts() -> None:
+def test_agent_event_json_roundtrip_fixed_timestamp() -> None:
     event = AgentEvent(
         type="run_started",
-        ts="2026-02-05T00:00:00Z",
+        timestamp="2026-02-05T00:00:00Z",
         run_id="run_001",
         payload={"task": "hello"},
     )
@@ -25,4 +25,3 @@ def test_agent_event_json_roundtrip_fixed_ts() -> None:
 
     event2 = AgentEvent.from_json(raw)
     assert event2 == event
-

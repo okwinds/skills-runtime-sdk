@@ -130,22 +130,21 @@ def test_versioning_invalid_root_type_raises() -> None:
         load_config_dicts([_base_config({"versioning": "str"})])
 
 
-def test_versioning_allows_extra_fields() -> None:
-    """`skills.versioning` 下允许额外字段（fail-open）且不应丢失。"""
+def test_versioning_rejects_extra_fields() -> None:
+    """`skills.versioning` 下未知字段必须被严格拒绝（fail-fast）。"""
 
-    cfg = load_config_dicts(
-        [
-            _base_config(
-                {
-                    "versioning": {"enabled": False, "strategy": "TODO", "rollout": {"pct": 10}},
-                    "spaces": [],
-                    "sources": [],
-                }
-            )
-        ]
-    )
-    extra = getattr(cfg.skills.versioning, "model_extra", None) or {}
-    assert extra.get("rollout") == {"pct": 10}
+    with pytest.raises(ValidationError):
+        load_config_dicts(
+            [
+                _base_config(
+                    {
+                        "versioning": {"enabled": False, "strategy": "TODO", "rollout": {"pct": 10}},
+                        "spaces": [],
+                        "sources": [],
+                    }
+                )
+            ]
+        )
 
 
 def test_skills_manager_scan_is_unchanged_with_versioning(tmp_path: Path) -> None:
@@ -165,7 +164,7 @@ def test_skills_manager_scan_is_unchanged_with_versioning(tmp_path: Path) -> Non
             _base_config(
                 {
                     **base_skills_cfg,
-                    "versioning": {"enabled": True, "strategy": "TODO", "extra_flag": True},
+                    "versioning": {"enabled": True, "strategy": "TODO"},
                 }
             )
         ]
