@@ -66,7 +66,7 @@ class RuleBasedApprovalProvider(ApprovalProvider):
 
         参数：
         - request：审批请求（已由 SDK 脱敏）
-        - timeout_ms：兼容字段；规则审批不使用该值
+        - timeout_ms：保留参数；规则审批不使用该值
         """
 
         tool = str(request.tool or "").strip()

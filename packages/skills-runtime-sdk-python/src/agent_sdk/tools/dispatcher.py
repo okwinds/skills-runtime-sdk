@@ -101,7 +101,7 @@ class ToolDispatcher:
                 emit_event(
                     AgentEvent(
                         type="tool_call_finished",
-                        ts=self._now_rfc3339(),
+                        timestamp=self._now_rfc3339(),
                         run_id=inputs.run_id,
                         turn_id=inputs.turn_id,
                         step_id=inputs.step_id,
@@ -113,7 +113,7 @@ class ToolDispatcher:
         emit_event(
             AgentEvent(
                 type="tool_call_started",
-                ts=self._now_rfc3339(),
+                timestamp=self._now_rfc3339(),
                 run_id=inputs.run_id,
                 turn_id=inputs.turn_id,
                 step_id=inputs.step_id,
@@ -130,7 +130,7 @@ class ToolDispatcher:
         emit_event(
             AgentEvent(
                 type="tool_call_finished",
-                ts=self._now_rfc3339(),
+                timestamp=self._now_rfc3339(),
                 run_id=inputs.run_id,
                 turn_id=inputs.turn_id,
                 step_id=inputs.step_id,

@@ -1,5 +1,5 @@
 """
-SkillsManager（V2：配置驱动 scan + strict mentions + lazy-load 注入）。
+SkillsManager（配置驱动 scan + strict mentions + lazy-load 注入）。
 
 对齐规格：
 - `docs/specs/skills-runtime-sdk/docs/skills.md`
@@ -57,7 +57,7 @@ def _scan_options_from_config(skills_config: AgentSdkSkillsConfig) -> dict[str, 
 
 
 class SkillsManager:
-    """Skills 管理器（V2 语义）。"""
+    """Skills 管理器。"""
 
     _PREFLIGHT_ENV_VAR_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
     _PREFLIGHT_SUPPORTED_SOURCE_TYPES = {"filesystem", "in-memory", "redis", "pgsql"}
@@ -74,7 +74,7 @@ class SkillsManager:
 
         参数：
         - `workspace_root`：工作区根目录
-        - `skills_config`：V2 skills 配置
+        - `skills_config`：skills 配置
         - `in_memory_registry`：in-memory source 注入注册表
         - `source_clients`：按 source_id 注入 redis/pgsql 客户端（用于离线测试/嵌入）
         """
@@ -226,7 +226,7 @@ class SkillsManager:
         return out
 
     def _validate_config(self) -> List[FrameworkIssue]:
-        """验证 V2 skills 配置完整性。"""
+        """验证 skills 配置完整性。"""
 
         errors: List[FrameworkIssue] = []
 
@@ -326,7 +326,25 @@ class SkillsManager:
         spaces = list(self._skills_config.spaces)
         sources = list(self._skills_config.sources)
 
-        # versioning 目前仅占位：允许额外字段（fail-open），但应提示“这些字段将被忽略”，避免误以为生效。
+        # versioning 目前仅占位：当显式启用（或填写非默认 strategy）时给出 warning，
+        # 避免用户误以为该配置会影响运行时行为。
+        try:
+            versioning_enabled = bool(getattr(self._skills_config.versioning, "enabled", False))
+            versioning_strategy = str(getattr(self._skills_config.versioning, "strategy", "TODO") or "TODO")
+        except Exception:
+            versioning_enabled = False
+            versioning_strategy = "TODO"
+        if versioning_enabled or versioning_strategy != "TODO":
+            issues.append(
+                _issue(
+                    code="SKILL_CONFIG_VERSIONING_IGNORED",
+                    message="skills.versioning is currently a placeholder and has no runtime effect.",
+                    path="skills.versioning",
+                    details={"level": "warning", "enabled": versioning_enabled, "strategy": versioning_strategy},
+                )
+            )
+
+        # versioning 允许额外字段用于前向兼容，但 preflight 必须 fail-fast 提示误配置（未知字段不会生效）。
         try:
             extra = dict(getattr(self._skills_config.versioning, "model_extra", None) or {})
         except Exception:
@@ -335,9 +353,9 @@ class SkillsManager:
             issues.append(
                 _issue(
                     code="SKILL_CONFIG_VERSIONING_UNKNOWN_KEYS",
-                    message="Unknown keys under skills.versioning are ignored (versioning is a placeholder).",
+                    message="Unknown keys under skills.versioning are not supported.",
                     path="skills.versioning",
-                    details={"level": "warning", "unknown_keys": sorted(list(extra.keys()))},
+                    details={"unknown_keys": sorted(list(extra.keys()))},
                 )
             )
 
@@ -1547,14 +1565,9 @@ class SkillsManager:
                 details={"skill_name": skill_name, "conflicts": conflicts},
             )
 
-    def _check_legacy_name_conflicts(self, text: str) -> None:
-        """识别 V2 外壳存在但 slug 含非法字符的场景。"""
-
-        _ = text
-
     def scan(self, *, force_refresh: bool = False) -> ScanReport:
         """
-        执行 V2 扫描并返回 `ScanReport`（支持 refresh_policy 缓存语义）。
+        执行 skills 扫描并返回 `ScanReport`（支持 refresh_policy 缓存语义）。
 
         参数：
         - force_refresh：强制触发一次刷新 scan（manual/ttl 下可用于显式刷新缓存）
@@ -1634,7 +1647,7 @@ class SkillsManager:
         return [s for s in items if not (s.path is not None and s.path in self._disabled_paths)]
 
     def set_enabled(self, skill_path: Path, enabled: bool) -> None:
-        """兼容旧接口：V2 不支持 path 级开关。"""
+        """按 skill 路径启用/禁用（主要用于 Studio/UI 层的运行态过滤）。"""
 
         p = Path(skill_path).resolve()
         if p not in self._skills_by_path:
@@ -1661,7 +1674,6 @@ class SkillsManager:
         """解析 mentions 并映射到 skills。"""
 
         mentions = extract_skill_mentions(text)
-        self._check_legacy_name_conflicts(text)
         if not mentions:
             return []
 

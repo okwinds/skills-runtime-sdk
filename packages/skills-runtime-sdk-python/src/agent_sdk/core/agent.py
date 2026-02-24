@@ -511,7 +511,6 @@ class RunResult:
     status: str  # completed|failed|cancelled
     final_output: str
     artifacts: List[str]
-    events_path: str
     wal_locator: str
 
 
@@ -551,7 +550,6 @@ class Agent:
         参数说明（最小集合）：
         - `workspace_root`：工作区根目录；影响默认配置发现、skills filesystem root 的相对路径解析与运行产物落盘位置。
         - `planner_model`/`executor_model`/`model`：模型选择；`model` 作为兼容/快捷入口（默认走 executor）。
-        - `skills_roots`：已弃用（框架级不支持 legacy roots 注入；请使用 `skills.spaces/sources` 配置 overlays）。
         - `skills_disabled_paths`：skills 禁用列表（仅对 filesystem path 生效；fail-open）。
         - `skills_manager`：可选；显式注入 SkillsManager（用于产品化自定义缓存/来源策略/禁用策略）。
         - `env_vars`：session-only env_store（仅内存，不落盘值）；用于满足 skill env_var 依赖。
@@ -818,7 +816,7 @@ class Agent:
                 emit(
                     AgentEvent(
                         type="env_var_set",
-                        ts=_now_rfc3339(),
+                        timestamp=_now_rfc3339(),
                         run_id=run_id,
                         turn_id=turn_id,
                         payload={
@@ -838,7 +836,7 @@ class Agent:
                 emit(
                     AgentEvent(
                         type="env_var_set",
-                        ts=_now_rfc3339(),
+                        timestamp=_now_rfc3339(),
                         run_id=run_id,
                         turn_id=turn_id,
                         payload={
@@ -855,7 +853,7 @@ class Agent:
             emit(
                 AgentEvent(
                     type="env_var_required",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     turn_id=turn_id,
                     payload={
@@ -872,7 +870,7 @@ class Agent:
                 emit(
                     AgentEvent(
                         type="skill_injection_skipped",
-                        ts=_now_rfc3339(),
+                        timestamp=_now_rfc3339(),
                         run_id=run_id,
                         turn_id=turn_id,
                         payload={
@@ -904,7 +902,7 @@ class Agent:
             emit(
                 AgentEvent(
                     type="human_request",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     turn_id=turn_id,
                     payload={
@@ -939,7 +937,7 @@ class Agent:
             emit(
                 AgentEvent(
                     type="env_var_set",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     turn_id=turn_id,
                         payload={
@@ -967,28 +965,22 @@ class Agent:
         """
 
         final_output = ""
-        events_path = ""
         wal_locator = ""
         status = "completed"
         for ev in self.run_stream(task, run_id=run_id, initial_history=initial_history):
             if ev.type == "run_completed":
                 final_output = str(ev.payload.get("final_output") or "")
-                events_path = str(ev.payload.get("events_path") or ev.payload.get("wal_locator") or "")
                 wal_locator = str(ev.payload.get("wal_locator") or "")
                 status = "completed"
             if ev.type == "run_failed":
                 final_output = str(ev.payload.get("message") or "")
-                events_path = str(ev.payload.get("events_path") or ev.payload.get("wal_locator") or events_path or "")
                 wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
                 status = "failed"
             if ev.type == "run_cancelled":
                 final_output = str(ev.payload.get("message") or "")
-                events_path = str(ev.payload.get("events_path") or ev.payload.get("wal_locator") or events_path or "")
                 wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
                 status = "cancelled"
-        if not events_path:
-            events_path = str(wal_locator or "")
-        return RunResult(status=status, final_output=final_output, artifacts=[], events_path=events_path, wal_locator=wal_locator)
+        return RunResult(status=status, final_output=final_output, artifacts=[], wal_locator=wal_locator)
 
     def run_stream(
         self,
@@ -1236,13 +1228,12 @@ class Agent:
             _emit_event(
                 AgentEvent(
                     type="run_failed",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     payload={
                         "error_kind": "budget_exceeded",
                         "message": message,
                         "retryable": False,
-                        "events_path": wal_locator,
                         "wal_locator": wal_locator,
                     },
                 )
@@ -1314,7 +1305,7 @@ class Agent:
             _emit_event(
                 AgentEvent(
                     type="human_request",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     turn_id=turn_id,
                     payload={
@@ -1338,7 +1329,7 @@ class Agent:
             _emit_event(
                 AgentEvent(
                     type="human_response",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     turn_id=turn_id,
                     payload={"call_id": call_id, "answer": ans},
@@ -1349,7 +1340,7 @@ class Agent:
         _emit_event(
             AgentEvent(
                 type="run_started",
-                ts=_now_rfc3339(),
+                timestamp=_now_rfc3339(),
                 run_id=run_id,
                 payload={
                     "task": task,
@@ -1374,9 +1365,9 @@ class Agent:
             _emit_event(
                 AgentEvent(
                     type="run_cancelled",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
-                    payload={"message": "cancelled by user", "events_path": wal_locator, "wal_locator": wal_locator},
+                    payload={"message": "cancelled by user", "wal_locator": wal_locator},
                 )
             )
 
@@ -1474,7 +1465,7 @@ class Agent:
             _emit_event(
                 AgentEvent(
                     type="compaction_started",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     turn_id=turn_id,
                     payload={"reason": str(reason or "unknown"), "mode": context_recovery_mode},
@@ -1504,7 +1495,7 @@ class Agent:
                 _emit_event(
                     AgentEvent(
                         type="compaction_failed",
-                        ts=_now_rfc3339(),
+                        timestamp=_now_rfc3339(),
                         run_id=run_id,
                         turn_id=turn_id,
                         payload={"reason": str(reason or "unknown"), "error": str(e)},
@@ -1525,7 +1516,7 @@ class Agent:
             _emit_event(
                 AgentEvent(
                     type="context_compacted",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     turn_id=turn_id,
                     payload={
@@ -1558,7 +1549,7 @@ class Agent:
             _emit_event(
                 AgentEvent(
                     type="compaction_finished",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     turn_id=turn_id,
                     payload={"reason": str(reason or "unknown"), "count": int(compactions_performed), "artifact_path": artifact_path},
@@ -1595,7 +1586,7 @@ class Agent:
                     _emit_event(
                         AgentEvent(
                             type="skill_injected",
-                            ts=_now_rfc3339(),
+                            timestamp=_now_rfc3339(),
                             run_id=run_id,
                             turn_id=turn_id,
                             payload={
@@ -1621,7 +1612,7 @@ class Agent:
                 _emit_event(
                     AgentEvent(
                         type="llm_request_started",
-                        ts=_now_rfc3339(),
+                        timestamp=_now_rfc3339(),
                         run_id=run_id,
                         turn_id=turn_id,
                         payload={
@@ -1647,7 +1638,7 @@ class Agent:
                             _emit_event(
                                 AgentEvent(
                                     type="llm_retry_scheduled",
-                                    ts=_now_rfc3339(),
+                                    timestamp=_now_rfc3339(),
                                     run_id=run_id,
                                     turn_id=turn_id,
                                     payload=dict(info or {}),
@@ -1721,7 +1712,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="llm_response_delta",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         payload={"delta_type": "text", "text": text},
@@ -1734,7 +1725,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="llm_response_delta",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         payload={
@@ -1775,7 +1766,7 @@ class Agent:
                     _emit_event(
                         AgentEvent(
                             type="context_length_exceeded",
-                            ts=_now_rfc3339(),
+                            timestamp=_now_rfc3339(),
                             run_id=run_id,
                             turn_id=turn_id,
                             payload={"mode": context_recovery_mode, "compactions": int(compactions_performed)},
@@ -1796,7 +1787,7 @@ class Agent:
                             _emit_event(
                                 AgentEvent(
                                     type="context_recovery_decided",
-                                    ts=_now_rfc3339(),
+                                    timestamp=_now_rfc3339(),
                                     run_id=run_id,
                                     turn_id=turn_id,
                                     payload={
@@ -1810,7 +1801,7 @@ class Agent:
                             _emit_event(
                                 AgentEvent(
                                     type="context_recovery_decided",
-                                    ts=_now_rfc3339(),
+                                    timestamp=_now_rfc3339(),
                                     run_id=run_id,
                                     turn_id=turn_id,
                                     payload={"mode": "ask_first", "decision": decision},
@@ -1821,13 +1812,12 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="run_failed",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         payload={
                                             "error_kind": "terminated",
                                             "message": "terminated by user decision (ask_first)",
                                             "retryable": False,
-                                            "events_path": wal_locator,
                                             "wal_locator": wal_locator,
                                         },
                                     )
@@ -1845,13 +1835,12 @@ class Agent:
                                     _emit_event(
                                         AgentEvent(
                                             type="run_failed",
-                                            ts=_now_rfc3339(),
+                                            timestamp=_now_rfc3339(),
                                             run_id=run_id,
                                             payload={
                                                 "error_kind": "context_length_exceeded",
                                                 "message": f"context recovery failed: {ce}",
                                                 "retryable": False,
-                                                "events_path": wal_locator,
                                                 "wal_locator": wal_locator,
                                             },
                                         )
@@ -1861,12 +1850,11 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="run_completed",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         payload={
                                             "final_output": "",
                                             "artifacts": list(compaction_artifacts),
-                                            "events_path": wal_locator,
                                             "wal_locator": wal_locator,
                                             "metadata": {
                                                 "notices": list(terminal_notices),
@@ -1886,7 +1874,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="budget_increased",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         payload={
@@ -1912,13 +1900,12 @@ class Agent:
                             _emit_event(
                                 AgentEvent(
                                     type="run_failed",
-                                    ts=_now_rfc3339(),
+                                    timestamp=_now_rfc3339(),
                                     run_id=run_id,
                                     payload={
                                         "error_kind": "context_length_exceeded",
                                         "message": f"context recovery failed: {ce}",
                                         "retryable": False,
-                                        "events_path": wal_locator,
                                         "wal_locator": wal_locator,
                                     },
                                 )
@@ -1972,7 +1959,7 @@ class Agent:
                         _emit_event(
                             AgentEvent(
                                 type="tool_call_requested",
-                                ts=_now_rfc3339(),
+                                timestamp=_now_rfc3339(),
                                 run_id=run_id,
                                 turn_id=turn_id,
                                 step_id=step_id,
@@ -2009,7 +1996,7 @@ class Agent:
                             _emit_event(
                                 AgentEvent(
                                     type="tool_call_finished",
-                                    ts=_now_rfc3339(),
+                                    timestamp=_now_rfc3339(),
                                     run_id=run_id,
                                     turn_id=turn_id,
                                     step_id=step_id,
@@ -2063,7 +2050,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="tool_call_finished",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         step_id=step_id,
@@ -2108,7 +2095,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="tool_call_finished",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         step_id=step_id,
@@ -2160,7 +2147,7 @@ class Agent:
                                     _emit_event(
                                         AgentEvent(
                                             type="tool_call_finished",
-                                            ts=_now_rfc3339(),
+                                            timestamp=_now_rfc3339(),
                                             run_id=run_id,
                                             turn_id=turn_id,
                                             step_id=step_id,
@@ -2195,7 +2182,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="tool_call_finished",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         step_id=step_id,
@@ -2226,7 +2213,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="tool_call_finished",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         step_id=step_id,
@@ -2259,7 +2246,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="approval_requested",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         step_id=step_id,
@@ -2301,7 +2288,7 @@ class Agent:
                             _emit_event(
                                 AgentEvent(
                                     type="approval_decided",
-                                    ts=_now_rfc3339(),
+                                    timestamp=_now_rfc3339(),
                                     run_id=run_id,
                                     turn_id=turn_id,
                                     step_id=step_id,
@@ -2338,7 +2325,7 @@ class Agent:
                                 _emit_event(
                                     AgentEvent(
                                         type="tool_call_finished",
-                                        ts=_now_rfc3339(),
+                                        timestamp=_now_rfc3339(),
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         step_id=step_id,
@@ -2359,13 +2346,12 @@ class Agent:
                                     _emit_event(
                                         AgentEvent(
                                             type="run_failed",
-                                            ts=_now_rfc3339(),
+                                            timestamp=_now_rfc3339(),
                                             run_id=run_id,
                                             payload={
                                                 "error_kind": "config_error",
                                                 "message": f"ApprovalProvider is required for tool '{call.name}' but none is configured.",
                                                 "retryable": False,
-                                                "events_path": wal_locator,
                                                 "wal_locator": wal_locator,
                                                 "details": {
                                                     "tool": call.name,
@@ -2382,13 +2368,12 @@ class Agent:
                                     _emit_event(
                                         AgentEvent(
                                             type="run_failed",
-                                            ts=_now_rfc3339(),
+                                            timestamp=_now_rfc3339(),
                                             run_id=run_id,
                                             payload={
                                                 "error_kind": "approval_denied",
                                                 "message": "Approval was denied repeatedly for the same action; aborting to prevent an infinite loop.",
                                                 "retryable": False,
-                                                "events_path": wal_locator,
                                                 "wal_locator": wal_locator,
                                                 "details": {
                                                     "tool": call.name,
@@ -2428,12 +2413,11 @@ class Agent:
                 _emit_event(
                     AgentEvent(
                         type="run_completed",
-                        ts=_now_rfc3339(),
+                        timestamp=_now_rfc3339(),
                         run_id=run_id,
                         payload={
                             "final_output": assistant_text,
                             "artifacts": list(compaction_artifacts),
-                            "events_path": wal_locator,
                             "wal_locator": wal_locator,
                             "metadata": {"notices": list(terminal_notices)},
                         },
@@ -2442,12 +2426,11 @@ class Agent:
                 return
         except BaseException as e:
             failed = _classify_run_exception(e).to_payload()
-            failed["events_path"] = wal_locator
             failed["wal_locator"] = wal_locator
             _emit_event(
                 AgentEvent(
                     type="run_failed",
-                    ts=_now_rfc3339(),
+                    timestamp=_now_rfc3339(),
                     run_id=run_id,
                     payload=failed,
                 )

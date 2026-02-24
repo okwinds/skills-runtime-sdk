@@ -189,28 +189,22 @@ class AgentSdkSkillsConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # 兼容字段（已弃用但仍允许出现在配置中）：
-    # - 历史 examples/ 文档使用 `skills.mode/max_auto` 来表达“只允许显式 mention 注入”。
-    # - 当前实现以 `skills.strictness` 为主；这里保留字段仅用于避免配置校验硬失败（fail-open）。
-    mode: str = Field(default="explicit")
-    max_auto: int = Field(default=0, ge=0)
-
     class Versioning(BaseModel):
         """
         Skills 版本控制配置（占位）。
 
         说明：
         - 当前仅做配置模型占位与校验，运行时不会改变 SkillsManager 行为。
-        - 允许额外字段（fail-open），便于后续扩展策略参数而不破坏旧配置。
+        - 严格拒绝未知字段（extra=forbid），避免误配置被静默忽略。
         """
 
-        model_config = ConfigDict(extra="allow")
+        model_config = ConfigDict(extra="forbid")
 
         enabled: StrictBool = False
         strategy: str = "TODO"
 
     class Strictness(BaseModel):
-        """Skills 严格模式配置（V2 固定约束，可读性字段）。"""
+        """Skills 严格模式配置（固定约束，可读性字段）。"""
 
         model_config = ConfigDict(extra="forbid")
 
@@ -360,7 +354,7 @@ def _apply_sandbox_profile_overrides(merged: Dict[str, Any]) -> None:
     将 `sandbox.profile`（dev/balanced/prod）展开为具体字段。
 
     约束：
-    - 默认不改变既有行为：当 profile 缺失/为空/custom 时 no-op。
+    - `sandbox.profile` 仅允许 `dev|balanced|prod`；缺失则默认 `dev`；未知值必须 fail-fast（不得静默 no-op）。
     - profile 的展开结果会覆盖 `sandbox.default_policy` 与 `sandbox.os.*`（profile 是更高层的“宏”）。
     """
 

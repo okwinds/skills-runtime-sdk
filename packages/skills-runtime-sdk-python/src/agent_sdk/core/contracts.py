@@ -3,19 +3,13 @@
 
 对齐规格：
 - `docs/specs/skills-runtime-sdk/docs/core-contracts.md`（AgentEvent 公共字段定义）
-
-取舍说明（避免口径漂移）：
-- 规格要求事件字段名为 `timestamp`（RFC3339 字符串）。
-- 为了兼容更短的内部字段名，本实现提供 `ts` 作为 **输入别名**：
-  - 反序列化：支持 JSON 中 `timestamp` 或 `ts`（两者优先级：timestamp）
-  - 序列化：统一输出 `timestamp`（避免 wire 协议漂移）
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentError(BaseModel):
@@ -41,7 +35,7 @@ class AgentEvent(BaseModel):
     """
     AgentEvent：统一事件流条目（最小可用）。
 
-    兼容字段（对齐 core-contracts）：
+    字段（对齐 core-contracts）：
     - type：事件类型
     - timestamp：RFC3339 时间字符串（序列化 key 固定为 `timestamp`）
     - run_id：run 标识
@@ -49,23 +43,19 @@ class AgentEvent(BaseModel):
     - payload：JSON object（dict），用于承载事件专用字段
     """
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid")
 
     type: str
-    ts: str = Field(
-        validation_alias=AliasChoices("timestamp", "ts"),
-        serialization_alias="timestamp",
-        description="RFC3339 时间字符串；wire key 固定为 timestamp。",
-    )
+    timestamp: str = Field(description="RFC3339 时间字符串；wire key 固定为 timestamp。")
     run_id: str
     turn_id: Optional[str] = None
     step_id: Optional[str] = None
     payload: Dict[str, Any] = Field(default_factory=dict)
 
     def to_json(self) -> str:
-        """序列化为 JSON 字符串（wire 输出字段名使用 alias，例如 timestamp）。"""
+        """序列化为 JSON 字符串。"""
 
-        return self.model_dump_json(by_alias=True, exclude_none=True)
+        return self.model_dump_json(exclude_none=True)
 
     @classmethod
     def from_json(cls, raw_json: str) -> "AgentEvent":

@@ -98,7 +98,7 @@ def update_plan(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     ctx.emit_event(
         AgentEvent(
             type="plan_updated",
-            ts=_now_rfc3339(),
+            timestamp=_now_rfc3339(),
             run_id=ctx.run_id,
             payload={"call_id": call.call_id, "plan": plan_jsonable, "explanation": args.explanation},
         )
@@ -118,4 +118,3 @@ def update_plan(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
         retry_after_ms=None,
     )
     return ToolResult.from_payload(payload)
-

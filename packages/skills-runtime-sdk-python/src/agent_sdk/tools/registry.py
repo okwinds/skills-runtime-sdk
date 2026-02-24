@@ -425,7 +425,7 @@ class ToolRegistry:
         self._ctx.emit_event(
             AgentEvent(
                 type=type_,
-                ts=_now_rfc3339(),
+                timestamp=_now_rfc3339(),
                 run_id=self._ctx.run_id,
                 turn_id=turn_id,
                 step_id=step_id,

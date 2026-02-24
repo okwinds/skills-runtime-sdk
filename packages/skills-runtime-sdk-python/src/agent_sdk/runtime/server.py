@@ -360,8 +360,8 @@ class RuntimeServer:
 
         # 注入 marker，便于 crash/restart 后 orphan cleanup 精准识别
         env2 = dict(env_map or {})
-        env2["AGENT_SDK_RUNTIME_EXEC_SESSION_MARKER"] = str(self._exec_marker)
-        env2["AGENT_SDK_RUNTIME_WORKSPACE_ROOT"] = str(self._workspace_root)
+        env2["SKILLS_RUNTIME_SDK_RUNTIME_EXEC_SESSION_MARKER"] = str(self._exec_marker)
+        env2["SKILLS_RUNTIME_SDK_RUNTIME_WORKSPACE_ROOT"] = str(self._workspace_root)
 
         s = self._exec.spawn(argv=[str(x) for x in argv], cwd=Path(cwd), env=env2, tty=tty)
         self._register_exec_session(
@@ -823,12 +823,12 @@ def main() -> int:
     模块入口：从环境变量读取 workspace_root/secret 并启动 server。
 
     环境变量：
-    - `AGENT_SDK_RUNTIME_WORKSPACE_ROOT`
-    - `AGENT_SDK_RUNTIME_SECRET`
+    - `SKILLS_RUNTIME_SDK_RUNTIME_WORKSPACE_ROOT`
+    - `SKILLS_RUNTIME_SDK_RUNTIME_SECRET`
     """
 
-    secret = str(os.environ.get("AGENT_SDK_RUNTIME_SECRET") or "").strip()
-    ws = str(os.environ.get("AGENT_SDK_RUNTIME_WORKSPACE_ROOT") or "").strip()
+    secret = str(os.environ.get("SKILLS_RUNTIME_SDK_RUNTIME_SECRET") or "").strip()
+    ws = str(os.environ.get("SKILLS_RUNTIME_SDK_RUNTIME_WORKSPACE_ROOT") or "").strip()
     if not secret:
         secret = secrets.token_urlsafe(24)
     if not ws:

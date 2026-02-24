@@ -77,7 +77,7 @@ def ask_human(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     ctx.emit_event(
         AgentEvent(
             type="human_request",
-            ts=_now_rfc3339(),
+            timestamp=_now_rfc3339(),
             run_id=ctx.run_id,
             payload={
                 "call_id": call.call_id,
@@ -108,7 +108,7 @@ def ask_human(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     ctx.emit_event(
         AgentEvent(
             type="human_response",
-            ts=_now_rfc3339(),
+            timestamp=_now_rfc3339(),
             run_id=ctx.run_id,
             payload={
                 "call_id": call.call_id,

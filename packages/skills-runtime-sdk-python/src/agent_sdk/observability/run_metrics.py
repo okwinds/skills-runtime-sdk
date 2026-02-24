@@ -80,9 +80,9 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
         summary["errors"].append({"kind": "not_supported", "message": f"metrics only supports filesystem wal_locator, got: {loc}"})
         return summary
 
-    events_path = Path(loc)
-    if not events_path.exists():
-        summary["errors"].append({"kind": "not_found", "message": f"events file not found: {events_path}"})
+    events_jsonl_path = Path(loc)
+    if not events_jsonl_path.exists():
+        summary["errors"].append({"kind": "not_found", "message": f"events file not found: {events_jsonl_path}"})
         return summary
 
     run_id: Optional[str] = None
@@ -101,7 +101,7 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
         summary["status"] = "unknown"
 
     try:
-        text = Path(events_path).read_text(encoding="utf-8")
+        text = events_jsonl_path.read_text(encoding="utf-8")
     except Exception as exc:
         _add_invalid_wal(f"failed to read events file: {exc}")
         return summary
@@ -134,7 +134,7 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
             turn_ids.add(turn_id)
 
         typ = str(ev.get("type") or "")
-        ts = ev.get("timestamp") or ev.get("ts") or None
+        ts = ev.get("timestamp") or None
         ts_str = str(ts) if isinstance(ts, str) else None
 
         if typ == "run_started" and started_at is None and ts_str:

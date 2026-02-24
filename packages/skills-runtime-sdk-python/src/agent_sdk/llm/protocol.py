@@ -1,8 +1,8 @@
 """
-LLM 协议：ChatRequest（v2 请求参数包）。
+LLM 协议：ChatRequest（请求参数包）。
 
 对齐 OpenSpec（本仓重构）：
-- `openspec/changes/sdk-production-refactor-p0/specs/chatrequest-v2/spec.md`
+- `openspec/specs/chat-backend/spec.md`
 
 设计目标：
 - 用单一参数对象承载 LLM 请求信息，避免散落的关键字参数不断膨胀；
@@ -20,7 +20,7 @@ from agent_sdk.tools.protocol import ToolSpec
 @dataclass(frozen=True)
 class ChatRequest:
     """
-    ChatRequest：v2 LLM 请求参数包（最小可用 + 可扩展）。
+    ChatRequest：LLM 请求参数包（最小可用 + 可扩展）。
 
     字段：
     - model：模型名
@@ -43,4 +43,3 @@ class ChatRequest:
     turn_id: Optional[str] = None
 
     extra: Dict[str, Any] = field(default_factory=dict)
-

@@ -134,8 +134,8 @@ class RuntimeClient:
 
         secret = secrets.token_urlsafe(24)
         env = dict(os.environ)
-        env["AGENT_SDK_RUNTIME_SECRET"] = secret
-        env["AGENT_SDK_RUNTIME_WORKSPACE_ROOT"] = str(self._workspace_root)
+        env["SKILLS_RUNTIME_SDK_RUNTIME_SECRET"] = secret
+        env["SKILLS_RUNTIME_SDK_RUNTIME_WORKSPACE_ROOT"] = str(self._workspace_root)
 
         # 测试/嵌入式调用场景下，当前进程可能通过 `sys.path`（pytest pythonpath）加载 SDK，
         # 但环境变量里没有 `PYTHONPATH`。此时后台 server 进程若 cwd 改变会 import 失败。

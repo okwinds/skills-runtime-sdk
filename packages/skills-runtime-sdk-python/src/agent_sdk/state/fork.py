@@ -19,17 +19,17 @@ from typing import Any, Dict, Optional
 
 def fork_run_events_jsonl(
     *,
-    src_events_path: Path,
-    dst_events_path: Path,
+    src_wal_path: Path,
+    dst_wal_path: Path,
     new_run_id: str,
     up_to_index_inclusive: int,
 ) -> None:
     """
-    从 src_events_path 截取 events.jsonl 前缀并写入 dst_events_path。
+    从 src_wal_path 截取 events.jsonl 前缀并写入 dst_wal_path。
 
     参数：
-    - src_events_path：源 WAL 路径
-    - dst_events_path：目标 WAL 路径（会覆盖写入）
+    - src_wal_path：源 WAL 路径
+    - dst_wal_path：目标 WAL 路径（会覆盖写入）
     - new_run_id：新 run_id（用于重写事件字段）
     - up_to_index_inclusive：包含的最大行号（0-based；>=0）
     """
@@ -39,8 +39,8 @@ def fork_run_events_jsonl(
     if not str(new_run_id or "").strip():
         raise ValueError("new_run_id must be non-empty")
 
-    src = Path(src_events_path)
-    dst = Path(dst_events_path)
+    src = Path(src_wal_path)
+    dst = Path(dst_wal_path)
     if not src.exists():
         raise FileNotFoundError(str(src))
 
@@ -78,7 +78,7 @@ def fork_run(
     up_to_index_inclusive: int,
 ) -> Path:
     """
-    在 workspace_root 下执行 run fork，并返回新 events.jsonl 路径。
+    在 workspace_root 下执行 run fork，并返回新 WAL 文件路径（events.jsonl）。
 
     参数：
     - workspace_root：工作区根目录
@@ -88,13 +88,13 @@ def fork_run(
     """
 
     ws = Path(workspace_root).resolve()
-    src_events = (ws / ".skills_runtime_sdk" / "runs" / str(src_run_id) / "events.jsonl").resolve()
-    dst_events = (ws / ".skills_runtime_sdk" / "runs" / str(dst_run_id) / "events.jsonl").resolve()
+    src_wal_path = (ws / ".skills_runtime_sdk" / "runs" / str(src_run_id) / "events.jsonl").resolve()
+    dst_wal_path = (ws / ".skills_runtime_sdk" / "runs" / str(dst_run_id) / "events.jsonl").resolve()
 
     fork_run_events_jsonl(
-        src_events_path=src_events,
-        dst_events_path=dst_events,
+        src_wal_path=src_wal_path,
+        dst_wal_path=dst_wal_path,
         new_run_id=str(dst_run_id),
         up_to_index_inclusive=up_to_index_inclusive,
     )
-    return dst_events
+    return dst_wal_path

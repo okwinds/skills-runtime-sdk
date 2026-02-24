@@ -23,7 +23,7 @@ class Skill:
 
     字段：
     - name/description：来自 frontmatter（必填）
-    - space_id/source_id/account/domain：来源空间与命名信息（V2）
+    - space_id/source_id/account/domain：来源空间与命名信息（spaces/sources）
     - path：SKILL.md 的 canonical 路径（可选，非 filesystem 时可为空）
     - locator：跨 source 的稳定定位符（path/key/row id）
     - body_size：正文字节数（metadata-only 阶段可用，未知可为 None）
@@ -80,16 +80,9 @@ class Skill:
             "scope": _json_sanitize(self.scope),
         }
 
-    @property
-    def name(self) -> str:
-        """兼容旧代码：`name` 映射为 V2 的 `skill_name`。"""
-
-        return self.skill_name
-
-
 @dataclass(frozen=True)
 class ScanReport:
-    """Skills 扫描报告（V2 metadata-only）。"""
+    """Skills 扫描报告（metadata-only）。"""
 
     scan_id: str
     skills: List[Skill]

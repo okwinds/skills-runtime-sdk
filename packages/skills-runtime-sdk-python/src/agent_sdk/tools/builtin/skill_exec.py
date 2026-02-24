@@ -349,11 +349,6 @@ def skill_exec(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
         "SKILLS_RUNTIME_SDK_SKILL_BUNDLE_ROOT": str(bundle.bundle_root.resolve()),
         "SKILLS_RUNTIME_SDK_SKILL_MENTION": bundle.mention_text,
         "SKILLS_RUNTIME_SDK_SKILL_ACTION_ID": bundle.action_id,
-        # 旧前缀兼容：双写，便于下游 actions/脚本渐进迁移。
-        "AGENT_SDK_WORKSPACE_ROOT": str(ctx.workspace_root.resolve()),
-        "AGENT_SDK_SKILL_BUNDLE_ROOT": str(bundle.bundle_root.resolve()),
-        "AGENT_SDK_SKILL_MENTION": bundle.mention_text,
-        "AGENT_SDK_SKILL_ACTION_ID": bundle.action_id,
     }
     env.update(stable_env)  # stable keys win
 
