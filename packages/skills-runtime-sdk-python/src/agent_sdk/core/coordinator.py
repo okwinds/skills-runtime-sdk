@@ -23,12 +23,14 @@ class ChildResult:
     - summary：子 agent 的最终输出（作为主 agent 的上下文摘要注入）。
     - status：completed/failed/cancelled（透传 RunResult.status）。
     - artifacts：子 agent 产物路径列表（Phase 2 可能为空）。
-    - wal_locator：子 agent 的 WAL 定位符（用于审计/调试；可能为空字符串）。
+    - events_path：兼容字段；WAL 定位符（可能是文件路径或 `wal://...`）。
+    - wal_locator：推荐字段；WAL 定位符（用于审计/调试；可能为空字符串）。
     """
 
     summary: str
     status: str
     artifacts: List[str]
+    events_path: str
     wal_locator: str
 
 
@@ -102,6 +104,7 @@ class Coordinator:
             summary=str(r.final_output or ""),
             status=str(r.status or ""),
             artifacts=list(r.artifacts or []),
+            events_path=str(r.events_path or r.wal_locator or ""),
             wal_locator=str(r.wal_locator or ""),
         )
 
@@ -132,6 +135,7 @@ class Coordinator:
             "[ChildAgent Summary]\n"
             f"child_index: {child_index}\n"
             f"status: {child.status}\n"
+            f"events_path: {child.events_path}\n"
             f"wal_locator: {child.wal_locator}\n"
             f"summary: {child.summary}"
         )
