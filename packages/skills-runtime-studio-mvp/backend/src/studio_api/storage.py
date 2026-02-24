@@ -66,16 +66,19 @@ class FileStorage:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
 
-    def _default_roots(self) -> List[str]:
+    def _default_filesystem_sources(self) -> List[str]:
+        """
+        Studio MVP 默认提供一个“generated skills”目录（filesystem source root），开箱即用。
+        """
+
         return [str(self.generated_skills_root())]
 
-    def create_session(self, *, title: Optional[str], skills_roots: Optional[List[str]]) -> SessionRecord:
+    def create_session(self, *, title: Optional[str], filesystem_sources: Optional[List[str]]) -> SessionRecord:
         sid = f"sess_{uuid.uuid4().hex}"
         created_at = now_rfc3339()
         updated_at = created_at
 
-        roots = self._default_roots() if skills_roots is None else list(skills_roots)
-        explicit_empty = bool(skills_roots is not None and len(skills_roots) == 0)
+        sources = self._default_filesystem_sources() if filesystem_sources is None else list(filesystem_sources)
 
         sdir = self.session_dir(sid)
         sdir.mkdir(parents=True, exist_ok=True)
@@ -93,14 +96,12 @@ class FileStorage:
         self._write_json(
             sdir / "skills.json",
             {
-                "roots": roots,
+                "filesystem_sources": sources,
                 "disabled_paths": [],
-                "explicit_empty": explicit_empty,
-                "mode": "explicit",
             },
         )
 
-        write_session_skills_overlay(session_dir=sdir, roots=roots)
+        write_session_skills_overlay(session_dir=sdir, filesystem_sources=sources)
         return SessionRecord(
             session_id=sid,
             created_at=created_at,
@@ -170,30 +171,9 @@ class FileStorage:
         if not sdir.exists():
             raise FileNotFoundError(str(sdir))
         self._write_json(sdir / "skills.json", cfg)
-        roots = cfg.get("roots") if isinstance(cfg, dict) else None
-        roots_list = [str(r).strip() for r in (roots or []) if str(r).strip()]
-        write_session_skills_overlay(session_dir=sdir, roots=roots_list)
-
-    def ensure_skills_roots_configured(self, session_id: str) -> Dict[str, Any]:
-        """
-        回填 roots（用于兼容旧/异常 session）。
-
-        规则：
-        - roots 缺失或为空
-        - 且未显式声明 explicit_empty=true
-        -> 回填为默认 roots（generated root）
-        """
-
-        cfg = self.get_skills_config(session_id)
-        roots = cfg.get("roots")
-        explicit_empty = bool(cfg.get("explicit_empty") is True)
-        roots_missing_or_empty = roots is None or (isinstance(roots, list) and len(roots) == 0)
-        if roots_missing_or_empty and (not explicit_empty):
-            cfg["roots"] = list(self._default_roots())
-            cfg.setdefault("disabled_paths", [])
-            cfg.setdefault("mode", "explicit")
-            self.update_skills_config(session_id, cfg)
-        return cfg
+        sources = cfg.get("filesystem_sources") if isinstance(cfg, dict) else None
+        sources_list = [str(r).strip() for r in (sources or []) if str(r).strip()]
+        write_session_skills_overlay(session_dir=sdir, filesystem_sources=sources_list)
 
     def skills_overlay_path(self, session_id: str) -> Path:
         return (self.session_dir(session_id) / "skills_overlay.yaml").resolve()
@@ -211,4 +191,3 @@ class FileStorage:
             },
         )
         return p
-

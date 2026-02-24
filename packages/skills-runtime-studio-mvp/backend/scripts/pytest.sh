@@ -52,7 +52,6 @@ sanitize_env_file_var() {
 
 # 避免遗留 shell 环境变量指向旧/不存在路径导致 import 即崩溃。
 sanitize_env_file_var "SKILLS_RUNTIME_SDK_ENV_FILE"
-sanitize_env_file_var "AGENT_SDK_ENV_FILE"
 
 sanitize_overlay_paths_var() {
   local var_name="$1"
@@ -111,6 +110,5 @@ sanitize_overlay_paths_var() {
 }
 
 sanitize_overlay_paths_var "SKILLS_RUNTIME_SDK_CONFIG_PATHS"
-sanitize_overlay_paths_var "AGENT_SDK_CONFIG_PATHS"
 
 pytest -q

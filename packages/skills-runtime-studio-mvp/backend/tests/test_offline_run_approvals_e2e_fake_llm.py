@@ -23,7 +23,7 @@ def _load_app_mod(tmp_path: Path):
     return mod
 
 
-def _events_path(tmp_path: Path, run_id: str) -> Path:
+def _events_jsonl_path(tmp_path: Path, run_id: str) -> Path:
     return (tmp_path / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
 
 
@@ -116,13 +116,13 @@ def test_offline_run_approvals_e2e_fake_llm(tmp_path: Path) -> None:
     run_id = r.json().get("run_id")
     assert isinstance(run_id, str) and run_id
 
-    events_path = _events_path(tmp_path, run_id)
-    _wait_for_event(events_path, ev_type="run_started", timeout_sec=3.0)
+    events_jsonl_path = _events_jsonl_path(tmp_path, run_id)
+    _wait_for_event(events_jsonl_path, ev_type="run_started", timeout_sec=3.0)
 
     # SSE connect #1: read until approval_requested then disconnect
     stream_url = f"/api/v1/runs/{run_id}/events/stream"
     approval_key = None
-    sse1 = _collect_sse_from_jsonl_until(events_path, terminal_events={"approval_requested"}, timeout_sec=5.0)
+    sse1 = _collect_sse_from_jsonl_until(events_jsonl_path, terminal_events={"approval_requested"}, timeout_sec=5.0)
     for ev_type, obj in sse1:
         if ev_type == "approval_requested":
             approval_key = (obj.get("payload") or {}).get("approval_key")
@@ -140,7 +140,7 @@ def test_offline_run_approvals_e2e_fake_llm(tmp_path: Path) -> None:
     assert decided.json().get("ok") is True
 
     # SSE connect #2: read until run_completed (terminal)
-    sse2 = _collect_sse_from_jsonl_until(events_path, terminal_events={"run_completed"}, timeout_sec=5.0)
+    sse2 = _collect_sse_from_jsonl_until(events_jsonl_path, terminal_events={"run_completed"}, timeout_sec=5.0)
     completed = [obj for ev_type, obj in sse2 if ev_type == "run_completed"]
     assert len(completed) == 1
     assert (completed[0].get("payload") or {}).get("final_output") == "done"
@@ -156,7 +156,7 @@ def test_offline_run_approvals_e2e_fake_llm(tmp_path: Path) -> None:
     assert after.json().get("approvals") == []
 
     # SSE reconnect after completion: should replay historical events (including the earlier approval_requested)
-    sse3 = _collect_sse_from_jsonl_until(events_path, terminal_events={"run_completed"}, timeout_sec=5.0)
+    sse3 = _collect_sse_from_jsonl_until(events_jsonl_path, terminal_events={"run_completed"}, timeout_sec=5.0)
     assert any(
         ev_type == "approval_requested" and (obj.get("payload") or {}).get("approval_key") == approval_key
         for ev_type, obj in sse3

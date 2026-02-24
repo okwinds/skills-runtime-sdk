@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from agent_sdk import Agent
 from agent_sdk import bootstrap as agent_bootstrap
-from agent_sdk.config.loader import AgentSdkLlmConfig, load_config_dicts
+from agent_sdk.config.loader import load_config_dicts
 from agent_sdk.llm.chat_sse import ChatStreamEvent
 from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
 from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
@@ -25,7 +25,7 @@ from studio_api.errors import http_error
 from studio_api.example_skills import ensure_example_skills_installed
 from studio_api.sse import stream_jsonl_as_sse
 from studio_api.skills_create import bind_create_skill_router
-from studio_api.skills_overlay import skills_v2_config_from_roots
+from studio_api.skills_overlay import skills_config_from_filesystem_sources
 from studio_api.storage import FileStorage
 from studio_api.timeutil import now_rfc3339
 
@@ -63,11 +63,11 @@ app.include_router(bind_create_skill_router(storage=_STORAGE))
 
 class CreateSessionReq(BaseModel):
     title: Optional[str] = None
-    skills_roots: Optional[List[str]] = Field(default=None)
+    filesystem_sources: Optional[List[str]] = Field(default=None, description="Filesystem source roots (one per entry).")
 
 
-class SetSkillRootsReq(BaseModel):
-    roots: List[str] = Field(default_factory=list)
+class SetSkillSourcesReq(BaseModel):
+    filesystem_sources: List[str] = Field(default_factory=list)
 
 
 class CreateRunReq(BaseModel):
@@ -100,7 +100,7 @@ async def list_sessions() -> Dict[str, Any]:
 
 @app.post("/api/v1/sessions", status_code=201)
 async def create_session(body: CreateSessionReq = Body(default_factory=CreateSessionReq)) -> Dict[str, Any]:
-    s = _STORAGE.create_session(title=body.title, skills_roots=body.skills_roots)
+    s = _STORAGE.create_session(title=body.title, filesystem_sources=body.filesystem_sources)
     return {"session_id": s.session_id, "created_at": s.created_at}
 
 
@@ -112,8 +112,8 @@ async def delete_session(session_id: str) -> None:
     return None
 
 
-@app.put("/api/v1/sessions/{session_id}/skills/roots")
-async def set_skills_roots(session_id: str, body: SetSkillRootsReq) -> Dict[str, Any]:
+@app.put("/api/v1/sessions/{session_id}/skills/sources")
+async def set_skills_sources(session_id: str, body: SetSkillSourcesReq) -> Dict[str, Any]:
     try:
         _ = _STORAGE.session_dir(session_id)
     except Exception:
@@ -124,28 +124,26 @@ async def set_skills_roots(session_id: str, body: SetSkillRootsReq) -> Dict[str,
     except FileNotFoundError:
         raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
 
-    roots = [str(p).strip() for p in (body.roots or []) if str(p).strip()]
-    cfg["roots"] = roots
-    cfg["explicit_empty"] = bool(len(roots) == 0)
+    sources = [str(p).strip() for p in (body.filesystem_sources or []) if str(p).strip()]
+    cfg["filesystem_sources"] = sources
     cfg.setdefault("disabled_paths", [])
-    cfg.setdefault("mode", "explicit")
     _STORAGE.update_skills_config(session_id, cfg)
-    return {"ok": True, "roots": roots}
+    return {"ok": True, "filesystem_sources": sources}
 
 
 @app.get("/api/v1/sessions/{session_id}/skills")
 async def list_skills(session_id: str) -> Dict[str, Any]:
     try:
-        cfg = _STORAGE.ensure_skills_roots_configured(session_id)
+        cfg = _STORAGE.get_skills_config(session_id)
     except FileNotFoundError:
         raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
 
-    roots = cfg.get("roots") or []
-    roots = [str(r).strip() for r in roots if str(r).strip()]
+    sources = cfg.get("filesystem_sources") or []
+    sources = [str(r).strip() for r in sources if str(r).strip()]
     disabled_paths = cfg.get("disabled_paths") or []
     disabled_paths = [str(p).strip() for p in disabled_paths if str(p).strip()]
 
-    skills_cfg = skills_v2_config_from_roots(roots=roots)
+    skills_cfg = skills_config_from_filesystem_sources(filesystem_sources=sources)
     mgr = SkillsManager(workspace_root=_WORKSPACE_ROOT, skills_config=skills_cfg)
     _ = mgr.scan()
     skills = []
@@ -167,9 +165,9 @@ async def list_skills(session_id: str) -> Dict[str, Any]:
             }
         )
 
-    # 兼容字段：disabled_paths 与 scan errors/warnings 由上层决定是否展示
+    # 补充字段：disabled_paths 与 scan errors/warnings 由上层决定是否展示
     return {
-        "roots": roots,
+        "filesystem_sources": sources,
         "disabled_paths": disabled_paths,
         "skills": skills,
     }
@@ -203,11 +201,10 @@ def _build_agent(*, session_id: str, run_id: str) -> Agent:
             merged_dicts.append(obj)
     merged_cfg = load_config_dicts(merged_dicts)
 
-    llm_cfg = AgentSdkLlmConfig(
-        base_url=str(resolved.base_url),
-        api_key_env=str(resolved.api_key_env),
-        timeout_sec=int(getattr(merged_cfg.llm, "timeout_sec", 60)),
-        max_retries=int(getattr(merged_cfg.llm, "max_retries", 3)),
+    # base_url/api_key_env 以 bootstrap 的 resolved 为准（支持 .env 与进程 env 覆盖）；
+    # 其它字段（timeout/retry 等）以合并后的配置为准（严格 schema）。
+    llm_cfg = merged_cfg.llm.model_copy(
+        update={"base_url": str(resolved.base_url), "api_key_env": str(resolved.api_key_env)}
     )
 
     import os
@@ -247,7 +244,7 @@ def _build_agent(*, session_id: str, run_id: str) -> Agent:
 @app.post("/api/v1/sessions/{session_id}/runs", status_code=201)
 async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
     try:
-        _ = _STORAGE.ensure_skills_roots_configured(session_id)
+        _ = _STORAGE.get_skills_config(session_id)
     except FileNotFoundError:
         raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
 
@@ -256,9 +253,9 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
 
     # 可靠性：提前创建 events.jsonl，避免 SSE 因文件缺失而“空转等待”。
     run_dir = _STORAGE.run_dir(run_id)
-    events_path = (run_dir / "events.jsonl").resolve()
-    events_path.parent.mkdir(parents=True, exist_ok=True)
-    events_path.touch(exist_ok=True)
+    events_jsonl_path = (run_dir / "events.jsonl").resolve()
+    events_jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    events_jsonl_path.touch(exist_ok=True)
 
     def _append_run_failed(*, error_kind: str, message: str) -> None:
         """
@@ -266,7 +263,7 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
 
         约定：
         - SSE `event` 取自 JSON 的 `type` 字段（参见 `studio_api.sse.stream_jsonl_as_sse`）
-        - payload 至少包含 `error_kind/message/events_path`，以便前端展示与排障
+        - payload 至少包含 `error_kind/message/wal_locator`，以便前端展示与排障
         """
 
         obj = {
@@ -277,11 +274,11 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
                 "error_kind": str(error_kind or "unknown"),
                 "message": str(message or ""),
                 "retryable": False,
-                "events_path": str(events_path),
+                "wal_locator": str(events_jsonl_path),
             },
         }
         try:
-            with events_path.open("a", encoding="utf-8") as f:
+            with events_jsonl_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(obj, ensure_ascii=False) + "\n")
         except Exception:
             # best-effort：落盘失败时不再抛出，避免线程异常导致更难排查
@@ -331,6 +328,6 @@ async def list_pending_approvals(run_id: str) -> Dict[str, Any]:
 
 @app.get("/api/v1/runs/{run_id}/events/stream")
 async def stream_run_events(run_id: str, request: Request) -> StreamingResponse:
-    events_path = (_WORKSPACE_ROOT / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
-    body = stream_jsonl_as_sse(request=request, jsonl_path=events_path)
+    events_jsonl_path = (_WORKSPACE_ROOT / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
+    body = stream_jsonl_as_sse(request=request, jsonl_path=events_jsonl_path)
     return StreamingResponse(body, media_type="text/event-stream")

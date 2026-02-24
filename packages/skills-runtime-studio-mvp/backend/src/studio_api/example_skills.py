@@ -19,8 +19,8 @@ def ensure_example_skills_installed(*, workspace_root: Path) -> List[Path]:
     - 本次实际安装的 skill 目录列表（已存在的不会覆盖/重复安装）。
     """
 
-    target_root = (workspace_root / ".skills_runtime_sdk" / "skills").resolve()
-    target_root.mkdir(parents=True, exist_ok=True)
+    target_dir = (workspace_root / ".skills_runtime_sdk" / "skills").resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     if not _BUNDLE_DIR.exists():
         return []
@@ -29,11 +29,10 @@ def ensure_example_skills_installed(*, workspace_root: Path) -> List[Path]:
     for src_dir in sorted(_BUNDLE_DIR.iterdir()):
         if not src_dir.is_dir():
             continue
-        dst_dir = target_root / src_dir.name
+        dst_dir = target_dir / src_dir.name
         if dst_dir.exists():
             continue
         shutil.copytree(src_dir, dst_dir)
         installed.append(dst_dir)
 
     return installed
-

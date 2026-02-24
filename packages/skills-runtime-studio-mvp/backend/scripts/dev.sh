@@ -55,7 +55,6 @@ sanitize_env_file_var() {
 
 # 避免用户 shell 环境里遗留的旧路径（例如 legacy 目录）导致启动直接失败。
 sanitize_env_file_var "SKILLS_RUNTIME_SDK_ENV_FILE"
-sanitize_env_file_var "AGENT_SDK_ENV_FILE"
 
 sanitize_overlay_paths_var() {
   local var_name="$1"
@@ -117,6 +116,5 @@ sanitize_overlay_paths_var() {
 
 # 避免用户 shell 环境里遗留的旧 web-mvp overlay 路径导致运行时报错。
 sanitize_overlay_paths_var "SKILLS_RUNTIME_SDK_CONFIG_PATHS"
-sanitize_overlay_paths_var "AGENT_SDK_CONFIG_PATHS"
 
 python -m uvicorn studio_api.app:app --reload --host "${HOST}" --port "${PORT}"

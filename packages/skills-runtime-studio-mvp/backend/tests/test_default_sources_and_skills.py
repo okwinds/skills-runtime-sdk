@@ -16,7 +16,7 @@ def _load_app(tmp_path: Path):
     return mod.app
 
 
-def test_new_session_has_default_roots_and_example_skills(tmp_path: Path) -> None:
+def test_new_session_has_default_sources_and_example_skills(tmp_path: Path) -> None:
     app = _load_app(tmp_path)
     client = TestClient(app)
 
@@ -28,12 +28,11 @@ def test_new_session_has_default_roots_and_example_skills(tmp_path: Path) -> Non
     assert skills.status_code == 200, skills.text
     data = skills.json()
 
-    roots = data.get("roots") or []
-    assert isinstance(roots, list)
-    assert len(roots) >= 1
-    assert str(tmp_path / ".skills_runtime_sdk" / "skills") in roots
+    sources = data.get("filesystem_sources") or []
+    assert isinstance(sources, list)
+    assert len(sources) >= 1
+    assert str(tmp_path / ".skills_runtime_sdk" / "skills") in sources
 
     names = [s.get("name") for s in (data.get("skills") or []) if isinstance(s, dict)]
     assert "article-writer" in names
     assert "novel-writer" in names
-

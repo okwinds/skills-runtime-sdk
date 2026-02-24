@@ -150,7 +150,7 @@ function mapListedSession(raw: unknown): Session | null {
 // ===== API: Sessions =====
 
 export interface CreateSessionRequest {
-  skills_roots?: string[] | null;
+  filesystem_sources?: string[] | null;
 }
 
 export async function listSessions(): Promise<Session[]> {
@@ -170,11 +170,11 @@ export async function createSession(req: CreateSessionRequest = {}): Promise<Ses
   return mapSession(data);
 }
 
-export async function setSessionSkillRoots(sessionId: string, roots: string[]): Promise<void> {
-  await fetchNoContent(`/api/v1/sessions/${encodeURIComponent(sessionId)}/skills/roots`, {
+export async function setSessionSkillSources(sessionId: string, sources: string[]): Promise<void> {
+  await fetchNoContent(`/api/v1/sessions/${encodeURIComponent(sessionId)}/skills/sources`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ roots }),
+    body: JSON.stringify({ filesystem_sources: sources }),
   });
 }
 
@@ -185,12 +185,12 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 export async function getSessionSkills(sessionId: string): Promise<{
-  roots: string[];
+  filesystemSources: string[];
   disabledPaths: string[];
   skills: SkillManifest[];
 }> {
   const data = await fetchJson<{
-    roots: string[];
+    filesystem_sources: string[];
     disabled_paths: string[];
     skills: unknown[];
   }>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/skills`, {
@@ -198,7 +198,7 @@ export async function getSessionSkills(sessionId: string): Promise<{
   });
 
   return {
-    roots: readStringArray(data.roots),
+    filesystemSources: readStringArray(data.filesystem_sources),
     disabledPaths: readStringArray(data.disabled_paths),
     skills: (Array.isArray(data.skills) ? data.skills : []).map(mapSkill),
   };
@@ -216,7 +216,7 @@ export interface CreateStudioSkillBody {
   description: string;
   title?: string;
   body_markdown?: string;
-  target_root?: string;
+  target_source?: string;
 }
 
 export async function createStudioSkill(

@@ -8,7 +8,7 @@
 
 基于 `skills-runtime-sdk` 的原型 Studio（MVP），提供：
 
-- **文件级 Skill 创建**：在指定 skills root 下落盘创建 skill 目录与 `SKILL.md`
+- **文件级 Skill 创建**：在指定 filesystem source 目录下落盘创建 skill 目录与 `SKILL.md`
 - **Runs + SSE 流式事件**：通过后端 SSE 接口流式返回运行事件与结果
 - **React UI（Vite）**：Sessions / Skills / Create / Run 一体化操作界面
 
@@ -16,8 +16,8 @@
 
 ## 核心能力
 
-- Session 管理：创建/列出 session，并为 session 配置 skills roots
-- Skills 管理：列出 session 下可用 skills；在可写 root 下创建新 skill
+- Session 管理：创建/列出 session，并为 session 配置 `filesystem_sources`
+- Skills 管理：列出 session 下可用 skills；在可写 source 下创建新 skill
 - Runs：在指定 session 上创建 run，并通过 SSE 拉取 run events 流
 - 离线可回归：后端测试脚本固定设置 UTF-8 与 `PYTHONPATH`，避免环境漂移
 
@@ -71,7 +71,7 @@ bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
 说明：
 - 脚本会自动设置 `PYTHONPATH`（指向 `packages/skills-runtime-sdk-python/src` + `packages/skills-runtime-studio-mvp/backend/src`）并启动 `uvicorn`。
 - 后端工作区（workspace root）为 `packages/skills-runtime-studio-mvp/backend/`，运行产物会落在：`packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/`（已在 `.gitignore` 中忽略）。
-- 默认 skills roots 为 `packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/skills`，UI 首次打开即可看到 skills（无需手动“Apply Roots/生效”）。
+- 默认 session `filesystem_sources` 为 `packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/skills`，UI 首次打开即可看到 skills（无需额外“Apply/生效”步骤）。
 
 #### 启动排障：`env file not found`
 
@@ -84,12 +84,11 @@ ValueError: env file not found: <some-path>/.env
 通常是因为你的 shell 环境里遗留了以下环境变量，且指向了一个已不存在的文件（例如历史目录已移动/删除）：
 
 - `SKILLS_RUNTIME_SDK_ENV_FILE`（新）
-- `AGENT_SDK_ENV_FILE`（旧兼容）
 
 解决方式：
 
 - 推荐：直接 `unset` 再重试启动
-  - `unset SKILLS_RUNTIME_SDK_ENV_FILE AGENT_SDK_ENV_FILE`
+  - `unset SKILLS_RUNTIME_SDK_ENV_FILE`
 - 或者：把它们改成一个存在的 `.env` 路径（相对路径会以 `backend/` 为锚点解析）
 
 #### 运行排障：`overlay config not found`
@@ -103,12 +102,11 @@ ValueError: env file not found: <some-path>/.env
 这通常意味着你的 shell 环境里遗留了以下环境变量，指向了一个已不存在/已移动的 overlay 文件路径（例如历史目录已移动/删除）：
 
 - `SKILLS_RUNTIME_SDK_CONFIG_PATHS`（新）
-- `AGENT_SDK_CONFIG_PATHS`（旧兼容）
 
 解决方式：
 
 - 推荐：直接 `unset` 后重启后端
-  - `unset SKILLS_RUNTIME_SDK_CONFIG_PATHS AGENT_SDK_CONFIG_PATHS`
+  - `unset SKILLS_RUNTIME_SDK_CONFIG_PATHS`
 - 或者：把它们改成一个存在的 overlay 文件路径（相对路径以 `backend/` 为锚点解析）
 
 ### 启动后端（可选：手动启动）
@@ -133,7 +131,7 @@ npm -C packages/skills-runtime-studio-mvp/frontend run dev
 
 ### Run 里如何引用 Skill（重要）
 
-本 MVP 使用 Skills V2 mention 语法（旧的 `$name`、`[$name](path)` 会报错）：
+本 MVP 唯一合法的 mention 语法如下（旧的 `$name`、`[$name](path)` 会报错）：
 
 ```text
 $[web:mvp].skill_name
@@ -163,7 +161,7 @@ npm -C packages/skills-runtime-studio-mvp/frontend run build
 - 不需要依赖或编辑其它仓库目录下的 `.env`/LLM overlay；本仓库的后端配置已收敛在 `backend/` 内。
 
 当你使用 `backend/scripts/dev.sh` 启动后端且示例 skills 已自动安装到 `backend/.skills_runtime_sdk/skills` 后：
-- 不需要手动把任何外部 skills root 加到 roots；UI 默认会直接展示可用 skills（无需“Apply Roots/手动生效”）。
+- 不需要手动把任何外部 source 加到 `filesystem_sources`；UI 默认会直接展示可用 skills（无需额外“Apply/手动生效”步骤）。
 
 此外，本仓库已提供：
 - `backend/.env.example`：不再需要为了“能跑通 Studio MVP”去依赖 SDK 目录中的 env 示例

@@ -137,7 +137,7 @@ export const SSETimeline: React.FC<SSETimelineProps> = ({ sessionId }) => {
   const checkPendingApprovals = useCallback(async (runId: string) => {
     try {
       const response = await listPendingApprovals(runId);
-      const approvals = response.approvals ?? response.pending ?? [];
+      const approvals = response.approvals ?? [];
       if (approvals.length > 0) {
         setPendingApprovals(approvals);
         setShowApprovalModal(true);
@@ -656,7 +656,7 @@ export const SSETimeline: React.FC<SSETimelineProps> = ({ sessionId }) => {
             if (currentRunIdRef.current) {
               listPendingApprovals(currentRunIdRef.current)
                 .then((response) => {
-                  const approvals = response.approvals ?? response.pending ?? [];
+                  const approvals = response.approvals ?? [];
                   if (approvals.length > 0) {
                     setPendingApprovals(approvals);
                   } else {

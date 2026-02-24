@@ -16,36 +16,36 @@ class CreateSkillReq(BaseModel):
     description: str = Field(min_length=1)
     body_markdown: str = ""
     title: Optional[str] = None
-    target_root: Optional[str] = None
+    target_source: Optional[str] = None
 
 
-def _clean_roots(cfg: dict[str, Any]) -> List[str]:
-    roots_raw = cfg.get("roots") or []
-    roots: List[str] = []
-    for r in roots_raw:
+def _clean_filesystem_sources(cfg: dict[str, Any]) -> List[str]:
+    sources_raw = cfg.get("filesystem_sources") or []
+    sources: List[str] = []
+    for r in sources_raw:
         if isinstance(r, str):
             rr = r.strip()
             if rr:
-                roots.append(rr)
-    return roots
+                sources.append(rr)
+    return sources
 
 
-def _target_root_allowed(*, target_root: str, roots: List[str]) -> bool:
+def _target_source_allowed(*, target_source: str, sources: List[str]) -> bool:
     """
-    判断 target_root 是否属于 roots（支持 path resolve 等价）。
+    判断 target_source 是否属于 sources（支持 path resolve 等价）。
 
     参数：
-    - target_root：用户请求写入的目录
-    - roots：session 配置的 roots（字符串列表）
+    - target_source：用户请求写入的目录（filesystem source root path）
+    - sources：session 配置的 filesystem_sources（字符串列表）
     """
 
-    if target_root in roots:
+    if target_source in sources:
         return True
     try:
-        t_resolved = str(Path(target_root).resolve())
+        t_resolved = str(Path(target_source).resolve())
     except Exception:
         return False
-    for r in roots:
+    for r in sources:
         try:
             if str(Path(r).resolve()) == t_resolved:
                 return True
@@ -71,26 +71,26 @@ def bind_create_skill_router(*, storage: FileStorage) -> APIRouter:
         """
 
         try:
-            cfg = storage.ensure_skills_roots_configured(session_id)
+            cfg = storage.get_skills_config(session_id)
         except FileNotFoundError:
             raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
 
-        roots = _clean_roots(cfg)
-        if not roots:
+        sources = _clean_filesystem_sources(cfg)
+        if not sources:
             raise http_error(
                 "validation_error",
-                "skills roots not configured for session",
+                "filesystem sources not configured for session",
                 status_code=400,
                 details={"session_id": session_id},
             )
 
-        target_root = (body.target_root or "").strip() or roots[0]
-        if not _target_root_allowed(target_root=target_root, roots=roots):
+        target_source = (body.target_source or "").strip() or sources[0]
+        if not _target_source_allowed(target_source=target_source, sources=sources):
             raise http_error(
                 "validation_error",
-                "target_root must be one of session roots",
+                "target_source must be one of session filesystem_sources",
                 status_code=400,
-                details={"target_root": target_root, "roots": roots},
+                details={"target_source": target_source, "filesystem_sources": sources},
             )
 
         try:
@@ -100,7 +100,7 @@ def bind_create_skill_router(*, storage: FileStorage) -> APIRouter:
 
         try:
             result = write_skill(
-                root_dir=Path(target_root),
+                root_dir=Path(target_source),
                 skill_name=body.name,
                 description=body.description,
                 title=body.title,
@@ -113,7 +113,7 @@ def bind_create_skill_router(*, storage: FileStorage) -> APIRouter:
 
         return {
             "ok": True,
-            "root": target_root,
+            "filesystem_source": target_source,
             "skill_dir": str(result.skill_dir),
             "skill_md": str(result.skill_md),
         }

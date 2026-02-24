@@ -39,10 +39,10 @@ describe('api.ts response mapping', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/sessions', expect.objectContaining({ method: 'GET' }));
   });
 
-  it('getSessionSkills() maps roots/disabled_paths/skills -> roots/disabledPaths/skills', async () => {
+  it('getSessionSkills() maps filesystem_sources/disabled_paths/skills -> filesystemSources/disabledPaths/skills', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
-        roots: ['/skills'],
+        filesystem_sources: ['/skills'],
         disabled_paths: ['/skills/disabled'],
         skills: [
           {
@@ -58,7 +58,7 @@ describe('api.ts response mapping', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(getSessionSkills('a/b')).resolves.toEqual({
-      roots: ['/skills'],
+      filesystemSources: ['/skills'],
       disabledPaths: ['/skills/disabled'],
       skills: [
         {
@@ -78,4 +78,3 @@ describe('api.ts response mapping', () => {
     );
   });
 });
-

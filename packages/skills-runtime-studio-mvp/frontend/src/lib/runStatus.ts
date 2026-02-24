@@ -29,7 +29,7 @@ function getStringField(obj: Record<string, unknown>, field: string): string | n
 
 function readEventTimestampIso(data: unknown): string {
   if (isRecord(data)) {
-    const ts = getStringField(data, 'timestamp') ?? getStringField(data, 'ts');
+    const ts = getStringField(data, 'timestamp');
     if (ts) return ts;
   }
   return new Date().toISOString();

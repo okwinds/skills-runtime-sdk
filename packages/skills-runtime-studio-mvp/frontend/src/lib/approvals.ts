@@ -14,16 +14,6 @@ export type ApprovalDecision = 'approved' | 'approved_for_session' | 'denied' | 
 
 export interface PendingApproval {
   approval_key: string;
-  // Legacy fields (frontend may still send these)
-  title?: string;
-  prompt?: string;
-  requested_at?: string;
-  metadata?: {
-    origin?: string;
-    url?: string;
-    [key: string]: unknown;
-  };
-  // Extended fields (backend may add)
   tool?: string;
   summary?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,10 +24,7 @@ export interface PendingApproval {
 
 export interface PendingApprovalsResponse {
   run_id?: string;
-  /** @deprecated Use `approvals` instead */
-  pending?: PendingApproval[];
   approvals?: PendingApproval[];
-  [key: string]: unknown;
 }
 
 export interface DecideApprovalResponse {
@@ -79,10 +66,6 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 /**
  * List pending approvals for a run.
  * Use this on page load/refresh to check if there's any pending approval that needs user action.
- *
- * Note: This function is compatible with both legacy format (response.pending)
- * and new backend format (response.approvals). The response will have both
- * fields populated for maximum compatibility.
  */
 export async function listPendingApprovals(runId: string): Promise<PendingApprovalsResponse> {
   const raw = await fetchJson<PendingApprovalsResponse>(
@@ -90,16 +73,12 @@ export async function listPendingApprovals(runId: string): Promise<PendingApprov
     { method: 'GET' }
   );
 
-  // Normalize response to support both legacy (pending) and new backend (approvals) formats
-  const approvals = raw.approvals ?? raw.pending ?? [];
-  const pending = raw.pending ?? raw.approvals ?? [];
+  const approvals = raw.approvals ?? [];
   const normalizedRunId = typeof raw.run_id === 'string' && raw.run_id ? raw.run_id : runId;
 
   return {
-    ...raw,
     run_id: normalizedRunId,
     approvals,
-    pending,
   };
 }
 

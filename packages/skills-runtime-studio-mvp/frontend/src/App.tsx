@@ -12,12 +12,12 @@ import {
   deleteSession,
   getSessionSkills,
   listSessions,
-  setSessionSkillRoots,
+  setSessionSkillSources,
   type Session,
   type SkillManifest,
 } from './lib/api';
 
-function parseRootsInput(text: string): string[] {
+function parseSourcesInput(text: string): string[] {
   return text
     .split(/[\n,]/g)
     .map((s) => s.trim())
@@ -29,8 +29,8 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [skills, setSkills] = useState<SkillManifest[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
-  const [rootsInput, setRootsInput] = useState('');
-  const [rootsSaving, setRootsSaving] = useState(false);
+  const [sourcesInput, setSourcesInput] = useState('');
+  const [sourcesSaving, setSourcesSaving] = useState(false);
   type TabId = 'skills' | 'create' | 'run';
   const [activeTab, setActiveTab] = useState<TabId>('skills');
 
@@ -51,27 +51,27 @@ export default function App() {
 
   const refreshSessionSkills = useCallback(async () => {
     if (!activeSessionId) return;
-    setSkillsLoading(true);
+      setSkillsLoading(true);
     try {
       const data = await getSessionSkills(activeSessionId);
       setSkills(data.skills);
-      setRootsInput(data.roots.join('\n'));
+      setSourcesInput(data.filesystemSources.join('\n'));
     } finally {
       setSkillsLoading(false);
     }
   }, [activeSessionId]);
 
-  const applyRoots = useCallback(async () => {
+  const applySources = useCallback(async () => {
     if (!activeSessionId) return;
-    const roots = parseRootsInput(rootsInput);
-    setRootsSaving(true);
+    const sources = parseSourcesInput(sourcesInput);
+    setSourcesSaving(true);
     try {
-      await setSessionSkillRoots(activeSessionId, roots);
+      await setSessionSkillSources(activeSessionId, sources);
       await refreshSessionSkills();
     } finally {
-      setRootsSaving(false);
+      setSourcesSaving(false);
     }
-  }, [activeSessionId, refreshSessionSkills, rootsInput]);
+  }, [activeSessionId, refreshSessionSkills, sourcesInput]);
 
   const createNewSession = useCallback(async () => {
     const session = await createSession();
@@ -203,23 +203,23 @@ export default function App() {
                   </div>
 
                   <div className="panel__section">
-                    <div className="panel__section-title">技能 Roots</div>
+                    <div className="panel__section-title">技能 Sources（filesystem）</div>
                     <div className="panel__roots">
                       <Textarea
-                        value={rootsInput}
-                        onChange={(e) => setRootsInput(e.target.value)}
+                        value={sourcesInput}
+                        onChange={(e) => setSourcesInput(e.target.value)}
                         rows={2}
-                        placeholder="每行一个 root"
+                        placeholder="每行一个 filesystem source root（目录路径）"
                       />
                       <div className="panel__roots-actions">
                         <Button
                           variant="primary"
                           size="small"
-                          onClick={() => void applyRoots()}
-                          isLoading={rootsSaving}
-                          disabled={rootsSaving}
+                          onClick={() => void applySources()}
+                          isLoading={sourcesSaving}
+                          disabled={sourcesSaving}
                         >
-                          保存 Roots
+                          保存 Sources
                         </Button>
                       </div>
                     </div>

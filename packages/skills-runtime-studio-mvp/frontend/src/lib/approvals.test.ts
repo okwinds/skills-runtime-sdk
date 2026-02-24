@@ -112,19 +112,17 @@ describe('approvals.ts API client', () => {
   });
 
   describe('listPendingApprovals()', () => {
-    it('returns pending approvals array with correct structure', async () => {
+    it('returns approvals array with correct structure', async () => {
       const mockResponse: PendingApprovalsResponse = {
         run_id: 'run_123',
-        pending: [
+        approvals: [
           {
+            run_id: 'run_123',
             approval_key: 'tool.web.approval_1',
-            title: 'Allow visiting example.com?',
-            prompt: 'The agent wants to open https://example.com ...',
-            requested_at: '2026-02-10T12:34:56.789Z',
-            metadata: {
-              origin: 'web',
-              url: 'https://example.com',
-            },
+            tool: 'web_open',
+            summary: 'Open https://example.com',
+            request: { url: 'https://example.com' },
+            age_ms: 123,
           },
         ],
       };
@@ -136,12 +134,10 @@ describe('approvals.ts API client', () => {
 
       const result = await listPendingApprovals('run_123');
 
-      // Result is normalized to include both 'pending' and 'approvals' fields
       expect(result.run_id).toBe('run_123');
-      expect(result.pending).toHaveLength(1);
-      expect(result.pending![0].approval_key).toBe('tool.web.approval_1');
       expect(result.approvals).toHaveLength(1);
       expect(result.approvals![0].approval_key).toBe('tool.web.approval_1');
+      expect(result.approvals![0].tool).toBe('web_open');
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/runs/run_123/approvals/pending',
@@ -149,10 +145,10 @@ describe('approvals.ts API client', () => {
       );
     });
 
-    it('returns empty pending array when no approvals pending', async () => {
+    it('returns empty approvals array when no approvals pending', async () => {
       const mockResponse: PendingApprovalsResponse = {
         run_id: 'run_456',
-        pending: [],
+        approvals: [],
       };
 
       const fetchMock = vi.fn().mockResolvedValue(
@@ -162,9 +158,7 @@ describe('approvals.ts API client', () => {
 
       const result = await listPendingApprovals('run_456');
 
-      // Result is normalized to include both 'pending' and 'approvals' fields
       expect(result.run_id).toBe('run_456');
-      expect(result.pending).toHaveLength(0);
       expect(result.approvals).toHaveLength(0);
     });
 
@@ -185,16 +179,10 @@ describe('approvals.ts API client', () => {
     it('handles response with extended fields (backend may add more fields)', async () => {
       const mockResponse = {
         run_id: 'run_789',
-        pending: [
+        approvals: [
           {
+            run_id: 'run_789',
             approval_key: 'tool.shell.approval_2',
-            title: 'Execute shell command?',
-            prompt: 'The agent wants to run: rm -rf /tmp/test',
-            requested_at: '2026-02-10T12:34:56.789Z',
-            metadata: {
-              origin: 'shell',
-              command: 'rm -rf /tmp/test',
-            },
             // Extended fields that backend may add
             tool: 'shell_exec',
             summary: 'Run rm -rf /tmp/test',
@@ -214,16 +202,18 @@ describe('approvals.ts API client', () => {
       const result = await listPendingApprovals('run_789');
 
       expect(result.run_id).toBe('run_789');
-      expect(result.pending).toHaveLength(1);
-      expect(result.pending![0].approval_key).toBe('tool.shell.approval_2');
+      expect(result.approvals).toHaveLength(1);
+      expect(result.approvals![0].approval_key).toBe('tool.shell.approval_2');
       // Extended fields should be accessible
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result.pending![0] as any).tool).toBe('shell_exec');
+      expect((result.approvals![0] as any).tool).toBe('shell_exec');
+      // Top-level extended fields are not guaranteed to be preserved by the client
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((result as any).extra_field).toBeUndefined();
     });
 
-    it('handles backend response with approvals array (new format)', async () => {
+    it('falls back to input runId when backend run_id is missing', async () => {
       const mockResponse = {
-        run_id: 'run_abc',
         approvals: [
           {
             run_id: 'run_abc',

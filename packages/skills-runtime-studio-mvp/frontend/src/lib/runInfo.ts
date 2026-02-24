@@ -15,7 +15,7 @@ function readPayload(data: unknown): RecordLike | null {
 
 function readTimestampIso(data: unknown): string {
   if (isRecord(data)) {
-    const ts = data.timestamp ?? data.ts;
+    const ts = data.timestamp;
     if (typeof ts === 'string' && ts) return ts;
   }
   return new Date().toISOString();
@@ -158,4 +158,3 @@ export function summarizeSandbox(entries: ToolSandboxEntry[]): {
     failed_tools: failed,
   };
 }
-

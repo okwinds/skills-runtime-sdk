@@ -15,7 +15,7 @@ interface FormData {
   description: string;
   title: string;
   body_markdown: string;
-  target_root: string;
+  target_source: string;
 }
 
 interface FormErrors {
@@ -28,7 +28,7 @@ const defaultFormData: FormData = {
   description: '',
   title: '',
   body_markdown: '',
-  target_root: '',
+  target_source: '',
 };
 
 function validateForm(data: FormData): FormErrors {
@@ -80,7 +80,7 @@ export const SkillCreateForm: React.FC<SkillCreateFormProps> = ({
         description: formData.description.trim(),
         title: formData.title.trim() || undefined,
         body_markdown: formData.body_markdown.trim() || undefined,
-        target_root: formData.target_root.trim() || undefined,
+        target_source: formData.target_source.trim() || undefined,
       };
 
       await createStudioSkill(sessionId, body);
@@ -138,10 +138,10 @@ export const SkillCreateForm: React.FC<SkillCreateFormProps> = ({
         />
 
         <Input
-          label="Target Root (optional)"
-          placeholder="Leave empty to use session roots[0]"
-          value={formData.target_root}
-          onChange={handleChange('target_root')}
+          label="Target Source (optional)"
+          placeholder="Leave empty to use filesystem_sources[0]"
+          value={formData.target_source}
+          onChange={handleChange('target_source')}
         />
 
         <Textarea
