@@ -37,8 +37,8 @@ rg --no-ignore -n \"TODO\" docs/specs
 - legacy `skills.roots` / `skills.mode=auto` 明确不支持（避免“隐式发现”与不可回归）。
 
 入口：
-- `docs/specs/skills-runtime-sdk/docs/skills.md`
-- `docs/specs/skills-runtime-sdk/docs/skills-preflight.md`
+- `help/05-skills-guide.cn.md`
+- `help/02-config-reference.cn.md`（skills 配置段落）
 
 ## 5) macOS 上跑 examples 报 typing/pydantic 错误（`str | None` 不支持）？
 

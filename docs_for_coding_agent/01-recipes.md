@@ -36,7 +36,7 @@
 关键能力组合：
 - `shell_exec`（argv）
 - approvals：`safety.mode=ask`
-- sandbox：`sandbox.default_policy=restricted`（生产推荐）
+- sandbox：推荐 `sandbox.profile=balanced`（分阶段收紧的高层宏；也可直接用 `sandbox.default_policy=restricted`）
 - evidence：`data.sandbox.*`
 
 对应示例：

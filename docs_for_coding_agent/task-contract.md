@@ -3,9 +3,11 @@
 本契约用于约束编码智能体与人类协作的交付形态，目标是：
 - 交付可复现（别人能跑）
 - 交付可回归（有离线门禁）
-- 交付可审计（worklog + task summary + 索引可定位）
+- 交付可审计（关键命令/关键输出/关键决策可追溯）
 
-本仓库的更高优先级规则见：`AGENTS.md`。
+说明（对外发布约束）：
+- 本仓库的 OSS 形态可能**不包含**内部协作文档（例如 worklog/backlog/协作宪法文件），以避免暴露内部生产信息。
+- 因此本契约不要求你向仓库提交这类文件；但仍要求你在 PR/issue 或你们内部系统里保留“命令 + 结果 + 决策”的证据链。
 
 ---
 
@@ -22,12 +24,10 @@
    - `Goal / Constraints / Contract / Acceptance Criteria / Test Plan`
 2. Tests（离线回归门禁）：
    - 新增/修复必须有新增/更新测试
-3. Docs index：
-   - `DOCS_INDEX.md`（新增文档/示例必须可定位）
-4. Worklog（可追溯）：
-   - `docs/worklog.md` 记录关键命令 + 结果 + 决策
-5. Task Summary（结项复盘）：
-   - `docs/task-summaries/<YYYY-MM-DD-...>.md`
+3. Docs（面向使用者）：
+   - 更新 `help/` 或 `docs_for_coding_agent/`（确保新增能力有“怎么用”的入口）
+4. Evidence（可追溯）：
+   - 在 PR/issue 或内部工单中记录：关键命令、关键输出、关键决策与理由
 
 ## 3) Done 的定义（不要“最小化完成”）
 
@@ -37,4 +37,3 @@
   - 离线回归覆盖（happy path + 关键错误路径）
   - 可观测字段齐全
   - 文档与示例可复用
-

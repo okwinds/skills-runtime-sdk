@@ -4,17 +4,15 @@
 
 ## 0) 最小共识（不要绕过）
 
-- **文档优先**：变更前先写/更新 spec（见 `AGENTS.md`）。
+- **文档优先**：变更前先写清楚 `Goal/AC/Test Plan`（写在 PR/issue 或你们内部文档里即可；OSS 版本不依赖内部协作文档）。
 - **TDD 门禁**：功能完成 = 离线回归通过（至少 `bash scripts/pytest.sh`）。
 - **可复现**：不提交 secrets；示例命令必须可跑通。
 
 ## 1) 快速定位入口
 
-- 全仓库文档索引：`DOCS_INDEX.md`
-- 未尽事宜（future / done memo）：`docs/backlog.md`
-- 工作记录（命令 + 结果）：`docs/worklog.md`
-- 规格入口（SDK）：`docs/specs/skills-runtime-sdk/README.md`
 - 接入/运维手册（Help）：`help/README.cn.md`
+- 编码智能体教学索引：`docs_for_coding_agent/DOCS_INDEX.md`
+- 示例库（离线可回归）：`examples/`
 
 ## 2) 最短跑通（离线）
 
@@ -28,6 +26,12 @@ bash scripts/pytest.sh
 
 ```bash
 pytest -q packages/skills-runtime-sdk-python/tests/test_examples_smoke.py
+```
+
+3) CI 同款最小门禁（包含 repo+SDK+Studio 的离线回归）：
+
+```bash
+bash scripts/tier0.sh
 ```
 
 ## 3) 最短跑通（真模型，可选）
@@ -68,3 +72,12 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
   - **Linux bubblewrap（bwrap）在容器里“有条件可用”**（取决于宿主内核与容器 seccomp/apparmor/caps）
   - 一键探测脚本：`bash scripts/integration/os_sandbox_bubblewrap_probe_docker.sh`
 
+## 6) 内部生产（可选）：强制本地协作文件校验
+
+> OSS 版本默认不强制要求“本地协作文件”存在；内部生产如需强制，可显式开启：
+
+```bash
+REQUIRE_LOCAL_DOCS=1 bash scripts/tier0.sh
+```
+
+说明与约束见：`help/12-validation-suites.cn.md`（12.2.1）。

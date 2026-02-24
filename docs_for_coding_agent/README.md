@@ -13,7 +13,7 @@
 1. 先读 `docs_for_coding_agent/cheatsheet.zh-CN.md`（10 分钟建立“命令与入口”心智模型）
 2. 再读 `docs_for_coding_agent/capability-inventory.md`（全能力点 CAP-* 清单）
 3. 需要落地时，按 `docs_for_coding_agent/capability-coverage-map.md` 找到对应：
-   - specs（契约）
+   - 契约入口（以 `help/` 为主，必要时指向源码入口）
    - examples（可运行）
    - tests（离线回归）
    - help（接入/运维手册）
@@ -24,5 +24,6 @@
 - `docs_for_coding_agent/02-ops-and-qa.md`
 
 注意：
-- 本仓库的协作规则以 `AGENTS.md` 为准（Spec First + TDD Gate + Worklog + Task Summary + DOCS_INDEX）。
+- 本目录是 **对外教学材料**：不依赖也不引用任何“本地协作文档”（例如内部 worklog/backlog/协作宪法文件）。
+- 若你在内部生产环境有额外门禁要求（例如强制要求某些本地协作文件存在），建议用“私有注入/挂载”实现，并通过 `REQUIRE_LOCAL_DOCS=1` 显式开启校验（入口见 `help/12-validation-suites.cn.md`）。
 - 示例库在 `examples/`（本目录只讲“怎么用/怎么交付”，不放大段代码）。

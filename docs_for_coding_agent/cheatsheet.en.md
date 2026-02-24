@@ -4,17 +4,15 @@ Purpose: give a coding agent a runnable “happy path” + key entrypoints.
 
 ## Core rules (do not bypass)
 
-- Doc/spec first: follow `AGENTS.md`.
+- Doc/spec first: write down `Goal/AC/Test Plan` (PR/issue or your internal doc is fine; OSS build does not depend on internal collaboration artifacts).
 - TDD gate: “done” means offline regression passed (at least `bash scripts/pytest.sh`).
 - Reproducibility: no secrets in repo; examples must be runnable.
 
 ## Entry points
 
-- Repo docs index: `DOCS_INDEX.md`
-- Backlog (future + done memo): `docs/backlog.md`
-- Worklog (commands + results): `docs/worklog.md`
-- SDK specs entry: `docs/specs/skills-runtime-sdk/README.md`
 - Help (integration/ops manual): `help/README.md`
+- Coding-agent docs index: `docs_for_coding_agent/DOCS_INDEX.md`
+- Examples library (offline-by-default): `examples/`
 
 ## Offline verification
 
@@ -26,6 +24,12 @@ Example smoke tests only:
 
 ```bash
 pytest -q packages/skills-runtime-sdk-python/tests/test_examples_smoke.py
+```
+
+Tier-0 CI-equivalent gate:
+
+```bash
+bash scripts/tier0.sh
 ```
 
 ## Optional: real model run
@@ -41,3 +45,10 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 See: `help/sandbox-best-practices.md` (section “Docker/container notes”).
 
+## Optional (internal): strict local-docs enforcement
+
+```bash
+REQUIRE_LOCAL_DOCS=1 bash scripts/tier0.sh
+```
+
+See: `help/12-validation-suites.md` (section “Internal enforcement”).

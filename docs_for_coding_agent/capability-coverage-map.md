@@ -1,40 +1,39 @@
-# Capability Coverage Map（CAP-* → docs/examples/tests/help/specs）
+# Capability Coverage Map（CAP-* → help/examples/tests/code）
 
 本表用于把“能力点”与“证据入口”连起来，便于：
 - 快速定位实现与契约
-- 证明交付质量（tests/worklog/task summary）
+- 证明交付质量（tests + examples + 可观测 evidence 字段）
 - 避免“只完成最小实现就从 backlog 划掉”
 
 > 说明：examples/tests 在本仓库以 **离线可回归** 为默认目标；真模型/联网仅作为可选集成验证。
 
 ---
 
-| CAP | Specs（契约） | Help（手册） | Examples（可运行） | Tests（离线回归） |
+| CAP | Help（契约/用法） | Code（实现入口） | Examples（可运行） | Tests（离线回归） |
 |---|---|---|---|---|
-| CAP-SDK-001 Config | `docs/specs/skills-runtime-sdk/docs/configuration.md` | `help/02-config-reference.cn.md` | `examples/step_by_step/01_offline_minimal_run/` | `packages/skills-runtime-sdk-python/tests/test_config_*.py` |
-| CAP-SDK-002 Agent Loop | `docs/specs/skills-runtime-sdk/docs/agent-loop.md` | `help/03-sdk-python-api.cn.md` | `examples/step_by_step/01_offline_minimal_run/` | `packages/skills-runtime-sdk-python/tests/test_agent_*.py` |
-| CAP-SDK-003 Tools | `docs/specs/skills-runtime-sdk/docs/tools.md` | `help/06-tools-and-safety.cn.md` | `examples/tools/01_standard_library_read_file/` | `packages/skills-runtime-sdk-python/tests/test_tools_*.py` |
-| CAP-SDK-004 Safety | `docs/specs/skills-runtime-sdk/docs/safety.md` | `help/06-tools-and-safety.cn.md` | `examples/step_by_step/03_approvals_and_safety/` | `packages/skills-runtime-sdk-python/tests/test_safety_*.py` |
-| CAP-SDK-005 Sandbox | `docs/specs/skills-runtime-sdk/docs/os-sandbox.md` | `help/sandbox-best-practices.cn.md` | `examples/step_by_step/04_sandbox_evidence_and_verification/` + `scripts/integration/os_sandbox_restriction_demo.sh` | `packages/skills-runtime-sdk-python/tests/test_os_sandbox_*.py` |
-| CAP-SDK-006 Exec Sessions | `docs/specs/skills-runtime-sdk/docs/tools-exec-sessions.md` | `help/06-tools-and-safety.cn.md` | `examples/step_by_step/05_exec_sessions_across_processes/` | `packages/skills-runtime-sdk-python/tests/test_tools_exec_sessions_*` |
-| CAP-SDK-007 Collab | `docs/specs/skills-runtime-sdk/docs/tools-collab.md` | `help/06-tools-and-safety.cn.md` | `examples/step_by_step/06_collab_across_processes/` | `packages/skills-runtime-sdk-python/tests/test_tools_collab_*` |
-| CAP-SDK-008 Skills V2 | `docs/specs/skills-runtime-sdk/docs/skills.md` | `help/05-skills-guide.cn.md` | `examples/skills/01_skills_preflight_and_scan/` | `packages/skills-runtime-sdk-python/tests/test_skills_*.py` |
-| CAP-SDK-009 Sources | `docs/specs/skills-runtime-sdk/docs/skills-sources-contract.md` | `help/05-skills-guide.cn.md` |（集成脚本）`scripts/integration/skills_sources_docker_no_down.sh` | `packages/skills-runtime-sdk-python/tests/test_skills_sources_*.py` |
-| CAP-SDK-010 State/WAL | `docs/specs/skills-runtime-sdk/docs/state.md` | `help/08-architecture-internals.cn.md` | `examples/state/01_wal_replay_and_fork/` | `packages/skills-runtime-sdk-python/tests/test_agent_resume_replay.py` |
-| CAP-SDK-012 Studio | `docs/specs/skills-runtime-studio-mvp/SPEC.md` | `help/07-studio-guide.md` | `help/examples/studio-api.http` | `packages/skills-runtime-studio-mvp/**` |
-| CAP-SDK-014 Plan + Input | `docs/specs/skills-runtime-sdk/docs/tools-plan-and-input.md` | `help/04-cli-reference.cn.md` | `examples/step_by_step/08_plan_and_user_input/` | `packages/skills-runtime-sdk-python/tests/test_tools_update_plan.py` + `packages/skills-runtime-sdk-python/tests/test_tools_request_user_input.py` |
-| CAP-SDK-015 Web/Image | `docs/specs/skills-runtime-sdk/docs/tools-web-and-image.md` | `help/06-tools-and-safety.cn.md` | `examples/tools/02_web_search_disabled_and_fake_provider/` + `examples/workflows/19_view_image_offline/` | `packages/skills-runtime-sdk-python/tests/test_tools_web_search.py` + `packages/skills-runtime-sdk-python/tests/test_examples_smoke.py -k workflows_19` |
+| CAP-SDK-001 Config | `help/02-config-reference.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/config/loader.py` | `examples/step_by_step/01_offline_minimal_run/` | `packages/skills-runtime-sdk-python/tests/test_config_*.py` |
+| CAP-SDK-002 Agent Loop | `help/03-sdk-python-api.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/core/agent.py` | `examples/step_by_step/01_offline_minimal_run/` | `packages/skills-runtime-sdk-python/tests/test_agent_*.py` |
+| CAP-SDK-003 Tools | `help/06-tools-and-safety.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/tools/registry.py` | `examples/tools/01_standard_library_read_file/` | `packages/skills-runtime-sdk-python/tests/test_tools_*.py` |
+| CAP-SDK-004 Safety | `help/06-tools-and-safety.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/safety/*` | `examples/step_by_step/03_approvals_and_safety/` | `packages/skills-runtime-sdk-python/tests/test_safety_*.py` |
+| CAP-SDK-005 Sandbox | `help/sandbox-best-practices.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/sandbox/*` | `examples/step_by_step/04_sandbox_evidence_and_verification/` + `scripts/integration/os_sandbox_restriction_demo.sh` | `packages/skills-runtime-sdk-python/tests/test_os_sandbox_*.py` |
+| CAP-SDK-006 Exec Sessions | `help/08-architecture-internals.cn.md`（runtime server） | `packages/skills-runtime-sdk-python/src/agent_sdk/runtime/server.py` | `examples/step_by_step/05_exec_sessions_across_processes/` | `packages/skills-runtime-sdk-python/tests/test_tools_exec_sessions_*` |
+| CAP-SDK-007 Collab | `help/06-tools-and-safety.cn.md`（collab tools） | `packages/skills-runtime-sdk-python/src/agent_sdk/tools/collab.py` | `examples/step_by_step/06_collab_across_processes/` | `packages/skills-runtime-sdk-python/tests/test_tools_collab_*` |
+| CAP-SDK-008 Skills V2 | `help/05-skills-guide.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/skills/*` | `examples/skills/01_skills_preflight_and_scan/` | `packages/skills-runtime-sdk-python/tests/test_skills_*.py` |
+| CAP-SDK-009 Sources | `help/05-skills-guide.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/skills/sources/*` |（集成脚本）`scripts/integration/skills_sources_docker_no_down.sh` | `packages/skills-runtime-sdk-python/tests/test_skills_sources_*.py` |
+| CAP-SDK-010 State/WAL | `help/08-architecture-internals.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/state/*` | `examples/state/01_wal_replay_and_fork/` | `packages/skills-runtime-sdk-python/tests/test_agent_resume_replay.py` |
+| CAP-SDK-012 Studio | `help/07-studio-guide.md` | `packages/skills-runtime-studio-mvp/backend/src/studio_api/app.py` | `help/examples/studio-api.http` | `packages/skills-runtime-studio-mvp/**/tests/*` |
+| CAP-SDK-014 Plan + Input | `help/04-cli-reference.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/tools/plan_and_input.py` | `examples/step_by_step/08_plan_and_user_input/` | `packages/skills-runtime-sdk-python/tests/test_tools_update_plan.py` + `packages/skills-runtime-sdk-python/tests/test_tools_request_user_input.py` |
+| CAP-SDK-015 Web/Image | `help/06-tools-and-safety.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/tools/web.py` | `examples/tools/02_web_search_disabled_and_fake_provider/` + `examples/workflows/19_view_image_offline/` | `packages/skills-runtime-sdk-python/tests/test_tools_web_search.py` + `packages/skills-runtime-sdk-python/tests/test_examples_smoke.py -k workflows_19` |
 
 ---
 
 ## 例：如何证明“完成了而且完整”
 
 对某个 CAP-*，至少给出：
-1. spec（契约）入口
+1. 契约入口（help + code）
 2. examples（可运行证明）
 3. tests（离线回归）
-4. worklog（命令 + 结果）
-5. task summary（结项总结）
+4. evidence（命令 + 结果 + 关键决策；可写在 PR/issue 或内部系统）
 
 ---
 
