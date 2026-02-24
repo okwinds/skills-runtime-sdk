@@ -24,4 +24,4 @@ from agent_sdk.core.coordinator import ChildResult, Coordinator
 
 __all__ = ["Agent", "AgentBuilder", "ChildResult", "Coordinator", "RunResult", "__version__"]
 
-__version__ = "1.0.4.post1"
+__version__ = "0.1.4.post1"
