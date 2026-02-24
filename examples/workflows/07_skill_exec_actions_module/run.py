@@ -36,10 +36,8 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
                 "  actions:",
                 "    enabled: true",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -78,12 +76,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -93,17 +91,17 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_event_exists(*, events_path: str, event_type: str) -> None:
+def _assert_event_exists(*, wal_locator: str, event_type: str) -> None:
     """断言 WAL 中存在某类事件（至少一条）。"""
 
-    if not any(ev.get("type") == event_type for ev in _load_events(events_path)):
+    if not any(ev.get("type") == event_type for ev in _load_events(wal_locator)):
         raise AssertionError(f"missing event type: {event_type}")
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "skill_injected":
             continue
         payload = ev.get("payload") or {}
@@ -112,10 +110,10 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中某个 tool 的 `tool_call_finished` 存在且 ok=true。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "tool_call_finished":
             continue
         payload = ev.get("payload") or {}
@@ -178,7 +176,7 @@ def _build_backend(*, report_md: str) -> FakeChatBackend:
     )
 
 
-def _format_report_md(*, events_path: str) -> str:
+def _format_report_md(*, wal_locator: str) -> str:
     """生成 report.md（确定性）。"""
 
     return (
@@ -186,7 +184,7 @@ def _format_report_md(*, events_path: str) -> str:
             [
                 "# Workflow Report（skill_exec actions）",
                 "",
-                f"- Events: `{events_path}`",
+                f"- Events: `{wal_locator}`",
                 "- Artifact: `action_artifact.json`",
                 "",
                 "说明：本示例通过 `skill_exec` 执行 Skill bundle 内声明的 action（脚本位于 `actions/`）。",
@@ -218,8 +216,8 @@ def main() -> int:
         ]
     )
 
-    # 由于 report_md 需要 events_path（运行后才知道），这里先写占位，完成后再补充校验（示例保持简单）
-    report_md_placeholder = _format_report_md(events_path="<filled_by_wal>")
+    # 由于 report_md 需要 wal_locator（运行后才知道），这里先写占位，完成后再补充校验（示例保持简单）
+    report_md_placeholder = _format_report_md(wal_locator="<filled_by_wal>")
     backend = _build_backend(report_md=report_md_placeholder)
 
     task = "\n".join(
@@ -240,13 +238,13 @@ def main() -> int:
     r = agent.run(task, run_id="run_workflows_07_actions")
     assert r.status == "completed"
 
-    _assert_skill_injected(events_path=r.events_path, mention_text="$[examples:workflow].artifact_builder")
-    _assert_skill_injected(events_path=r.events_path, mention_text="$[examples:workflow].repo_reporter")
+    _assert_skill_injected(wal_locator=r.wal_locator, mention_text="$[examples:workflow].artifact_builder")
+    _assert_skill_injected(wal_locator=r.wal_locator, mention_text="$[examples:workflow].repo_reporter")
 
-    _assert_event_exists(events_path=r.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r.events_path, tool_name="skill_exec")
-    _assert_tool_ok(events_path=r.events_path, tool_name="file_write")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r.wal_locator, tool_name="skill_exec")
+    _assert_tool_ok(wal_locator=r.wal_locator, tool_name="file_write")
 
     artifact_path = workspace_root / "action_artifact.json"
     assert artifact_path.exists()

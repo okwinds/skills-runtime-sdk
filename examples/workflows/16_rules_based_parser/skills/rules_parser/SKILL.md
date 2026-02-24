@@ -13,7 +13,7 @@ metadata:
 
 - `plan.json`：结构化、可执行的提取计划
 - `result.json`：按 plan 的确定性执行结果
-- `report.md`：汇总（包含关键输入、产物指针与 events_path）
+- `report.md`：汇总（包含关键输入、产物指针与 wal_locator）
 
 ## 输入约定
 

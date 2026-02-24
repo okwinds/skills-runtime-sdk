@@ -19,5 +19,5 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 - `incident.log`：输入（示例生成）
 - `runbook.md`：建议处置步骤（可迁移模板）
-- `report.md`：包含 `run_id`、`events_path` 与关键证据摘要
+- `report.md`：包含 `run_id`、`wal_locator` 与关键证据摘要
 

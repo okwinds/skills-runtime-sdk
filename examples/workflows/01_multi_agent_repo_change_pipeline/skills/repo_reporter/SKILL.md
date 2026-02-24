@@ -11,12 +11,12 @@ metadata:
 
 把本次流水线的关键结果沉淀为一个可读报告（`report.md`），便于：
 - 人类审阅
-- 复盘与审计（WAL events_path 指针）
+- 复盘与审计（WAL wal_locator 指针）
 
 ## 输入约定
 
 - 你的任务文本中会包含 mention：`$[examples:workflow].repo_reporter`。
-- 上游会提供：各步骤摘要、关键证据（例如 events_path、QA stdout 关键字）。
+- 上游会提供：各步骤摘要、关键证据（例如 wal_locator、QA stdout 关键字）。
 
 ## 必须使用的工具
 
@@ -27,6 +27,6 @@ metadata:
 请至少包含：
 1. 本次目标与范围（Goal/Scope）
 2. 每个角色步骤的摘要（Analyze/Patch/QA）
-3. 证据指针（每个子 agent 的 `events_path`）
+3. 证据指针（每个子 agent 的 `wal_locator`）
 4. 下一步建议（可选）
 

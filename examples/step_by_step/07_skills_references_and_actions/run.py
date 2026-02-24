@@ -44,8 +44,6 @@ def _write_overlay(workspace_root: Path, *, skills_root: Path) -> Path:
                 "  mode: \"ask\"",
                 "  approval_timeout_ms: 2000",
                 "skills:",
-                "  mode: \"explicit\"",
-                "  max_auto: 0",
                 "  spaces:",
                 "    - id: \"local-space\"",
                 "      account: \"local\"",

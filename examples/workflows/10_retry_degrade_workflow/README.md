@@ -22,7 +22,7 @@ python3 examples/workflows/10_retry_degrade_workflow/run.py --workspace-root /tm
 
 - `retry_plan.json`：重试/降级策略（由 controller 生成）
 - `outputs/fallback.md`：降级产物（当 attempt 失败达到预算）
-- `report.md`：汇总报告（包含每次 attempt 的 exit_code 与 `events_path` 指针）
+- `report.md`：汇总报告（包含每次 attempt 的 exit_code 与 `wal_locator` 指针）
 
 ## 对应 skills
 

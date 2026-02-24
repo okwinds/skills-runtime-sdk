@@ -49,8 +49,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -89,12 +87,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -104,10 +102,10 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "skill_injected":
             continue
@@ -117,10 +115,10 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中存在某个 tool 的 tool_call_finished 且 ok=true。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "tool_call_finished":
             continue
@@ -133,10 +131,10 @@ def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
     raise AssertionError(f"missing ok tool_call_finished for tool={tool_name}")
 
 
-def _get_view_image_result_data(*, events_path: str) -> Dict[str, Any]:
+def _get_view_image_result_data(*, wal_locator: str) -> Dict[str, Any]:
     """提取 `view_image` 的 tool_call_finished.result.data（用于断言返回的 base64/mime/bytes）。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "tool_call_finished":
             continue
@@ -219,7 +217,7 @@ def main() -> int:
     generated_png.write_bytes(raw)
 
     sha256 = hashlib.sha256(raw).hexdigest()
-    events_path = (workspace_root / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
+    wal_locator = (workspace_root / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
 
     image_meta = {
         "image_relpath": "generated.png",
@@ -228,7 +226,7 @@ def main() -> int:
         "bytes": len(raw),
         "sha256": sha256,
         "base64": base64.b64encode(raw).decode("ascii"),
-        "events_path": str(events_path),
+        "wal_locator": str(wal_locator),
         "skill_mention": mention,
     }
     image_meta_json = json.dumps(image_meta, ensure_ascii=False, indent=2) + "\n"
@@ -242,7 +240,7 @@ def main() -> int:
             f"- skill mention: `{mention}`\n",
             "- tools: `view_image` → `file_write` (image_meta.json/report.md)\n",
             "## Evidence (WAL)\n",
-            f"- events_path: `{events_path}`\n",
+            f"- wal_locator: `{wal_locator}`\n",
             "## Outputs\n",
             "- `generated.png`\n",
             "- `image_meta.json`\n",
@@ -280,16 +278,16 @@ def main() -> int:
     assert (workspace_root / "image_meta.json").exists()
     assert (workspace_root / "report.md").exists()
 
-    _assert_skill_injected(events_path=r.events_path, mention_text=mention)
-    _assert_tool_ok(events_path=r.events_path, tool_name="view_image")
-    _assert_tool_ok(events_path=r.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r.wal_locator, mention_text=mention)
+    _assert_tool_ok(wal_locator=r.wal_locator, tool_name="view_image")
+    _assert_tool_ok(wal_locator=r.wal_locator, tool_name="file_write")
 
     meta_loaded = json.loads((workspace_root / "image_meta.json").read_text(encoding="utf-8"))
     assert meta_loaded["sha256"] == sha256
     assert meta_loaded["mime"] == "image/png"
     assert int(meta_loaded["bytes"]) == len(raw)
 
-    view_data = _get_view_image_result_data(events_path=r.events_path)
+    view_data = _get_view_image_result_data(wal_locator=r.wal_locator)
     assert view_data["mime"] == "image/png"
     assert int(view_data["bytes"]) == len(raw)
     assert base64.b64decode(view_data["base64"]) == raw
@@ -301,4 +299,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -2,7 +2,7 @@
 最小 skills preflight + scan 示例（离线）。
 
 用途：
-- 展示 Skills V2 的最小配置形态（spaces/sources）；
+- 展示 Skills 的最小配置形态（spaces/sources）；
 - 演示 preflight（零 I/O）与 scan（filesystem 扫描）；
 - 输出 ScanReport 的关键统计，便于编码智能体理解 scan 的“结构化产物”。
 """
@@ -37,8 +37,6 @@ def main() -> int:
 
     cfg = AgentSdkSkillsConfig.model_validate(
         {
-            "mode": "explicit",
-            "max_auto": 0,
             "spaces": [
                 {
                     "id": "local-space",

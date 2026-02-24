@@ -9,7 +9,7 @@ metadata:
 
 ## 目标
 
-生成 `report.md`，包含摘要与 WAL 证据指针（events_path）。
+生成 `report.md`，包含摘要与 WAL 证据指针（wal_locator）。
 
 ## 必须使用的工具
 

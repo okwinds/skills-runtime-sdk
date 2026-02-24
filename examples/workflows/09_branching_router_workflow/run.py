@@ -4,7 +4,7 @@
 本示例演示：
 - Router：读取输入 → 写 route.json（分支决策可审计）
 - Worker：执行对应分支并落盘产物
-- Reporter：汇总写 report.md（包含各 run 的 events_path 指针）
+- Reporter：汇总写 report.md（包含各 run 的 wal_locator 指针）
 
 核心约束：
 - 每个角色能力必须由 Skill（SKILL.md）定义；
@@ -41,8 +41,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -81,12 +79,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     out: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -96,10 +94,10 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return out
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "skill_injected":
             continue
         payload = ev.get("payload") or {}
@@ -108,17 +106,17 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_event_exists(*, events_path: str, event_type: str) -> None:
+def _assert_event_exists(*, wal_locator: str, event_type: str) -> None:
     """断言 WAL 中存在某类事件（至少一条）。"""
 
-    if not any(ev.get("type") == event_type for ev in _load_events(events_path)):
+    if not any(ev.get("type") == event_type for ev in _load_events(wal_locator)):
         raise AssertionError(f"missing event type: {event_type}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中某个 tool 的 `tool_call_finished` 存在且 ok=true。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "tool_call_finished":
             continue
         payload = ev.get("payload") or {}
@@ -194,7 +192,7 @@ def _format_report_md(*, route_choice: str, steps: List[Dict[str, str]]) -> str:
     for s in steps:
         lines.append(f"## {s['name']}")
         lines.append(f"- Skill: `{s['mention']}`")
-        lines.append(f"- Events: `{s['events_path']}`")
+        lines.append(f"- Events: `{s['wal_locator']}`")
         artifact = s.get("artifact_path") or ""
         if artifact:
             lines.append(f"- Artifact: `{artifact}`")
@@ -269,10 +267,10 @@ def main() -> int:
     router_task = "$[examples:workflow].router\n请读取 task_input.json，做路由决策，并写入 route.json。"
     r_router = router.run(router_task, run_id="run_workflows_09_router")
 
-    _assert_skill_injected(events_path=r_router.events_path, mention_text="$[examples:workflow].router")
-    _assert_event_exists(events_path=r_router.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r_router.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r_router.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r_router.wal_locator, mention_text="$[examples:workflow].router")
+    _assert_event_exists(wal_locator=r_router.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r_router.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r_router.wal_locator, tool_name="file_write")
     assert (workspace_root / "route.json").exists()
 
     # 2) Worker（根据 route.json 选择分支）
@@ -302,16 +300,16 @@ def main() -> int:
     worker_task = f"{mention}\n请执行分支 {decided} 并写入 {artifact_path}。"
     r_worker = worker.run(worker_task, run_id=run_id)
 
-    _assert_skill_injected(events_path=r_worker.events_path, mention_text=mention)
-    _assert_event_exists(events_path=r_worker.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r_worker.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r_worker.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r_worker.wal_locator, mention_text=mention)
+    _assert_event_exists(wal_locator=r_worker.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r_worker.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r_worker.wal_locator, tool_name="file_write")
     assert (workspace_root / artifact_path).exists()
 
     # 3) Reporter
     steps = [
-        {"name": "Router", "mention": "$[examples:workflow].router", "events_path": r_router.events_path, "artifact_path": "route.json"},
-        {"name": "Worker", "mention": mention, "events_path": r_worker.events_path, "artifact_path": artifact_path},
+        {"name": "Router", "mention": "$[examples:workflow].router", "wal_locator": r_router.wal_locator, "artifact_path": "route.json"},
+        {"name": "Worker", "mention": mention, "wal_locator": r_worker.wal_locator, "artifact_path": artifact_path},
     ]
     report_md = _format_report_md(route_choice=decided, steps=steps)
 
@@ -322,13 +320,13 @@ def main() -> int:
         config_paths=[overlay],
         approval_provider=approval,
     )
-    report_task = "$[examples:workflow].reporter\n请将本次 workflow 结果写入 report.md（包含 events_path 指针）。"
+    report_task = "$[examples:workflow].reporter\n请将本次 workflow 结果写入 report.md（包含 wal_locator 指针）。"
     r_report = reporter.run(report_task, run_id="run_workflows_09_report")
 
-    _assert_skill_injected(events_path=r_report.events_path, mention_text="$[examples:workflow].reporter")
-    _assert_event_exists(events_path=r_report.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r_report.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r_report.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r_report.wal_locator, mention_text="$[examples:workflow].reporter")
+    _assert_event_exists(wal_locator=r_report.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r_report.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r_report.wal_locator, tool_name="file_write")
     assert (workspace_root / "report.md").exists()
 
     print("EXAMPLE_OK: workflows_09")
@@ -337,4 +335,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

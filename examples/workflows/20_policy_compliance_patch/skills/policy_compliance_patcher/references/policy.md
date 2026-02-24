@@ -23,5 +23,5 @@
 必须输出：
 - `patch.diff`：用于审计的补丁文本（与 apply_patch 输入一致）
 - `result.md`：修复结果摘要（必须说明是否已 redacted）
-- `report.md`：包含 `events_path`（WAL 指针）与关键证据摘要
+- `report.md`：包含 `wal_locator`（WAL 指针）与关键证据摘要
 

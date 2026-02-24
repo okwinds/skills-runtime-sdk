@@ -63,8 +63,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -103,12 +101,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -118,10 +116,10 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "skill_injected":
             continue
         payload = ev.get("payload") or {}
@@ -130,17 +128,17 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_event_exists(*, events_path: str, event_type: str) -> None:
+def _assert_event_exists(*, wal_locator: str, event_type: str) -> None:
     """断言 WAL 中存在某类事件（至少一条）。"""
 
-    if not any(ev.get("type") == event_type for ev in _load_events(events_path)):
+    if not any(ev.get("type") == event_type for ev in _load_events(wal_locator)):
         raise AssertionError(f"missing event type: {event_type}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中某个 tool 的 `tool_call_finished` 存在且 ok=true。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "tool_call_finished":
             continue
         payload = ev.get("payload") or {}
@@ -259,7 +257,7 @@ def _format_report_md(*, steps: List[Dict[str, Any]]) -> str:
     for s in steps:
         lines.append(f"## {s['name']}")
         lines.append(f"- Skill: `{s['mention']}`")
-        lines.append(f"- Events: `{s['events_path']}`")
+        lines.append(f"- Events: `{s['wal_locator']}`")
         summary = str(s.get("summary") or "").strip()
         if summary:
             lines.append("")
@@ -359,9 +357,9 @@ def main() -> int:
     r_qa = coord.run_child_task(qa_task, child_index=3)
 
     steps = [
-        {"name": "Review", "mention": "$[examples:workflow].repo_reviewer", "summary": r_review.summary, "events_path": r_review.events_path},
-        {"name": "Fix", "mention": "$[examples:workflow].repo_patcher", "summary": r_fix.summary, "events_path": r_fix.events_path},
-        {"name": "QA", "mention": "$[examples:workflow].repo_qa", "summary": r_qa.summary, "events_path": r_qa.events_path},
+        {"name": "Review", "mention": "$[examples:workflow].repo_reviewer", "summary": r_review.summary, "wal_locator": r_review.wal_locator},
+        {"name": "Fix", "mention": "$[examples:workflow].repo_patcher", "summary": r_fix.summary, "wal_locator": r_fix.wal_locator},
+        {"name": "QA", "mention": "$[examples:workflow].repo_qa", "summary": r_qa.summary, "wal_locator": r_qa.wal_locator},
     ]
     report_md = _format_report_md(steps=steps)
 
@@ -376,22 +374,22 @@ def main() -> int:
     r_report = reporter.run(report_task, run_id="run_workflows_05_report")
 
     # evidence assertions
-    _assert_skill_injected(events_path=r_review.events_path, mention_text="$[examples:workflow].repo_reviewer")
-    _assert_skill_injected(events_path=r_fix.events_path, mention_text="$[examples:workflow].repo_patcher")
-    _assert_skill_injected(events_path=r_qa.events_path, mention_text="$[examples:workflow].repo_qa")
-    _assert_skill_injected(events_path=r_report.events_path, mention_text="$[examples:workflow].repo_reporter")
+    _assert_skill_injected(wal_locator=r_review.wal_locator, mention_text="$[examples:workflow].repo_reviewer")
+    _assert_skill_injected(wal_locator=r_fix.wal_locator, mention_text="$[examples:workflow].repo_patcher")
+    _assert_skill_injected(wal_locator=r_qa.wal_locator, mention_text="$[examples:workflow].repo_qa")
+    _assert_skill_injected(wal_locator=r_report.wal_locator, mention_text="$[examples:workflow].repo_reporter")
 
-    _assert_event_exists(events_path=r_fix.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r_fix.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r_fix.events_path, tool_name="apply_patch")
+    _assert_event_exists(wal_locator=r_fix.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r_fix.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r_fix.wal_locator, tool_name="apply_patch")
 
-    _assert_event_exists(events_path=r_qa.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r_qa.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r_qa.events_path, tool_name="shell_exec")
+    _assert_event_exists(wal_locator=r_qa.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r_qa.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r_qa.wal_locator, tool_name="shell_exec")
 
-    _assert_event_exists(events_path=r_report.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r_report.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r_report.events_path, tool_name="file_write")
+    _assert_event_exists(wal_locator=r_report.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r_report.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r_report.wal_locator, tool_name="file_write")
 
     assert "return a / b" in (workspace_root / "calc.py").read_text(encoding="utf-8")
     assert (workspace_root / "report.md").exists()
@@ -402,4 +400,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -11,7 +11,7 @@ metadata:
 
 把多个子任务产物汇总成可复核报告：
 - 读取 `outputs/*`
-- 生成 `report.md`（应包含每个子任务的产物路径与 events_path 指针）
+- 生成 `report.md`（应包含每个子任务的产物路径与 wal_locator 指针）
 
 ## 输入约定
 
@@ -25,5 +25,5 @@ metadata:
 ## 输出要求
 
 - 必须写入 `report.md`
-- 报告必须能指向证据（events_path）与产物路径
+- 报告必须能指向证据（wal_locator）与产物路径
 

@@ -78,13 +78,13 @@ def main() -> int:
         "列出当前目录。", run_id=src_run_id
     )
 
-    src_events = workspace_root / ".skills_runtime_sdk" / "runs" / src_run_id / "events.jsonl"
-    print("[example] src_events_path:", src_events)
-    if not src_events.exists():
+    src_wal_path = workspace_root / ".skills_runtime_sdk" / "runs" / src_run_id / "events.jsonl"
+    print("[example] wal_locator:", src_wal_path)
+    if not src_wal_path.exists():
         raise AssertionError("events.jsonl not found")
 
     tool_finished_idx = None
-    for idx, raw in enumerate(src_events.read_text(encoding="utf-8").splitlines()):
+    for idx, raw in enumerate(src_wal_path.read_text(encoding="utf-8").splitlines()):
         obj = json.loads(raw)
         if obj.get("type") == "tool_call_finished":
             tool_finished_idx = idx

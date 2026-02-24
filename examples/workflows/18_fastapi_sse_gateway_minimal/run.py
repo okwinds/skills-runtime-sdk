@@ -138,7 +138,7 @@ class _RunState:
     run_id: str
     approval_key: str
     message: str
-    events_path: Path
+    wal_locator: Path
     approval_decision: Optional[str]
     approval_event: threading.Event
     sse_queue: "queue.Queue[bytes]"
@@ -170,12 +170,12 @@ def _build_app(*, workspace_root: Path, FastAPI, StreamingResponse) -> object:
         message = str((body or {}).get("message") or "")
         run_id = f"run_workflows_18_{uuid4().hex[:8]}"
         approval_key = "appr_1"
-        events_path = (workspace_root / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
+        wal_locator = (workspace_root / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
         state = _RunState(
             run_id=run_id,
             approval_key=approval_key,
             message=message,
-            events_path=events_path,
+            wal_locator=wal_locator,
             approval_decision=None,
             approval_event=threading.Event(),
             sse_queue=queue.Queue(),
@@ -184,14 +184,14 @@ def _build_app(*, workspace_root: Path, FastAPI, StreamingResponse) -> object:
 
         # emit: run_started
         _jsonl_append(
-            events_path,
-            {"type": "run_started", "payload": {"run_id": run_id, "message": message, "events_path": str(events_path)}},
+            wal_locator,
+            {"type": "run_started", "payload": {"run_id": run_id, "message": message, "wal_locator": str(wal_locator)}},
         )
         state.sse_queue.put(_format_sse(event_name="run_started", payload={"run_id": run_id}))
 
         # emit: approval_requested
         _jsonl_append(
-            events_path,
+            wal_locator,
             {
                 "type": "approval_requested",
                 "payload": {"run_id": run_id, "approval_key": approval_key, "kind": "file_write"},
@@ -201,21 +201,21 @@ def _build_app(*, workspace_root: Path, FastAPI, StreamingResponse) -> object:
 
         def _wait_and_finish() -> None:
             if not state.approval_event.wait(timeout=10.0):
-                _jsonl_append(events_path, {"type": "run_failed", "payload": {"run_id": run_id, "reason": "approval_timeout"}})
+                _jsonl_append(wal_locator, {"type": "run_failed", "payload": {"run_id": run_id, "reason": "approval_timeout"}})
                 state.sse_queue.put(_format_sse(event_name="run_failed", payload={"run_id": run_id, "reason": "approval_timeout"}))
                 return
             _jsonl_append(
-                events_path,
+                wal_locator,
                 {
                     "type": "run_completed",
-                    "payload": {"run_id": run_id, "events_path": str(events_path), "decision": state.approval_decision},
+                    "payload": {"run_id": run_id, "wal_locator": str(wal_locator), "decision": state.approval_decision},
                 },
             )
-            state.sse_queue.put(_format_sse(event_name="run_completed", payload={"run_id": run_id, "events_path": str(events_path)}))
+            state.sse_queue.put(_format_sse(event_name="run_completed", payload={"run_id": run_id, "wal_locator": str(wal_locator)}))
 
         threading.Thread(target=_wait_and_finish, daemon=True).start()
 
-        return {"run_id": run_id, "events_path": str(events_path)}
+        return {"run_id": run_id, "wal_locator": str(wal_locator)}
 
     @app.get("/runs/{run_id}/events/stream")
     def events_stream(run_id: str):
@@ -247,7 +247,7 @@ def _build_app(*, workspace_root: Path, FastAPI, StreamingResponse) -> object:
         decision = str((body or {}).get("decision") or "").strip() or "approved_for_session"
         state.approval_decision = decision
         _jsonl_append(
-            state.events_path,
+            state.wal_locator,
             {"type": "approval_decided", "payload": {"run_id": run_id, "approval_key": approval_key, "decision": decision}},
         )
         state.sse_queue.put(_format_sse(event_name="approval_decided", payload={"run_id": run_id, "approval_key": approval_key, "decision": decision}))
@@ -262,7 +262,7 @@ def _write_report(
     workspace_root: Path,
     run_id: str,
     terminal_event: str,
-    events_path: str,
+    wal_locator: str,
     approvals: int,
     skipped_reason: Optional[str] = None,
 ) -> None:
@@ -281,7 +281,7 @@ def _write_report(
             f"- approvals_decided: {approvals}",
             "",
             "## Evidence",
-            f"- events_path: `{events_path}`",
+            f"- wal_locator: `{wal_locator}`",
             "",
         ]
     )
@@ -307,7 +307,7 @@ def main() -> int:
             workspace_root=workspace_root,
             run_id="(skipped)",
             terminal_event="skipped",
-            events_path="(none)",
+            wal_locator="(none)",
             approvals=0,
             skipped_reason=skip_reason,
         )
@@ -345,7 +345,7 @@ def main() -> int:
     )
     run = _http_json(method="POST", url=f"{base_url}/runs", body={"message": message}, timeout_sec=5.0)
     run_id = str(run.get("run_id") or "").strip()
-    events_path = str(run.get("events_path") or "").strip()
+    wal_locator = str(run.get("wal_locator") or "").strip()
     if not run_id:
         server.should_exit = True
         raise SystemExit(f"create_run failed: {run}")
@@ -383,13 +383,13 @@ def main() -> int:
 
     if terminal_obj:
         payload = terminal_obj.get("payload") or {}
-        events_path = str(payload.get("events_path") or events_path)
+        wal_locator = str(payload.get("wal_locator") or wal_locator)
 
     _write_report(
         workspace_root=workspace_root,
         run_id=run_id,
         terminal_event=terminal,
-        events_path=events_path,
+        wal_locator=wal_locator,
         approvals=approvals,
     )
 

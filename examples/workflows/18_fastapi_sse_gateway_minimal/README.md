@@ -19,7 +19,7 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 ## 产物
 
-- `report.md`：包含 `run_id`、terminal event、`events_path` 与关键证据摘要
+- `report.md`：包含 `run_id`、terminal event、`wal_locator` 与关键证据摘要
 - `.skills_runtime_sdk/runs/<run_id>/events.jsonl`：最小事件记录（便于审计/排障）
 
 ## Skills-First（目录要求）

@@ -3,7 +3,7 @@
 
 用途：
 - 在不依赖真实模型/外网的情况下，演示 Agent.run 的最小闭环；
-- 展示 events_path（WAL）落盘位置，便于排障与回放。
+- 展示 wal_locator（WAL 定位符），便于排障与回放。
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def main() -> int:
     r = agent.run("请用一句话自我介绍。", run_id="run_example_step_01")
 
     print(f"[example] status={r.status}")
-    print(f"[example] events_path={r.events_path}")
+    print(f"[example] wal_locator={r.wal_locator}")
     print("[example] final_output:")
     print(r.final_output)
     print("EXAMPLE_OK: step_by_step_01")
@@ -53,4 +53,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

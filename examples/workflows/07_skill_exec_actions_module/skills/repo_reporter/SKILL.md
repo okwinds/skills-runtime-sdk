@@ -10,7 +10,7 @@ metadata:
 ## 目标
 
 生成一份可审计报告，至少包含：
-- `skill_exec` 的 events_path
+- `skill_exec` 的 wal_locator
 - `action_artifact.json` 的摘要
 
 ## 输入约定

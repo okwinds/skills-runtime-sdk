@@ -7,7 +7,7 @@ Collab 原语并行子 agent 示例（Skills-First，离线可回归）。
   - send_input：向子 agent 投递输入
   - wait：等待子 agent 完成并获取 final_output
 - 子 agent 本身也必须是 Skills-First：通过 skill mention 注入，写入独立产物
-- Aggregator 汇总：写 report.md（包含各 run 的 events_path 指针）
+- Aggregator 汇总：写 report.md（包含各 run 的 wal_locator 指针）
 
 重要说明（为了离线回归确定性）：
 - 使用示例内 DeterministicCollabManager，子 agent id 固定为 sub1/sub2/sub3。
@@ -46,8 +46,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -86,12 +84,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     out: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -101,10 +99,10 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return out
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "skill_injected":
             continue
         payload = ev.get("payload") or {}
@@ -113,10 +111,10 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中某个 tool 的 `tool_call_finished` 存在且 ok=true。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "tool_call_finished":
             continue
         payload = ev.get("payload") or {}
@@ -138,7 +136,7 @@ class _ChildHandle:
     status: str = "running"  # running|completed|failed|cancelled
     final_output: Optional[str] = None
     error: Optional[str] = None
-    child_events_path: Optional[str] = None
+    child_wal_locator: Optional[str] = None
 
 
 class DeterministicCollabManager:
@@ -236,7 +234,7 @@ class DeterministicCollabManager:
                         status=cur.status,
                         final_output=cur.final_output,
                         error=cur.error,
-                        child_events_path=cur.child_events_path,
+                        child_wal_locator=cur.child_wal_locator,
                     )
                 )
         return out
@@ -248,7 +246,7 @@ class DeterministicCollabManager:
     def _run_child(self, agent_id: str, message: str, agent_type: str, inbox: Queue[str], cancel_event: threading.Event) -> None:
         try:
             if cancel_event.is_set():
-                self._set_status(agent_id, status="cancelled", final_output=None, error=None, child_events_path=None)
+                self._set_status(agent_id, status="cancelled", final_output=None, error=None, child_wal_locator=None)
                 return
 
             # 等待输入结束标记（保证 send_input 不会因为时序丢失）
@@ -328,9 +326,9 @@ class DeterministicCollabManager:
             task_text = f"{mention}\n{message}\n请写入 {artifact_path}。"
             r = agent.run(task_text, run_id=run_id)
 
-            self._set_status(agent_id, status="completed", final_output=str(r.final_output or ""), error=None, child_events_path=str(r.events_path))
+            self._set_status(agent_id, status="completed", final_output=str(r.final_output or ""), error=None, child_wal_locator=str(r.wal_locator))
         except Exception as exc:
-            self._set_status(agent_id, status="failed", final_output=None, error=str(exc), child_events_path=None)
+            self._set_status(agent_id, status="failed", final_output=None, error=str(exc), child_wal_locator=None)
 
     def _set_status(
         self,
@@ -339,7 +337,7 @@ class DeterministicCollabManager:
         status: str,
         final_output: Optional[str],
         error: Optional[str],
-        child_events_path: Optional[str],
+        child_wal_locator: Optional[str],
     ) -> None:
         with self._lock:
             h = self._agents.get(str(agent_id))
@@ -348,7 +346,7 @@ class DeterministicCollabManager:
             h.status = status
             h.final_output = final_output
             h.error = error
-            h.child_events_path = child_events_path
+            h.child_wal_locator = child_wal_locator
 
 
 def _build_master_backend() -> FakeChatBackend:
@@ -393,7 +391,7 @@ def _build_master_backend() -> FakeChatBackend:
     )
 
 
-def _format_report_md(*, master_events_path: str, child_rows: List[Dict[str, str]]) -> str:
+def _format_report_md(*, master_wal_locator: str, child_rows: List[Dict[str, str]]) -> str:
     """组装 report.md（确定性）。"""
 
     lines: List[str] = []
@@ -403,14 +401,14 @@ def _format_report_md(*, master_events_path: str, child_rows: List[Dict[str, str
     lines.append("")
     lines.append("## Master")
     lines.append(f"- Skill: `$[examples:workflow].master_collab_planner`")
-    lines.append(f"- Events: `{master_events_path}`")
+    lines.append(f"- wal_locator: `{master_wal_locator}`")
     lines.append("")
     lines.append("## Children")
     lines.append("")
     for row in child_rows:
         lines.append(f"### {row['id']} ({row['agent_type']})")
         lines.append(f"- Skill: `{row['mention']}`")
-        lines.append(f"- Events: `{row['events_path']}`")
+        lines.append(f"- wal_locator: `{row['wal_locator']}`")
         lines.append(f"- Artifact: `{row['artifact_path']}`")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
@@ -490,12 +488,12 @@ def main() -> int:
     master_task = "$[examples:workflow].master_collab_planner\n请 spawn 3 个子 agent，并发送补充输入，然后 wait 完成。"
     r_master = master.run(master_task, run_id="run_workflows_11_master")
 
-    _assert_skill_injected(events_path=r_master.events_path, mention_text="$[examples:workflow].master_collab_planner")
-    _assert_tool_ok(events_path=r_master.events_path, tool_name="spawn_agent")
-    _assert_tool_ok(events_path=r_master.events_path, tool_name="send_input")
-    _assert_tool_ok(events_path=r_master.events_path, tool_name="wait")
+    _assert_skill_injected(wal_locator=r_master.wal_locator, mention_text="$[examples:workflow].master_collab_planner")
+    _assert_tool_ok(wal_locator=r_master.wal_locator, tool_name="spawn_agent")
+    _assert_tool_ok(wal_locator=r_master.wal_locator, tool_name="send_input")
+    _assert_tool_ok(wal_locator=r_master.wal_locator, tool_name="wait")
 
-    # 2) 汇总：子 agent 的确定性 events_path 与产物
+    # 2) 汇总：子 agent 的确定性 wal_locator 与产物
     children = mgr.wait(ids=["sub1", "sub2", "sub3"], timeout_ms=5000)
     assert len(children) == 3
 
@@ -512,11 +510,11 @@ def main() -> int:
             artifact_path = "outputs/risks.md"
 
         assert h.status == "completed", (h.id, h.status, h.error)
-        assert h.child_events_path, f"missing child_events_path for {h.id}"
+        assert h.child_wal_locator, f"missing child_wal_locator for {h.id}"
         assert (workspace_root / artifact_path).exists()
 
-        _assert_skill_injected(events_path=str(h.child_events_path), mention_text=mention)
-        _assert_tool_ok(events_path=str(h.child_events_path), tool_name="file_write")
+        _assert_skill_injected(wal_locator=str(h.child_wal_locator), mention_text=mention)
+        _assert_tool_ok(wal_locator=str(h.child_wal_locator), tool_name="file_write")
 
         rows.append(
             {
@@ -524,11 +522,11 @@ def main() -> int:
                 "agent_type": h.agent_type,
                 "mention": mention,
                 "artifact_path": artifact_path,
-                "events_path": str(h.child_events_path),
+                "wal_locator": str(h.child_wal_locator),
             }
         )
 
-    report_md = _format_report_md(master_events_path=r_master.events_path, child_rows=rows)
+    report_md = _format_report_md(master_wal_locator=r_master.wal_locator, child_rows=rows)
 
     aggregator = Agent(
         model="fake-model",
@@ -537,11 +535,11 @@ def main() -> int:
         config_paths=[overlay],
         approval_provider=approvals,
     )
-    agg_task = "$[examples:workflow].aggregator\n请读取 outputs/* 并生成 report.md（包含 events_path 指针）。"
+    agg_task = "$[examples:workflow].aggregator\n请读取 outputs/* 并生成 report.md（包含 wal_locator 指针）。"
     r_agg = aggregator.run(agg_task, run_id="run_workflows_11_aggregator")
 
-    _assert_skill_injected(events_path=r_agg.events_path, mention_text="$[examples:workflow].aggregator")
-    _assert_tool_ok(events_path=r_agg.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r_agg.wal_locator, mention_text="$[examples:workflow].aggregator")
+    _assert_tool_ok(wal_locator=r_agg.wal_locator, tool_name="file_write")
     assert (workspace_root / "report.md").exists()
 
     print("EXAMPLE_OK: workflows_11")
@@ -550,4 +548,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

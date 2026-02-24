@@ -45,8 +45,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -85,11 +83,11 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events_lines(events_path: Path) -> List[Dict[str, Any]]:
+def _load_events_lines(wal_locator: Path) -> List[Dict[str, Any]]:
     """按行读取 events.jsonl。"""
 
     events: List[Dict[str, Any]] = []
-    for raw in events_path.read_text(encoding="utf-8").splitlines():
+    for raw in wal_locator.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line:
             continue
@@ -97,12 +95,12 @@ def _load_events_lines(events_path: Path) -> List[Dict[str, Any]]:
     return events
 
 
-def _find_last_ok_tool_index(*, events_path: Path, tool_name: str) -> int:
+def _find_last_ok_tool_index(*, wal_locator: Path, tool_name: str) -> int:
     """
     找到最后一次 `tool_call_finished` 且 ok=true 的行号（0-based）。
     """
 
-    lines = events_path.read_text(encoding="utf-8").splitlines()
+    lines = wal_locator.read_text(encoding="utf-8").splitlines()
     last = -1
     for i, raw in enumerate(lines):
         s = raw.strip()
@@ -122,10 +120,10 @@ def _find_last_ok_tool_index(*, events_path: Path, tool_name: str) -> int:
     return last
 
 
-def _assert_skill_injected(*, events_path: Path, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: Path, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    for ev in _load_events_lines(events_path):
+    for ev in _load_events_lines(wal_locator):
         if ev.get("type") != "skill_injected":
             continue
         payload = ev.get("payload") or {}
@@ -134,12 +132,12 @@ def _assert_skill_injected(*, events_path: Path, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_run_started_resume_enabled(*, events_path: Path, expected_strategy: str) -> None:
+def _assert_run_started_resume_enabled(*, wal_locator: Path, expected_strategy: str) -> None:
     """
     断言 run_started.resume.enabled=true 且 strategy 匹配。
     """
 
-    for ev in _load_events_lines(events_path):
+    for ev in _load_events_lines(wal_locator):
         if ev.get("type") != "run_started":
             continue
         resume = (ev.get("payload") or {}).get("resume") or {}
@@ -265,9 +263,9 @@ def _build_reporter_backend(*, report_md: str) -> FakeChatBackend:
 def _format_report_md(
     *,
     src_run_id: str,
-    src_events_path: str,
+    src_wal_locator: str,
     dst_run_id: str,
-    dst_events_path: str,
+    dst_wal_locator: str,
     fork_index: int,
 ) -> str:
     """生成 report.md（确定性）。"""
@@ -278,10 +276,10 @@ def _format_report_md(
                 "# Workflow Report（WAL fork + replay resume）",
                 "",
                 f"- src_run_id: `{src_run_id}`",
-                f"- src_events: `{src_events_path}`",
+                f"- src_wal_locator: `{src_wal_locator}`",
                 f"- fork_index (0-based): `{fork_index}`",
                 f"- dst_run_id: `{dst_run_id}`",
-                f"- dst_events: `{dst_events_path}`",
+                f"- dst_wal_locator: `{dst_wal_locator}`",
                 "",
                 "## Artifacts",
                 "",
@@ -328,11 +326,11 @@ def main() -> int:
     assert r1.status == "failed"
     assert (workspace_root / "checkpoint.txt").exists()
 
-    src_events_path = Path(r1.events_path)
-    _assert_skill_injected(events_path=src_events_path, mention_text="$[examples:workflow].checkpoint_writer")
+    src_wal_path = Path(r1.wal_locator)
+    _assert_skill_injected(wal_locator=src_wal_path, mention_text="$[examples:workflow].checkpoint_writer")
 
     # 2) Fork Planner：读 WAL 并建议 fork 点（示例：最后一次成功 file_write）
-    fork_index = _find_last_ok_tool_index(events_path=src_events_path, tool_name="file_write")
+    fork_index = _find_last_ok_tool_index(wal_locator=src_wal_path, tool_name="file_write")
 
     planner_agent = Agent(
         model="fake-model",
@@ -344,12 +342,12 @@ def main() -> int:
     task_plan = f"$[examples:workflow].wal_fork_planner\nsrc_run_id={src_run_id}。请读取 WAL 并给出 fork index 建议。"
     r_plan = planner_agent.run(task_plan, run_id="run_workflows_06_fork_planner")
     assert r_plan.status == "completed"
-    _assert_skill_injected(events_path=Path(r_plan.events_path), mention_text="$[examples:workflow].wal_fork_planner")
+    _assert_skill_injected(wal_locator=Path(r_plan.wal_locator), mention_text="$[examples:workflow].wal_fork_planner")
 
     # 3) Fork：生成 dst_run_id 的 events.jsonl（前缀）
     dst_run_id = "run_workflows_06_dst"
-    dst_events_path = fork_run(workspace_root=workspace_root, src_run_id=src_run_id, dst_run_id=dst_run_id, up_to_index_inclusive=fork_index)
-    assert dst_events_path.exists()
+    dst_wal_path = fork_run(workspace_root=workspace_root, src_run_id=src_run_id, dst_run_id=dst_run_id, up_to_index_inclusive=fork_index)
+    assert dst_wal_path.exists()
 
     # 4) 第二次 run：在 dst_run_id 上 replay resume 并完成 final
     resume_agent = Agent(
@@ -364,16 +362,16 @@ def main() -> int:
     assert r2.status == "completed"
     assert (workspace_root / "final.txt").exists()
 
-    dst_events_path2 = Path(r2.events_path)
-    _assert_skill_injected(events_path=dst_events_path2, mention_text="$[examples:workflow].resume_finisher")
-    _assert_run_started_resume_enabled(events_path=dst_events_path2, expected_strategy="replay")
+    dst_wal_path2 = Path(r2.wal_locator)
+    _assert_skill_injected(wal_locator=dst_wal_path2, mention_text="$[examples:workflow].resume_finisher")
+    _assert_run_started_resume_enabled(wal_locator=dst_wal_path2, expected_strategy="replay")
 
     # 5) Reporter：汇总
     report_md = _format_report_md(
         src_run_id=src_run_id,
-        src_events_path=str(src_events_path),
+        src_wal_locator=str(src_wal_path),
         dst_run_id=dst_run_id,
-        dst_events_path=str(dst_events_path2),
+        dst_wal_locator=str(dst_wal_path2),
         fork_index=fork_index,
     )
     reporter = Agent(
@@ -386,7 +384,7 @@ def main() -> int:
     task_report = "$[examples:workflow].resume_reporter\n请写 report.md 汇总 fork/resume 结果。"
     r3 = reporter.run(task_report, run_id="run_workflows_06_report")
     assert r3.status == "completed"
-    _assert_skill_injected(events_path=Path(r3.events_path), mention_text="$[examples:workflow].resume_reporter")
+    _assert_skill_injected(wal_locator=Path(r3.wal_locator), mention_text="$[examples:workflow].resume_reporter")
     assert (workspace_root / "report.md").exists()
 
     print("EXAMPLE_OK: workflows_06")
@@ -395,4 +393,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

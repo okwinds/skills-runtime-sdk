@@ -48,8 +48,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -117,12 +115,12 @@ class _ScriptedHumanIO(HumanIOProvider):
         return ""
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -132,18 +130,18 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_event_exists(*, events_path: str, event_type: str) -> None:
+def _assert_event_exists(*, wal_locator: str, event_type: str) -> None:
     """断言 WAL 中存在某类事件（至少一条）。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     if not any(ev.get("type") == event_type for ev in events):
         raise AssertionError(f"missing event type: {event_type}")
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "skill_injected":
             continue
@@ -281,15 +279,15 @@ def main() -> int:
     assert (workspace_root / "submission.json").exists()
     assert "zhangsan@example.com" in (workspace_root / "submission.json").read_text(encoding="utf-8")
 
-    _assert_skill_injected(events_path=r.events_path, mention_text="$[examples:workflow].form_interviewer")
-    _assert_skill_injected(events_path=r.events_path, mention_text="$[examples:workflow].form_validator")
-    _assert_skill_injected(events_path=r.events_path, mention_text="$[examples:workflow].form_reporter")
+    _assert_skill_injected(wal_locator=r.wal_locator, mention_text="$[examples:workflow].form_interviewer")
+    _assert_skill_injected(wal_locator=r.wal_locator, mention_text="$[examples:workflow].form_validator")
+    _assert_skill_injected(wal_locator=r.wal_locator, mention_text="$[examples:workflow].form_reporter")
 
-    _assert_event_exists(events_path=r.events_path, event_type="human_request")
-    _assert_event_exists(events_path=r.events_path, event_type="human_response")
-    _assert_event_exists(events_path=r.events_path, event_type="plan_updated")
-    _assert_event_exists(events_path=r.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r.events_path, event_type="approval_decided")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="human_request")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="human_response")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="plan_updated")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="approval_decided")
 
     print("EXAMPLE_OK: workflows_02")
     return 0
@@ -297,4 +295,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

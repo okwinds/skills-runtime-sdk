@@ -25,7 +25,7 @@ python3 examples/workflows/09_branching_router_workflow/run.py --workspace-root 
 - `task_input.json`：输入（本例用来决定路由）
 - `route.json`：router 的路由决策（A / B）
 - `outputs/path_a.md` 或 `outputs/path_b.md`：分支产物
-- `report.md`：汇总报告（包含各步骤的 `events_path` 指针）
+- `report.md`：汇总报告（包含各步骤的 `wal_locator` 指针）
 - `.skills_runtime_sdk/runs/<run_id>/events.jsonl`：WAL（可审计证据链）
 
 ## 对应 skills

@@ -21,5 +21,5 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 - `target.md`：被修复的目标文件（示例会把“敏感 token”替换为 `[REDACTED]`）
 - `patch.diff`：本次补丁（内容与 apply_patch 输入一致）
 - `result.md`：修复结果摘要
-- `report.md`：包含 `run_id`、`events_path`、关键断言点
+- `report.md`：包含 `run_id`、`wal_locator`、关键断言点
 

@@ -2,7 +2,7 @@
 
 目标：
 - 演示如何用 `FakeChatBackend` 在离线环境跑通 `Agent.run(...)`
-- 获取 `final_output` 与 `events_path`（WAL 产物位置）
+- 获取 `final_output` 与 `wal_locator`（WAL 定位符）
 
 运行：
 
@@ -13,4 +13,3 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 预期输出（关键标记）：
 - `EXAMPLE_OK: step_by_step_01`
-

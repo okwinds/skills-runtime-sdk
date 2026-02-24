@@ -11,14 +11,14 @@ metadata:
 
 把多个子任务的产物与执行摘要汇总为一个最终报告：
 - 读取 `outputs/*.md`（或任务文本指定的路径）
-- 生成 `report.md`，并包含每个子任务的 `events_path` 指针（便于审计）
+- 生成 `report.md`，并包含每个子任务的 `wal_locator` 指针（便于审计）
 
 ## 输入约定
 
 - 任务文本中会包含 mention：`$[examples:workflow].result_aggregator`
 - 任务文本会提供：
   - 子任务产物路径列表
-  - 每个子任务的 events_path（或你需要自己读）
+  - 每个子任务的 wal_locator（或你需要自己读）
 
 ## 必须使用的工具
 
@@ -29,6 +29,6 @@ metadata:
 
 - 报告必须列出每个子任务：
   - 产物路径
-  - events_path
+  - wal_locator
   - 简短摘要
 

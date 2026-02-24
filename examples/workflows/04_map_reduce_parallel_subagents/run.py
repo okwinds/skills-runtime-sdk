@@ -52,8 +52,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -92,12 +90,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
 
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
@@ -108,18 +106,18 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_event_exists(*, events_path: str, event_type: str) -> None:
+def _assert_event_exists(*, wal_locator: str, event_type: str) -> None:
     """断言 WAL 中存在某类事件（至少一条）。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     if not any(ev.get("type") == event_type for ev in events):
         raise AssertionError(f"missing event type: {event_type}")
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "skill_injected":
             continue
@@ -129,10 +127,10 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中某个 tool 的 `tool_call_finished` 存在且 ok=true。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "tool_call_finished":
             continue
@@ -223,7 +221,7 @@ def _format_report_md(*, subtasks: List[Dict[str, Any]]) -> str:
     生成汇总报告 Markdown（确定性）。
 
     参数：
-    - subtasks：每项包含 id/title/artifact_path/worker_run（events_path + summary）
+    - subtasks：每项包含 id/title/artifact_path/worker_run（wal_locator + summary）
     """
 
     lines: List[str] = []
@@ -238,7 +236,7 @@ def _format_report_md(*, subtasks: List[Dict[str, Any]]) -> str:
         lines.append(f"### {s['id']}: {s['title']}")
         lines.append("")
         lines.append(f"- Artifact: `{s['artifact_path']}`")
-        lines.append(f"- Events: `{s['worker_run']['events_path']}`")
+        lines.append(f"- Events: `{s['worker_run']['wal_locator']}`")
         summary = str(s["worker_run"].get("summary") or "").strip()
         if summary:
             lines.append("- Summary:")
@@ -301,7 +299,7 @@ def _run_worker(
     在线程内运行一个子 agent。
 
     返回：
-    - (events_path, summary)
+    - (wal_locator, summary)
     """
 
     agent = Agent(
@@ -313,7 +311,7 @@ def _run_worker(
     )
     r = agent.run(task_text, run_id=run_id)
     assert r.status == "completed"
-    return (r.events_path, r.final_output)
+    return (r.wal_locator, r.final_output)
 
 
 def main() -> int:
@@ -354,11 +352,11 @@ def main() -> int:
     assert r_plan.status == "completed"
     assert (workspace_root / "subtasks.json").exists()
 
-    _assert_skill_injected(events_path=r_plan.events_path, mention_text="$[examples:workflow].master_planner")
-    _assert_event_exists(events_path=r_plan.events_path, event_type="plan_updated")
-    _assert_event_exists(events_path=r_plan.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r_plan.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r_plan.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r_plan.wal_locator, mention_text="$[examples:workflow].master_planner")
+    _assert_event_exists(wal_locator=r_plan.wal_locator, event_type="plan_updated")
+    _assert_event_exists(wal_locator=r_plan.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r_plan.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r_plan.wal_locator, tool_name="file_write")
 
     loaded = json.loads((workspace_root / "subtasks.json").read_text(encoding="utf-8"))
     subtasks: List[Dict[str, Any]] = list(loaded.get("subtasks") or [])
@@ -416,8 +414,8 @@ def main() -> int:
         }
         for fut in as_completed(list(fut_to_worker.keys())):
             w = fut_to_worker[fut]
-            events_path, summary = fut.result()
-            results_by_id[str(w["id"])] = {"events_path": events_path, "summary": summary}
+            wal_locator, summary = fut.result()
+            results_by_id[str(w["id"])] = {"wal_locator": wal_locator, "summary": summary}
 
     # 断言每个子任务产物存在 + skills/approvals 证据存在
     for w in workers:
@@ -426,10 +424,10 @@ def main() -> int:
         assert artifact.exists(), f"missing artifact: {artifact}"
 
         run = results_by_id[sid]
-        _assert_skill_injected(events_path=run["events_path"], mention_text=str(w["mention"]))
-        _assert_event_exists(events_path=run["events_path"], event_type="approval_requested")
-        _assert_event_exists(events_path=run["events_path"], event_type="approval_decided")
-        _assert_tool_ok(events_path=run["events_path"], tool_name="file_write")
+        _assert_skill_injected(wal_locator=run["wal_locator"], mention_text=str(w["mention"]))
+        _assert_event_exists(wal_locator=run["wal_locator"], event_type="approval_requested")
+        _assert_event_exists(wal_locator=run["wal_locator"], event_type="approval_decided")
+        _assert_tool_ok(wal_locator=run["wal_locator"], tool_name="file_write")
 
     # 3) 总：汇总报告（Aggregator）
     enriched: List[Dict[str, Any]] = []
@@ -453,15 +451,15 @@ def main() -> int:
         config_paths=[overlay],
         approval_provider=aggregator_approval,
     )
-    agg_task = "$[examples:workflow].result_aggregator\n请读取 outputs/* 并生成 report.md（包含各子任务 events_path 指针）。"
+    agg_task = "$[examples:workflow].result_aggregator\n请读取 outputs/* 并生成 report.md（包含各子任务 wal_locator 指针）。"
     r_agg = aggregator.run(agg_task, run_id="run_workflows_04_aggregator")
     assert r_agg.status == "completed"
     assert (workspace_root / "report.md").exists()
 
-    _assert_skill_injected(events_path=r_agg.events_path, mention_text="$[examples:workflow].result_aggregator")
-    _assert_event_exists(events_path=r_agg.events_path, event_type="approval_requested")
-    _assert_event_exists(events_path=r_agg.events_path, event_type="approval_decided")
-    _assert_tool_ok(events_path=r_agg.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r_agg.wal_locator, mention_text="$[examples:workflow].result_aggregator")
+    _assert_event_exists(wal_locator=r_agg.wal_locator, event_type="approval_requested")
+    _assert_event_exists(wal_locator=r_agg.wal_locator, event_type="approval_decided")
+    _assert_tool_ok(wal_locator=r_agg.wal_locator, tool_name="file_write")
 
     print("EXAMPLE_OK: workflows_04")
     return 0

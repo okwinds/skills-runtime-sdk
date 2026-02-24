@@ -4,7 +4,7 @@
 
 1. **总（Planner）**：先总规划，把任务拆成互不依赖的子任务（用 `update_plan` 记录进度），并落盘 `subtasks.json`（可审计）。
 2. **分（Subagents 并行）**：多个子 agent **并行执行**，每个子任务对应一个 Skill，并各自产出独立产物文件（互不影响）。
-3. **总（Aggregator）**：汇总所有子任务结果，生成 `report.md`（包含各子任务 events_path 证据指针）。
+3. **总（Aggregator）**：汇总所有子任务结果，生成 `report.md`（包含各子任务 wal_locator 证据指针）。
 
 约束：
 - 离线可回归：Fake backend + scripted approvals

@@ -2,7 +2,7 @@
 Studio API + SSE 端到端集成示例（需要显式 opt-in）。
 
 该脚本会：
-- 创建 session（skills roots 指向本目录的 skills/）
+- 创建 session（filesystem_sources 指向本目录的 skills/）
 - 创建 run（message 含 $[web:mvp].studio_demo_writer）
 - 订阅 SSE events stream，并自动批准 approvals
 
@@ -110,7 +110,7 @@ def main() -> int:
     sess = _http_json(
         method="POST",
         url=f"{cfg.base_url}/api/v1/sessions",
-        body={"title": "workflows_08", "skills_roots": [str(skills_root)]},
+        body={"title": "workflows_08", "filesystem_sources": [str(skills_root)]},
         timeout_sec=10.0,
     )
     session_id = str(sess.get("session_id") or "").strip()
@@ -168,7 +168,7 @@ def main() -> int:
     print(f"terminal={terminal}")
     if terminal_obj:
         payload = terminal_obj.get("payload") or {}
-        print(f"events_path={payload.get('events_path')}")
+        print(f"wal_locator={payload.get('wal_locator')}")
 
     # best-effort cleanup：异步删除 session（避免本地堆积）
     try:
@@ -184,4 +184,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

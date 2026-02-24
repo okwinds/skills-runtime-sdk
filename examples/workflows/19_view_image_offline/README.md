@@ -8,7 +8,7 @@
 2) 通过 **skills-first** 的 agent（任务文本包含 skill mention）触发 `view_image` 读取图片并返回 base64/mime/bytes  
 3) 通过 `file_write` 落盘：
    - `image_meta.json`：图片元信息（含 sha256 与预期 mime/bytes）
-   - `report.md`：汇总报告（含 `events_path` 证据指针）
+   - `report.md`：汇总报告（含 `wal_locator` 证据指针）
 
 ## 边界与约束
 
@@ -39,7 +39,7 @@ EXAMPLE_OK: workflows_19
 
 ## 预期 WAL 证据（离线门禁可审计）
 
-WAL 路径会写在 `report.md` 中（字段 `events_path`）。你也可以按约定位置查找：
+WAL 路径会写在 `report.md` 中（字段 `wal_locator`）。你也可以按约定位置查找：
 
 - `<workspace_root>/.skills_runtime_sdk/runs/<run_id>/events.jsonl`
 

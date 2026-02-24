@@ -62,8 +62,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -105,12 +103,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -120,10 +118,10 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中某个 tool 的 tool_call_finished 存在且 ok=true。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "tool_call_finished":
             continue
@@ -264,7 +262,7 @@ def _build_report_backend(*, report_markdown: str) -> FakeChatBackend:
     )
 
 
-def _format_report_md(*, policy_events_path: str, patch_events_path: str, qa_events_path: str) -> str:
+def _format_report_md(*, policy_wal_locator: str, patch_wal_locator: str, qa_wal_locator: str) -> str:
     """组装 report.md（包含证据指针）。"""
 
     lines = [
@@ -274,9 +272,9 @@ def _format_report_md(*, policy_events_path: str, patch_events_path: str, qa_eve
         "",
         "## Evidence",
         "",
-        f"- Policy events: `{policy_events_path}`",
-        f"- Patch events: `{patch_events_path}`",
-        f"- QA events: `{qa_events_path}`",
+        f"- Policy wal_locator: `{policy_wal_locator}`",
+        f"- Patch wal_locator: `{patch_wal_locator}`",
+        f"- QA wal_locator: `{qa_wal_locator}`",
         "",
         "## Notes",
         "",
@@ -349,14 +347,14 @@ def main() -> int:
     r_patch = coord.run_child_task(patch_task, child_index=2)
     r_qa = coord.run_child_task(qa_task, child_index=3)
 
-    _assert_tool_ok(events_path=r_policy.events_path, tool_name="skill_ref_read")
-    _assert_tool_ok(events_path=r_patch.events_path, tool_name="apply_patch")
-    _assert_tool_ok(events_path=r_qa.events_path, tool_name="shell_exec")
+    _assert_tool_ok(wal_locator=r_policy.wal_locator, tool_name="skill_ref_read")
+    _assert_tool_ok(wal_locator=r_patch.wal_locator, tool_name="apply_patch")
+    _assert_tool_ok(wal_locator=r_qa.wal_locator, tool_name="shell_exec")
 
     report_md = _format_report_md(
-        policy_events_path=r_policy.events_path,
-        patch_events_path=r_patch.events_path,
-        qa_events_path=r_qa.events_path,
+        policy_wal_locator=r_policy.wal_locator,
+        patch_wal_locator=r_patch.wal_locator,
+        qa_wal_locator=r_qa.wal_locator,
     )
     reporter = Agent(
         model="fake-model",
@@ -366,11 +364,11 @@ def main() -> int:
         approval_provider=approval_provider,
     )
     r_report = reporter.run("$[examples:workflow].repo_reporter\n请生成 report.md（包含证据指针）。", run_id="run_workflows_03_report")
-    _assert_tool_ok(events_path=r_report.events_path, tool_name="file_write")
+    _assert_tool_ok(wal_locator=r_report.wal_locator, tool_name="file_write")
 
     report_path = workspace_root / "report.md"
     assert report_path.exists(), "report.md is not created"
-    assert "Policy events" in report_path.read_text(encoding="utf-8")
+    assert "Policy wal_locator" in report_path.read_text(encoding="utf-8")
 
     print("EXAMPLE_OK: workflows_03")
     return 0
@@ -378,4 +376,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

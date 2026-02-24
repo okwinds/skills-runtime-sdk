@@ -43,8 +43,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -83,12 +81,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     out: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -98,10 +96,10 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return out
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "skill_injected":
             continue
         payload = ev.get("payload") or {}
@@ -110,10 +108,10 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中某个 tool 的 `tool_call_finished` 存在且 ok=true。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "tool_call_finished":
             continue
         payload = ev.get("payload") or {}
@@ -125,7 +123,7 @@ def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
     raise AssertionError(f"missing ok tool_call_finished for tool={tool_name}")
 
 
-def _detect_skip_no_pty_reason(*, events_path: str, tool_name: str) -> Optional[str]:
+def _detect_skip_no_pty_reason(*, wal_locator: str, tool_name: str) -> Optional[str]:
     """
     检测“明确 PTY 不可用”场景并返回 skip 原因；否则返回 None。
 
@@ -135,7 +133,7 @@ def _detect_skip_no_pty_reason(*, events_path: str, tool_name: str) -> Optional[
     才允许对示例做 SKIP，避免吞掉非 PTY 类回归。
     """
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "tool_call_finished":
             continue
         payload = ev.get("payload") or {}
@@ -152,7 +150,7 @@ def _detect_skip_no_pty_reason(*, events_path: str, tool_name: str) -> Optional[
     return None
 
 
-def _collect_exec_stdout(*, events_path: str) -> str:
+def _collect_exec_stdout(*, wal_locator: str) -> str:
     """
     汇总 exec_command/write_stdin 的 stdout（用于做“标记出现”判断）。
 
@@ -162,7 +160,7 @@ def _collect_exec_stdout(*, events_path: str) -> str:
     """
 
     out = ""
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "tool_call_finished":
             continue
         payload = ev.get("payload") or {}
@@ -174,7 +172,7 @@ def _collect_exec_stdout(*, events_path: str) -> str:
     return out
 
 
-def _format_report_md(*, session_events_path: str, observed: Dict[str, bool]) -> str:
+def _format_report_md(*, session_wal_locator: str, observed: Dict[str, bool]) -> str:
     """组装 report.md（确定性：只写布尔标记，不写原始 stdout）。"""
 
     lines: List[str] = []
@@ -182,7 +180,7 @@ def _format_report_md(*, session_events_path: str, observed: Dict[str, bool]) ->
     lines.append("")
     lines.append("本报告只记录“关键标记是否出现”，避免 PTY 输出差异导致回归不稳定。")
     lines.append("")
-    lines.append(f"- SessionRun Events: `{session_events_path}`")
+    lines.append(f"- SessionRun wal_locator: `{session_wal_locator}`")
     lines.append("")
     lines.append("## Observed Markers")
     for k in ["READY", "ECHO:hello", "BYE"]:
@@ -298,29 +296,29 @@ def main() -> int:
     op_task = "$[examples:workflow].session_operator\n请启动交互式会话并完成一次输入输出（READY/ECHO/BYE）。"
     r_op = operator.run(op_task, run_id="run_workflows_12_session_operator")
 
-    _assert_skill_injected(events_path=r_op.events_path, mention_text="$[examples:workflow].session_operator")
+    _assert_skill_injected(wal_locator=r_op.wal_locator, mention_text="$[examples:workflow].session_operator")
 
     # 某些受限环境（例如缺少 /dev/pts 或 PTY 配额很小）无法分配 PTY（exec_command tty=True）。
     # 该示例的目标是演示“工程式交互 + WAL 证据”，在无 PTY 环境下无法成立；
     # 因此仅对“明确的 PTY 不可用”场景做 skip，避免离线回归在 CI 上漂移。
-    no_pty_reason = _detect_skip_no_pty_reason(events_path=r_op.events_path, tool_name="exec_command")
+    no_pty_reason = _detect_skip_no_pty_reason(wal_locator=r_op.wal_locator, tool_name="exec_command")
     if no_pty_reason:
         print(f"[example] skipped: exec_command cannot allocate PTY: {no_pty_reason}")
         print("EXAMPLE_OK: workflows_12 (SKIPPED_NO_PTY)")
         return 0
 
-    _assert_tool_ok(events_path=r_op.events_path, tool_name="exec_command")
-    _assert_tool_ok(events_path=r_op.events_path, tool_name="write_stdin")
+    _assert_tool_ok(wal_locator=r_op.wal_locator, tool_name="exec_command")
+    _assert_tool_ok(wal_locator=r_op.wal_locator, tool_name="write_stdin")
 
     # 2) reporter：解析 WAL 中的 stdout（只判断关键标记是否出现）并写 report.md
-    combined = _collect_exec_stdout(events_path=r_op.events_path)
+    combined = _collect_exec_stdout(wal_locator=r_op.wal_locator)
     combined_norm = re.sub(r"[\\r\\n]+", "\n", combined)
     observed = {
         "READY": "READY" in combined_norm,
         "ECHO:hello": "ECHO:hello" in combined_norm,
         "BYE": "BYE" in combined_norm,
     }
-    report_md = _format_report_md(session_events_path=r_op.events_path, observed=observed)
+    report_md = _format_report_md(session_wal_locator=r_op.wal_locator, observed=observed)
 
     reporter = Agent(
         model="fake-model",
@@ -329,11 +327,11 @@ def main() -> int:
         config_paths=[overlay],
         approval_provider=approvals,
     )
-    rep_task = "$[examples:workflow].reporter\n请写入 report.md，总结 READY/ECHO/BYE 是否出现，并附上 events_path。"
+    rep_task = "$[examples:workflow].reporter\n请写入 report.md，总结 READY/ECHO/BYE 是否出现，并附上 wal_locator。"
     r_rep = reporter.run(rep_task, run_id="run_workflows_12_reporter")
 
-    _assert_skill_injected(events_path=r_rep.events_path, mention_text="$[examples:workflow].reporter")
-    _assert_tool_ok(events_path=r_rep.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r_rep.wal_locator, mention_text="$[examples:workflow].reporter")
+    _assert_tool_ok(wal_locator=r_rep.wal_locator, tool_name="file_write")
     assert (workspace_root / "report.md").exists()
 
     # 最小断言：关键标记都应出现（不依赖输出的精确格式）

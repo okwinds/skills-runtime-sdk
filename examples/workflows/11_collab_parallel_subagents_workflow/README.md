@@ -19,7 +19,7 @@ python3 examples/workflows/11_collab_parallel_subagents_workflow/run.py --worksp
 ## 你应该看到什么
 
 - `outputs/research.md` / `outputs/design.md` / `outputs/risks.md`：并行子 agent 的独立产物
-- `report.md`：汇总报告（包含 master + 子 agent 的 `events_path` 指针）
+- `report.md`：汇总报告（包含 master + 子 agent 的 `wal_locator` 指针）
 - `.skills_runtime_sdk/runs/<run_id>/events.jsonl`：每个 agent 的 WAL 证据链
 
 ## 对应 skills

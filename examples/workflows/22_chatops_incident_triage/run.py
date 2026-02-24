@@ -49,8 +49,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -117,12 +115,12 @@ class _ScriptedHumanIO(HumanIOProvider):
         return ""
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -132,18 +130,18 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_event_exists(*, events_path: str, event_type: str) -> None:
+def _assert_event_exists(*, wal_locator: str, event_type: str) -> None:
     """断言 WAL 中存在某类事件（至少一条）。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     if not any(ev.get("type") == event_type for ev in events):
         raise AssertionError(f"missing event type: {event_type}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """断言 WAL 中存在某个 tool 的 tool_call_finished 且 ok=true。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "tool_call_finished":
             continue
@@ -251,7 +249,7 @@ def main() -> int:
 
     mention = "$[examples:workflow].chatops_incident_triage_assistant"
     run_id = "run_workflows_22_chatops_incident_triage"
-    events_path = (workspace_root / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
+    wal_locator = (workspace_root / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
 
     incident = "\n".join(
         [
@@ -302,7 +300,7 @@ def main() -> int:
             "- `runbook.md`\n",
             "- `report.md`\n",
             "## Evidence (WAL)\n",
-            f"- events_path: `{events_path}`\n",
+            f"- wal_locator: `{wal_locator}`\n",
         ]
     )
     if not report_md.endswith("\n"):
@@ -337,10 +335,10 @@ def main() -> int:
     assert (workspace_root / "runbook.md").exists()
     assert (workspace_root / "report.md").exists()
 
-    _assert_event_exists(events_path=r.events_path, event_type="human_request")
-    _assert_event_exists(events_path=r.events_path, event_type="human_response")
-    _assert_event_exists(events_path=r.events_path, event_type="plan_updated")
-    _assert_tool_ok(events_path=r.events_path, tool_name="file_write")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="human_request")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="human_response")
+    _assert_event_exists(wal_locator=r.wal_locator, event_type="plan_updated")
+    _assert_tool_ok(wal_locator=r.wal_locator, tool_name="file_write")
 
     print("EXAMPLE_OK: workflows_22")
     return 0
@@ -348,4 +346,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

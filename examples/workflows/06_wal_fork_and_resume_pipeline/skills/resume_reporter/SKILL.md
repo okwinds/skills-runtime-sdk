@@ -12,7 +12,7 @@ metadata:
 生成一份可审计报告，至少包含：
 - src_run_id / dst_run_id
 - fork index（0-based）
-- 两次 run 的 events_path 指针
+- 两次 run 的 wal_locator 指针
 - checkpoint/final 产物路径
 
 ## 输入约定

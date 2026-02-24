@@ -67,7 +67,7 @@ def main() -> int:
     r = agent.run("请读取 hello.txt 并总结。", run_id="run_example_step_02")
 
     print(f"[example] status={r.status}")
-    print(f"[example] events_path={r.events_path}")
+    print(f"[example] wal_locator={r.wal_locator}")
     print("[example] final_output:")
     print(r.final_output)
     print("EXAMPLE_OK: step_by_step_02")
@@ -76,4 +76,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

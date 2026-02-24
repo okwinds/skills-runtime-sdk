@@ -42,8 +42,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -82,12 +80,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -97,10 +95,10 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "skill_injected":
             continue
@@ -110,10 +108,10 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_file_write_ok(*, events_path: str) -> None:
+def _assert_file_write_ok(*, wal_locator: str) -> None:
     """断言 WAL 中至少存在 1 条 `file_write` 的成功 tool_call_finished。"""
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "tool_call_finished":
             continue
@@ -246,8 +244,8 @@ def main() -> int:
     assert (workspace_root / "result.json").exists()
     assert (workspace_root / "report.md").exists()
 
-    _assert_skill_injected(events_path=r.events_path, mention_text="$[examples:workflow].rules_parser")
-    _assert_file_write_ok(events_path=r.events_path)
+    _assert_skill_injected(wal_locator=r.wal_locator, mention_text="$[examples:workflow].rules_parser")
+    _assert_file_write_ok(wal_locator=r.wal_locator)
 
     print("EXAMPLE_OK: workflows_16")
     return 0
@@ -255,4 +253,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

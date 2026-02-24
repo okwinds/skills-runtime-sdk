@@ -18,5 +18,5 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 你将看到：
 - `action_artifact.json`：由 action 脚本生成的产物
-- `report.md`：包含 skill_exec 的 events_path 指针与产物摘要
+- `report.md`：包含 skill_exec 的 wal_locator 指针与产物摘要
 - `EXAMPLE_OK: workflows_07`

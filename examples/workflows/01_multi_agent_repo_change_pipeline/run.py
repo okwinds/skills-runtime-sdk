@@ -80,8 +80,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -126,20 +124,20 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """
     读取 WAL（events.jsonl）并返回 JSON object 列表。
 
     参数：
-    - events_path：WAL 路径（字符串）
+    - wal_locator：WAL 路径（字符串）
 
     返回：
     - events：list[dict]
     """
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
 
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
@@ -150,16 +148,16 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """
     断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。
 
     参数：
-    - events_path：WAL 路径
+    - wal_locator：WAL 路径
     - mention_text：完整 mention（例如 `$[examples:workflow].repo_patcher`）
     """
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "skill_injected":
             continue
@@ -169,16 +167,16 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
+def _assert_tool_ok(*, wal_locator: str, tool_name: str) -> None:
     """
     断言 WAL 中某个 tool 的 `tool_call_finished` 存在且 ok=true。
 
     参数：
-    - events_path：WAL 路径
+    - wal_locator：WAL 路径
     - tool_name：工具名（例如 apply_patch/shell_exec/file_write）
     """
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     for ev in events:
         if ev.get("type") != "tool_call_finished":
             continue
@@ -191,15 +189,15 @@ def _assert_tool_ok(*, events_path: str, tool_name: str) -> None:
     raise AssertionError(f"missing ok tool_call_finished for tool={tool_name}")
 
 
-def _assert_approvals_present(*, events_path: str) -> None:
+def _assert_approvals_present(*, wal_locator: str) -> None:
     """
     断言 WAL 中出现 approvals 证据事件。
 
     参数：
-    - events_path：WAL 路径
+    - wal_locator：WAL 路径
     """
 
-    events = _load_events(events_path)
+    events = _load_events(wal_locator)
     has_req = any(ev.get("type") == "approval_requested" for ev in events)
     has_dec = any(ev.get("type") == "approval_decided" for ev in events)
     if not (has_req and has_dec):
@@ -392,7 +390,7 @@ def _format_report_md(*, steps: List[Dict[str, Any]]) -> str:
     组装报告 Markdown。
 
     参数：
-    - steps：步骤列表；每项必须包含 name/mention/summary/events_path
+    - steps：步骤列表；每项必须包含 name/mention/summary/wal_locator
 
     返回：
     - Markdown 文本
@@ -410,7 +408,7 @@ def _format_report_md(*, steps: List[Dict[str, Any]]) -> str:
         lines.append(f"### {s['name']}")
         lines.append("")
         lines.append(f"- Skill: `{s['mention']}`")
-        lines.append(f"- Events: `{s['events_path']}`")
+        lines.append(f"- Events: `{s['wal_locator']}`")
         lines.append("")
         summary = str(s.get("summary") or "").strip()
         if summary:
@@ -493,34 +491,34 @@ def main() -> int:
     r_qa = coord.run_child_task(qa_task, child_index=3)
 
     # 断言示例的关键证据链存在：skills 注入、工具成功、approvals 事件
-    _assert_skill_injected(events_path=r_analyze.events_path, mention_text="$[examples:workflow].repo_analyzer")
-    _assert_skill_injected(events_path=r_patch.events_path, mention_text="$[examples:workflow].repo_patcher")
-    _assert_skill_injected(events_path=r_qa.events_path, mention_text="$[examples:workflow].repo_qa")
+    _assert_skill_injected(wal_locator=r_analyze.wal_locator, mention_text="$[examples:workflow].repo_analyzer")
+    _assert_skill_injected(wal_locator=r_patch.wal_locator, mention_text="$[examples:workflow].repo_patcher")
+    _assert_skill_injected(wal_locator=r_qa.wal_locator, mention_text="$[examples:workflow].repo_qa")
 
-    _assert_approvals_present(events_path=r_patch.events_path)
-    _assert_approvals_present(events_path=r_qa.events_path)
+    _assert_approvals_present(wal_locator=r_patch.wal_locator)
+    _assert_approvals_present(wal_locator=r_qa.wal_locator)
 
-    _assert_tool_ok(events_path=r_patch.events_path, tool_name="apply_patch")
-    _assert_tool_ok(events_path=r_qa.events_path, tool_name="shell_exec")
+    _assert_tool_ok(wal_locator=r_patch.wal_locator, tool_name="apply_patch")
+    _assert_tool_ok(wal_locator=r_qa.wal_locator, tool_name="shell_exec")
 
     steps = [
         {
             "name": "Analyze",
             "mention": "$[examples:workflow].repo_analyzer",
             "summary": r_analyze.summary,
-            "events_path": r_analyze.events_path,
+            "wal_locator": r_analyze.wal_locator,
         },
         {
             "name": "Patch",
             "mention": "$[examples:workflow].repo_patcher",
             "summary": r_patch.summary,
-            "events_path": r_patch.events_path,
+            "wal_locator": r_patch.wal_locator,
         },
         {
             "name": "QA",
             "mention": "$[examples:workflow].repo_qa",
             "summary": r_qa.summary,
-            "events_path": r_qa.events_path,
+            "wal_locator": r_qa.wal_locator,
         },
     ]
     report_md = _format_report_md(steps=steps)
@@ -535,9 +533,9 @@ def main() -> int:
     report_task = "$[examples:workflow].repo_reporter\n请将本次 workflow 的结果写入 report.md。"
     r_report = reporter.run(report_task, run_id="run_workflows_01_report")
 
-    _assert_skill_injected(events_path=r_report.events_path, mention_text="$[examples:workflow].repo_reporter")
-    _assert_approvals_present(events_path=r_report.events_path)
-    _assert_tool_ok(events_path=r_report.events_path, tool_name="file_write")
+    _assert_skill_injected(wal_locator=r_report.wal_locator, mention_text="$[examples:workflow].repo_reporter")
+    _assert_approvals_present(wal_locator=r_report.wal_locator)
+    _assert_tool_ok(wal_locator=r_report.wal_locator, tool_name="file_write")
 
     report_path = workspace_root / "report.md"
     assert report_path.exists(), "report.md is not created"

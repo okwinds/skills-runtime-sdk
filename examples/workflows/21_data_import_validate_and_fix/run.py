@@ -40,8 +40,6 @@ def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str 
                 "sandbox:",
                 "  default_policy: none",
                 "skills:",
-                "  mode: explicit",
-                "  max_auto: 0",
                 "  strictness:",
                 "    unknown_mention: error",
                 "    duplicate_name: error",
@@ -80,12 +78,12 @@ class _ScriptedApprovalProvider(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
-def _load_events(events_path: str) -> List[Dict[str, Any]]:
+def _load_events(wal_locator: str) -> List[Dict[str, Any]]:
     """读取 WAL（events.jsonl）并返回 JSON object 列表。"""
 
-    p = Path(events_path)
+    p = Path(wal_locator)
     if not p.exists():
-        raise AssertionError(f"events_path does not exist: {events_path}")
+        raise AssertionError(f"wal_locator does not exist: {wal_locator}")
     events: List[Dict[str, Any]] = []
     for raw in p.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -95,10 +93,10 @@ def _load_events(events_path: str) -> List[Dict[str, Any]]:
     return events
 
 
-def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
+def _assert_skill_injected(*, wal_locator: str, mention_text: str) -> None:
     """断言 WAL 中出现过指定 mention 的 `skill_injected` 事件。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "skill_injected":
             continue
         payload = ev.get("payload") or {}
@@ -107,10 +105,10 @@ def _assert_skill_injected(*, events_path: str, mention_text: str) -> None:
     raise AssertionError(f"missing skill_injected event for mention: {mention_text}")
 
 
-def _get_shell_exec_stdout(*, events_path: str) -> str:
+def _get_shell_exec_stdout(*, wal_locator: str) -> str:
     """提取 `shell_exec` 的 tool_call_finished.result.stdout（用于断言 QA_OK）。"""
 
-    for ev in _load_events(events_path):
+    for ev in _load_events(wal_locator):
         if ev.get("type") != "tool_call_finished":
             continue
         payload = ev.get("payload") or {}
@@ -210,7 +208,7 @@ def _build_fixed_outputs(*, input_csv_text: str) -> tuple[str, str]:
     return fixed_csv, validation_report_json
 
 
-def _format_report_md(*, events_path: str, mention: str) -> str:
+def _format_report_md(*, wal_locator: str, mention: str) -> str:
     """生成 report.md（确定性；QA 结果见 WAL）。"""
 
     return (
@@ -229,7 +227,7 @@ def _format_report_md(*, events_path: str, mention: str) -> str:
                 "- `report.md`",
                 "",
                 "## Evidence (WAL)",
-                f"- events_path: `{events_path}`",
+                f"- wal_locator: `{wal_locator}`",
                 "",
                 "说明：QA 校验结果（stdout 含 `QA_OK`）记录在 WAL 的 `tool_call_finished(tool=shell_exec)` 事件中。",
                 "",
@@ -356,8 +354,8 @@ def main() -> int:
     input_csv_text = _write_input_csv(workspace_root=workspace_root)
     fixed_csv, validation_report_json = _build_fixed_outputs(input_csv_text=input_csv_text)
 
-    events_path = (workspace_root / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
-    report_md = _format_report_md(events_path=str(events_path), mention=mention)
+    wal_locator = (workspace_root / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
+    report_md = _format_report_md(wal_locator=str(wal_locator), mention=mention)
 
     approval_provider = _ScriptedApprovalProvider(
         decisions=[
@@ -400,12 +398,12 @@ def main() -> int:
         assert (workspace_root / rel).exists(), f"missing output file: {rel}"
 
     # 证据门禁：skills-first + QA stdout
-    _assert_skill_injected(events_path=r.events_path, mention_text=mention)
-    qa_stdout = _get_shell_exec_stdout(events_path=r.events_path)
+    _assert_skill_injected(wal_locator=r.wal_locator, mention_text=mention)
+    qa_stdout = _get_shell_exec_stdout(wal_locator=r.wal_locator)
     assert "QA_OK" in qa_stdout, f"QA stdout missing QA_OK: {qa_stdout!r}"
 
     print(f"[example] status={r.status}")
-    print(f"[example] events_path={r.events_path}")
+    print(f"[example] wal_locator={r.wal_locator}")
     print("[example] final_output:")
     print(r.final_output)
     print("EXAMPLE_OK: workflows_21")
