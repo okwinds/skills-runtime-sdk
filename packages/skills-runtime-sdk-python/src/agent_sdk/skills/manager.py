@@ -8,6 +8,7 @@ SkillsManager（V2：配置驱动 scan + strict mentions + lazy-load 注入）�
 
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime, timezone
 import json
 import os
@@ -1135,14 +1136,17 @@ class SkillsManager:
         return client
 
     def _get_pgsql_client(self, source: AgentSdkSkillsConfig.Source) -> Any:
-        """获取 pgsql client（优先注入，其次按 dsn_env 初始化）。"""
+        """
+        获取 pgsql client（优先注入，其次按 dsn_env 初始化）。
+
+        注意：
+        - 本方法不再默认缓存单 connection（避免假设并发安全）；
+        - 推荐通过 `_pgsql_client_context` 获取并在使用后释放。
+        """
 
         injected = self._source_clients.get(source.id)
         if injected is not None:
             return injected
-        cached = self._runtime_source_clients.get(source.id)
-        if cached is not None:
-            return cached
 
         dsn = self._source_dsn_from_env(source)
         try:
@@ -1176,8 +1180,58 @@ class SkillsManager:
                     "reason": f"pgsql connect failed: {exc}",
                 },
             ) from exc
-        self._runtime_source_clients[source.id] = client
         return client
+
+    @contextlib.contextmanager
+    def _pgsql_client_context(self, source: AgentSdkSkillsConfig.Source):  # type: ignore[no-untyped-def]
+        """
+        获取 pgsql client 的上下文管理器（支持 injected factory/pool）。
+
+        行为（对齐 OpenSpec：skills-sources-hardening）：
+        - 默认不缓存单 connection：每次使用（scan/body_loader）都获取独立 client 并释放；
+        - 支持注入：
+          - factory：callable，每次调用返回 client/connection（本方法负责 close）；
+          - pool：提供 `connection()` 上下文管理器（本方法负责 enter/exit）；
+          - direct client：直接注入连接对象（不由本方法关闭；集成方自行管理生命周期）。
+        """
+
+        injected = self._source_clients.get(source.id)
+        if injected is not None:
+            # pool 形态：优先识别 connection() 上下文管理器
+            conn_cm = getattr(injected, "connection", None)
+            if callable(conn_cm):
+                with conn_cm() as client:
+                    yield client
+                return
+
+            # factory 形态：每次调用获取新 client，并在退出时释放（若可 close）
+            if callable(injected):
+                client = injected()
+                try:
+                    if hasattr(client, "__enter__") and hasattr(client, "__exit__"):
+                        with client as inner:
+                            yield inner
+                    else:
+                        yield client
+                finally:
+                    close = getattr(client, "close", None)
+                    if callable(close):
+                        with contextlib.suppress(Exception):
+                            close()
+                return
+
+            # direct client：生命周期由注入方管理（不在此处 close）
+            yield injected
+            return
+
+        client = self._get_pgsql_client(source)
+        try:
+            yield client
+        finally:
+            close = getattr(client, "close", None)
+            if callable(close):
+                with contextlib.suppress(Exception):
+                    close()
 
     def _parse_json_string_field(self, value: Any, *, field: str, source_id: str, locator: str) -> Any:
         """解析以 JSON 字符串编码的 metadata 字段。"""
@@ -1543,12 +1597,10 @@ class SkillsManager:
             return
 
         try:
-            client = self._get_pgsql_client(source)
-        except FrameworkError as exc:
-            errors.append(exc.to_issue())
-            return
-
-        table_ref = f'"{schema}"."{table}"'
+            # 注意：使用上下文管理器获取 client，避免默认缓存单 connection（并发安全不作假设）。
+            table_ref = f'"{schema}"."{table}"'
+        except Exception:
+            table_ref = f'"{schema}"."{table}"'
         sql = (
             "SELECT id, account, domain, skill_name, description, body_size, body_etag, created_at, updated_at, "
             "required_env_vars, metadata, scope "
@@ -1557,9 +1609,13 @@ class SkillsManager:
         )
 
         try:
-            with client.cursor() as cursor:
-                cursor.execute(sql, (space.account, space.domain))
-                rows = self._fetchall_as_rows(cursor)
+            with self._pgsql_client_context(source) as client:
+                with client.cursor() as cursor:
+                    cursor.execute(sql, (space.account, space.domain))
+                    rows = self._fetchall_as_rows(cursor)
+        except FrameworkError as exc:
+            errors.append(exc.to_issue())
+            return
         except Exception as exc:
             errors.append(
                 FrameworkIssue(
@@ -1666,7 +1722,8 @@ class SkillsManager:
                     updated_at = str(updated_at)
 
                 def _load_body(
-                    client_ref: Any = client,
+                    mgr_ref: "SkillsManager" = self,
+                    source_ref: AgentSdkSkillsConfig.Source = source,
                     schema_ref: str = schema,
                     table_ref_inner: str = table,
                     row_id_ref: Any = row_id,
@@ -1696,9 +1753,10 @@ class SkillsManager:
                         f'SELECT body FROM "{schema_ref}"."{table_ref_inner}" '
                         "WHERE id = %s AND account = %s AND domain = %s"
                     )
-                    with client_ref.cursor() as body_cursor:
-                        body_cursor.execute(sql_body, (row_id_ref, account_ref, domain_ref))
-                        rec = body_cursor.fetchone()
+                    with mgr_ref._pgsql_client_context(source_ref) as client:
+                        with client.cursor() as body_cursor:
+                            body_cursor.execute(sql_body, (row_id_ref, account_ref, domain_ref))
+                            rec = body_cursor.fetchone()
                     if rec is None:
                         raise FileNotFoundError(f"missing body row: {schema_ref}.{table_ref_inner}#{row_id_ref}")
                     if isinstance(rec, Mapping):

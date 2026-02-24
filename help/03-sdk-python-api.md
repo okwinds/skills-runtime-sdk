@@ -11,6 +11,7 @@
 ```python
 from pathlib import Path
 from agent_sdk import Agent
+from agent_sdk import AgentBuilder
 from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
 from agent_sdk.config.loader import AgentSdkLlmConfig
 ```
@@ -29,7 +30,10 @@ llm_cfg = AgentSdkLlmConfig(
     base_url="https://api.openai.com/v1",
     api_key_env="OPENAI_API_KEY",
     timeout_sec=60,
+    # legacy fallback when llm.retry.max_retries is not set
     max_retries=3,
+    # production-grade backoff params (base/cap/jitter), and optional retry.max_retries override
+    retry={"base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.1},
 )
 
 backend = OpenAIChatCompletionsBackend(llm_cfg)
@@ -38,6 +42,24 @@ agent = Agent(
     workspace_root=workspace_root,
     backend=backend,
     config_paths=[workspace_root / "config" / "runtime.yaml"],
+)
+```
+
+## 3.2.1 Recommended: AgentBuilder (reduces assembly mistakes)
+
+When you need to inject production components like `wal_backend`, `approval_provider`, or `event_hooks`, use `AgentBuilder`:
+
+```python
+from pathlib import Path
+from agent_sdk import AgentBuilder
+from agent_sdk.state.wal_protocol import InMemoryWal
+
+agent = (
+    AgentBuilder()
+    .workspace_root(Path(".").resolve())
+    .backend(backend)
+    .wal_backend(InMemoryWal())
+    .build()
 )
 ```
 
@@ -53,7 +75,10 @@ print(result.events_path)
 Returns:
 - `status`: `completed|failed|cancelled`
 - `final_output`: final text output
-- `events_path`: path to the event log (`events.jsonl`)
+- `events_path`: WAL locator (may be a file path or a `wal://...` URI)
+
+Notes:
+- Terminal events (`run_completed/run_failed/run_cancelled`) include both `events_path` (compat) and `wal_locator` (recommended).
 
 ## 3.4 Streaming run: `run_stream()`
 
@@ -71,6 +96,24 @@ Common event types:
 - `tool_call_started`
 - `tool_call_finished`
 - `run_completed` / `run_failed`
+
+## 3.4.1 Event hooks (observability)
+
+Register one or more hooks to receive every `AgentEvent` (same order as the stream output):
+
+```python
+from agent_sdk.core.contracts import AgentEvent
+
+seen = []
+def hook(ev: AgentEvent) -> None:
+    seen.append(ev.type)
+
+agent = Agent(
+    workspace_root=Path(".").resolve(),
+    backend=backend,
+    event_hooks=[hook],
+)
+```
 
 ## 3.5 Async streaming: `run_stream_async()`
 
@@ -135,8 +178,10 @@ Notes:
 from agent_sdk.safety.approvals import ApprovalProvider, ApprovalDecision, ApprovalRequest
 
 class AlwaysApprove(ApprovalProvider):
-    async def decide(self, req: ApprovalRequest) -> ApprovalDecision:
-        return ApprovalDecision(decision="approved")
+    async def request_approval(self, *, request: ApprovalRequest, timeout_ms=None) -> ApprovalDecision:  # type: ignore[override]
+        _ = request
+        _ = timeout_ms
+        return ApprovalDecision.APPROVED
 
 agent = Agent(
     workspace_root=Path(".").resolve(),
@@ -144,6 +189,14 @@ agent = Agent(
     config_paths=[Path("config/runtime.yaml")],
     approval_provider=AlwaysApprove(),
 )
+```
+
+For unattended runs, use rule-based approvals (fail-closed by default: anything unmatched is denied):
+
+```python
+from agent_sdk.safety import ApprovalRule, RuleBasedApprovalProvider
+
+provider = RuleBasedApprovalProvider(rules=[ApprovalRule(tool="shell_exec", decision=ApprovalDecision.DENIED)])
 ```
 
 ## 3.8 Use bootstrap to resolve effective config + sources
@@ -168,7 +221,7 @@ print(resolved.sources)  # source tracking per leaf field
 from pathlib import Path
 from agent_sdk.observability.run_metrics import compute_run_metrics_summary
 
-events_path = Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl")
+events_path = Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl")  # file WAL only
 summary = compute_run_metrics_summary(events_path)
 print(summary)
 ```

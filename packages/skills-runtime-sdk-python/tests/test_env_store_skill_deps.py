@@ -84,6 +84,7 @@ def _write_skills_overlay(
     workspace_root: Path,
     *,
     skills_root: Path,
+    env_var_missing_policy: Optional[str] = None,
     account: str = "demo",
     domain: str = "local",
     space_id: str = "space-demo",
@@ -104,11 +105,15 @@ def _write_skills_overlay(
         root_value = str(skills_root.resolve())
 
     overlay = workspace_root / "skills_overlay.yaml"
+    policy_line = (
+        f"  env_var_missing_policy: \"{str(env_var_missing_policy)}\"" if env_var_missing_policy is not None else None
+    )
     overlay.write_text(
         "\n".join(
             [
                 "config_version: 1",
                 "skills:",
+                *( [policy_line] if policy_line else [] ),
                 "  spaces:",
                 f"    - id: \"{space_id}\"",
                 f"      account: \"{account}\"",
@@ -206,6 +211,60 @@ def test_env_var_missing_without_human_io_fails_as_config_error(tmp_path: Path, 
     last = events[-1]
     assert last.type == "run_failed"
     assert last.payload.get("error_kind") == "config_error"
+
+
+def test_env_var_missing_policy_fail_fast_does_not_prompt(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.chdir(tmp_path)
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    _write_skill_with_env_dep(skills_root, name="dep-skill", env_name="FOO_TOKEN")
+    overlay = _write_skills_overlay(tmp_path, skills_root=skills_root, env_var_missing_policy="fail_fast")
+
+    backend = _StubBackend()
+    human = _StubHumanIO({"FOO_TOKEN": "should-not-be-used"})
+    agent = Agent(
+        backend=backend,
+        workspace_root=tmp_path,
+        config_paths=[overlay],
+        human_io=human,
+        env_vars={},
+    )
+
+    events = list(agent.run_stream("please use $[demo:local].dep-skill"))
+    assert "env_var_required" in _events_types(events)
+    assert "human_request" not in _events_types(events)
+    assert human.requests == []
+    assert events[-1].type == "run_failed"
+    assert events[-1].payload.get("error_kind") == "missing_env_var"
+    details = events[-1].payload.get("details") or {}
+    assert details.get("missing_env_vars") == ["FOO_TOKEN"]
+
+
+def test_env_var_missing_policy_skip_skill_skips_injection_without_prompt(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.chdir(tmp_path)
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    _write_skill_with_env_dep(skills_root, name="dep-skill", env_name="FOO_TOKEN")
+    overlay = _write_skills_overlay(tmp_path, skills_root=skills_root, env_var_missing_policy="skip_skill")
+
+    backend = _StubBackend()
+    human = _StubHumanIO({"FOO_TOKEN": "should-not-be-used"})
+    agent = Agent(
+        backend=backend,
+        workspace_root=tmp_path,
+        config_paths=[overlay],
+        human_io=human,
+        env_vars={},
+    )
+
+    events = list(agent.run_stream("please use $[demo:local].dep-skill"))
+    types = _events_types(events)
+    assert "env_var_required" in types
+    assert "skill_injection_skipped" in types
+    assert "skill_injected" not in types
+    assert "human_request" not in types
+    assert human.requests == []
+    assert events[-1].type == "run_completed"
 
 
 def test_env_store_persists_across_runs_when_dict_is_shared(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

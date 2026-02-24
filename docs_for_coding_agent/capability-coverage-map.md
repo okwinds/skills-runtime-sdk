@@ -97,7 +97,7 @@
   - 产物：`retrieval.json` + `report.md`
 - `examples/workflows/18_fastapi_sse_gateway_minimal/`：
   - FastAPI/SSE 网关最小骨架：create run → SSE stream → approvals decide → terminal event
-  - 产物：`report.md` + `.skills_runtime_sdk/runs/<run_id>/events.jsonl`
+  - 产物：`report.md` + events_path（默认 file WAL 下为 `.skills_runtime_sdk/runs/<run_id>/events.jsonl`）
 - `examples/workflows/19_view_image_offline/`：
   - 离线 view_image：生成 PNG → view_image → image_meta.json/report.md
   - 产物：`generated.png` + `image_meta.json` + `report.md`

@@ -35,8 +35,10 @@ from agent_sdk.core.errors import FrameworkError, UserError
 from agent_sdk.core.exec_sessions import ExecSessionsProvider
 from agent_sdk.core.executor import Executor
 from agent_sdk.core.loop_controller import LoopController
+from agent_sdk.core.run_errors import MissingRequiredEnvVarError, RunError, RunErrorKind
 from agent_sdk.state.jsonl_wal import JsonlWal
 from agent_sdk.state.wal_emitter import WalEmitter
+from agent_sdk.state.wal_protocol import WalBackend
 from agent_sdk.tools.builtin import register_builtin_tools
 from agent_sdk.tools.dispatcher import ToolDispatchInputs, ToolDispatcher
 from agent_sdk.tools.protocol import ToolCall, ToolResult, ToolSpec
@@ -48,6 +50,7 @@ from agent_sdk.prompts.compaction import (
     build_compaction_messages,
     format_history_for_compaction,
 )
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.skills.manager import SkillsManager
 from agent_sdk.skills.models import Skill
 from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest, compute_approval_key
@@ -332,37 +335,57 @@ def _sanitize_tool_call_arguments_for_event(
     return _sanitize_obj(dict(args))  # copy，避免外部引用被修改
 
 
-def _classify_run_exception(exc: BaseException) -> Dict[str, Any]:
+def _classify_run_exception(exc: BaseException) -> RunError:
     """
-    将运行时异常映射为 `run_failed` payload（最小集合）。
+    将运行时异常映射为结构化 RunError（用于生成稳定 run_failed payload）。
 
-    设计目标：
-    - 给 UI/调用方提供可用的错误信息（可回归）
-    - 不泄露 secrets（例如 API key）
+    约束：
+    - 不得包含 secrets（例如 API key value）
+    - message 必须尽量简洁可读
     """
+
+    # 框架结构化错误：通常属于配置/输入问题（fail-fast，不建议重试）
+    if isinstance(exc, FrameworkError):
+        return RunError(
+            error_kind=RunErrorKind.CONFIG_ERROR,
+            message=str(exc),
+            retryable=False,
+            details={"framework_code": getattr(exc, "code", None), "framework_details": dict(getattr(exc, "details", {}) or {})},
+        )
 
     # httpx 相关异常分类（不强依赖 LLM backend 实现）
     try:
         import httpx  # type: ignore
 
         if isinstance(exc, httpx.TimeoutException):
-            return {"error_kind": "network_timeout", "message": str(exc), "retryable": True}
+            return RunError(error_kind=RunErrorKind.LLM_ERROR, message=str(exc), retryable=True, details={"kind": "timeout"})
 
         if isinstance(exc, httpx.RequestError):
-            return {"error_kind": "network_error", "message": str(exc), "retryable": True}
+            return RunError(error_kind=RunErrorKind.LLM_ERROR, message=str(exc), retryable=True, details={"kind": "request_error"})
 
         if isinstance(exc, httpx.HTTPStatusError):
-            code = exc.response.status_code
-            kind = "http_error"
+            code = int(exc.response.status_code)
+            retry_after_ms: Optional[int] = None
+
+            kind = RunErrorKind.HTTP_ERROR
             retryable = False
             if code in (401, 403):
-                kind = "auth_error"
+                kind = RunErrorKind.AUTH_ERROR
             elif code == 429:
-                kind = "rate_limited"
+                kind = RunErrorKind.RATE_LIMITED
                 retryable = True
+                ra = exc.response.headers.get("Retry-After")
+                if ra:
+                    try:
+                        sec = int(str(ra).strip())
+                        if sec > 0:
+                            retry_after_ms = sec * 1000
+                    except Exception:
+                        retry_after_ms = None
             elif 500 <= code <= 599:
-                kind = "server_error"
+                kind = RunErrorKind.SERVER_ERROR
                 retryable = True
+
             msg = f"HTTP {code}"
             try:
                 data = exc.response.json()
@@ -375,20 +398,37 @@ def _classify_run_exception(exc: BaseException) -> Dict[str, Any]:
                 pass
             if len(msg) > 800:
                 msg = msg[:800] + "...<truncated>"
-            return {"error_kind": kind, "message": msg, "retryable": retryable}
+
+            return RunError(
+                error_kind=kind,
+                message=msg,
+                retryable=retryable,
+                retry_after_ms=retry_after_ms,
+                details={"status_code": code},
+            )
     except Exception:
         pass
 
+    if isinstance(exc, MissingRequiredEnvVarError):
+        details: Dict[str, Any] = {"missing_env_vars": list(exc.missing_env_vars)}
+        if exc.skill_name is not None:
+            details["skill_name"] = exc.skill_name
+        if exc.skill_path is not None:
+            details["skill_path"] = exc.skill_path
+        if exc.policy is not None:
+            details["policy"] = exc.policy
+        return RunError(error_kind=RunErrorKind.MISSING_ENV_VAR, message=str(exc), retryable=False, details=details)
+
     if isinstance(exc, ValueError):
         # 常见：缺少 API key env；或配置加载问题
-        return {"error_kind": "config_error", "message": str(exc), "retryable": False}
+        return RunError(error_kind=RunErrorKind.CONFIG_ERROR, message=str(exc), retryable=False)
 
     # LLM 相关：显式可分类错误
     try:
         from agent_sdk.llm.errors import ContextLengthExceededError
 
         if isinstance(exc, ContextLengthExceededError):
-            return {"error_kind": "context_length_exceeded", "message": str(exc), "retryable": False}
+            return RunError(error_kind=RunErrorKind.CONTEXT_LENGTH_EXCEEDED, message=str(exc), retryable=False)
     except Exception:
         pass
 
@@ -396,17 +436,27 @@ def _classify_run_exception(exc: BaseException) -> Dict[str, Any]:
         from agent_sdk.core.errors import LlmError
 
         if isinstance(exc, LlmError):
-            return {"error_kind": "llm_error", "message": str(exc), "retryable": True}
+            return RunError(error_kind=RunErrorKind.LLM_ERROR, message=str(exc), retryable=True)
     except Exception:
         pass
 
-    return {"error_kind": "unknown", "message": str(exc), "retryable": False}
+    return RunError(error_kind=RunErrorKind.UNKNOWN, message=str(exc), retryable=False)
 
 
 class ChatBackend(Protocol):
     """
     LLM backend 抽象（Phase 2：chat.completions streaming）。
     """
+
+    async def stream_chat_v2(self, request: ChatRequest) -> AsyncIterator[Any]:
+        """
+        v2 入口：以单一 ChatRequest 参数包承载请求信息。
+
+        约束：
+        - 返回的 item 需满足 `agent_sdk.llm.chat_sse` 的事件约定（例如 `type=text_delta/tool_calls/completed`）。
+        """
+
+        ...
 
     async def stream_chat(
         self,
@@ -425,6 +475,49 @@ class ChatBackend(Protocol):
         """
 
         ...
+
+
+class _ChatBackendV2Shim:
+    """
+    v2 shim：让 v1-only backend 在 v2 Agent loop 下仍可用。
+
+    约束：
+    - Agent loop 只调用 `stream_chat_v2`；
+    - 若底层 backend 不提供 v2，则 shim 退化为调用 v1 的 `stream_chat(...)`；
+    - v1 不支持的字段（max_tokens/top_p/response_format/extra）在 shim 路径下会被忽略（可观测且确定）。
+    """
+
+    def __init__(self, backend: Any) -> None:
+        """
+        创建 v2 shim。
+
+        参数：
+        - backend：底层 backend 实例（可能仅实现 v1 `stream_chat`）。
+        """
+
+        self._backend = backend
+
+    def stream_chat_v2(self, request: ChatRequest) -> AsyncIterator[Any]:
+        """
+        以 v2 入口发起 streaming chat。
+
+        参数：
+        - request：ChatRequest 参数包
+
+        返回：
+        - AsyncIterator：backend streaming 事件流（ChatStreamEvent 约定形态）
+
+        异常：
+        - ValueError：当底层 backend 同时不实现 v2 与 v1 接口时抛出
+        """
+
+        v2 = getattr(self._backend, "stream_chat_v2", None)
+        if callable(v2):
+            return v2(request)
+        v1 = getattr(self._backend, "stream_chat", None)
+        if not callable(v1):
+            raise ValueError("backend does not implement stream_chat_v2 or stream_chat")
+        return v1(model=request.model, messages=request.messages, tools=request.tools, temperature=request.temperature)
 
 
 @dataclass(frozen=True)
@@ -465,6 +558,8 @@ class Agent:
         cancel_checker: Optional[Callable[[], bool]] = None,
         exec_sessions: Optional[ExecSessionsProvider] = None,
         collab_manager: Optional[object] = None,
+        wal_backend: Optional[WalBackend] = None,
+        event_hooks: Optional[Sequence[Callable[[AgentEvent], None]]] = None,
     ) -> None:
         """
         构造一个可运行的 Agent 实例（Phase 2）。
@@ -540,7 +635,7 @@ class Agent:
                 details={"path": "skills.mode", "actual": self._config.skills.mode, "expected": "explicit"},
             )
 
-        self._backend = backend
+        self._backend = _ChatBackendV2Shim(backend) if backend is not None else None
         self._executor = Executor()
         self._human_io = human_io
         self._approval_provider = approval_provider
@@ -549,6 +644,8 @@ class Agent:
         self._approved_for_session_keys: set[str] = set()
         self._exec_sessions = exec_sessions
         self._collab_manager = collab_manager
+        self._wal_backend = wal_backend
+        self._event_hooks: List[Callable[[AgentEvent], None]] = [h for h in (event_hooks or []) if callable(h)]
         # session-only env_store（可由应用层传入共享 dict；不得落盘）
         self._env_store: Dict[str, str] = env_vars if env_vars is not None else {}
 
@@ -726,7 +823,7 @@ class Agent:
         run_id: str,
         turn_id: str,
         emit,
-    ) -> None:
+    ) -> bool:
         """
         确保某个 skill 的 env_var 依赖已满足（session-only，不落盘值）。
 
@@ -741,7 +838,10 @@ class Agent:
 
         required = list(getattr(skill, "required_env_vars", []) or [])
         if not required:
-            return
+            return True
+
+        raw_policy = str(getattr(self._config.skills, "env_var_missing_policy", "ask_human") or "ask_human").strip().lower()
+        policy = raw_policy if raw_policy in ("fail_fast", "ask_human", "skip_skill") else "ask_human"
 
         for env_name in required:
             env_name = str(env_name or "").strip()
@@ -798,9 +898,36 @@ class Agent:
                         "skill_name": skill.skill_name,
                         "skill_path": str(skill.path or skill.locator),
                         "source": "skill_dependency",
+                        "policy": policy,
                     },
                 )
             )
+
+            if policy == "skip_skill":
+                emit(
+                    AgentEvent(
+                        type="skill_injection_skipped",
+                        ts=_now_rfc3339(),
+                        run_id=run_id,
+                        turn_id=turn_id,
+                        payload={
+                            "skill_name": skill.skill_name,
+                            "skill_path": str(skill.path or skill.locator),
+                            "reason": "missing_env_var",
+                            "missing_env_vars": [env_name],
+                            "policy": policy,
+                        },
+                    )
+                )
+                return False
+
+            if policy == "fail_fast":
+                raise MissingRequiredEnvVarError(
+                    missing_env_vars=[env_name],
+                    skill_name=skill.skill_name,
+                    skill_path=str(skill.path or skill.locator),
+                    policy=policy,
+                )
 
             if self._human_io is None:
                 raise ValueError(f"missing required env var (no HumanIOProvider): {env_name}")
@@ -858,6 +985,8 @@ class Agent:
                         },
                     )
                 )
+
+        return True
 
     def run(
         self,
@@ -1008,8 +1137,14 @@ class Agent:
         run_dir = (self._workspace_root / ".skills_runtime_sdk" / "runs" / run_id).resolve()
         run_dir.mkdir(parents=True, exist_ok=True)
         events_path = run_dir / "events.jsonl"
-        wal = JsonlWal(events_path)
-        wal_emitter = WalEmitter(wal=wal, stream=emit)
+        injected_wal = self._wal_backend
+        if injected_wal is not None:
+            wal = injected_wal
+            wal_locator = f"{wal.locator()}#run_id={run_id}"
+        else:
+            wal = JsonlWal(events_path)
+            wal_locator = str(events_path)
+        wal_emitter = WalEmitter(wal=wal, stream=emit, hooks=list(self._event_hooks))
         started_monotonic = time.monotonic()
 
         max_steps = int(self._config.run.max_steps)
@@ -1031,16 +1166,9 @@ class Agent:
         compaction_artifacts: List[str] = []
         terminal_notices: List[Dict[str, Any]] = []
 
-        existing_events_count = 0
-        existing_events_tail: List[AgentEvent] = []
-        existing_events_all: List[AgentEvent] = []
-        if events_path.exists():
-            tail: "deque[AgentEvent]" = deque(maxlen=200)
-            for ev in wal.iter_events():
-                existing_events_count += 1
-                tail.append(ev)
-                existing_events_all.append(ev)
-            existing_events_tail = list(tail)
+        existing_events_all = [ev for ev in wal.iter_events() if ev.run_id == run_id]
+        existing_events_count = len(existing_events_all)
+        existing_events_tail: List[AgentEvent] = list(deque(existing_events_all, maxlen=200))
 
         resume_strategy = str(getattr(self._config.run, "resume_strategy", "summary") or "summary").strip().lower()
         if resume_strategy not in ("summary", "replay"):
@@ -1130,7 +1258,7 @@ class Agent:
         resume_summary = _build_resume_summary()
 
         def _emit_event(ev: AgentEvent) -> None:
-            """统一事件出口：先写 WAL，再 stream（保持顺序一致）。"""
+            """统一事件出口：WAL append（如启用）→ hooks → stream（保持顺序一致）。"""
 
             wal_emitter.emit(ev)
 
@@ -1152,7 +1280,8 @@ class Agent:
                         "error_kind": "budget_exceeded",
                         "message": message,
                         "retryable": False,
-                        "events_path": str(events_path),
+                        "events_path": wal_locator,
+                        "wal_locator": wal_locator,
                     },
                 )
             )
@@ -1285,7 +1414,7 @@ class Agent:
                     type="run_cancelled",
                     ts=_now_rfc3339(),
                     run_id=run_id,
-                    payload={"message": "cancelled by user", "events_path": str(events_path)},
+                    payload={"message": "cancelled by user", "events_path": wal_locator, "wal_locator": wal_locator},
                 )
             )
 
@@ -1300,7 +1429,8 @@ class Agent:
         tool_ctx = ToolExecutionContext(
             workspace_root=self._workspace_root,
             run_id=run_id,
-            wal=wal,
+            wal=None,  # tool 旁路事件必须走统一 emitter，避免绕过 hooks 或造成重复落盘
+            event_emitter=wal_emitter,
             executor=self._executor,
             human_io=self._human_io,
             env=self._env_store,
@@ -1391,11 +1521,16 @@ class Agent:
 
             summary_text = ""
             try:
-                agen = self._backend.stream_chat(
-                    model=self._executor_model,
-                    messages=compaction_messages,
-                    tools=None,  # 关键约束：compaction turn 禁用 tools
-                    temperature=0.2,
+                agen = self._backend.stream_chat_v2(
+                    ChatRequest(
+                        model=self._executor_model,
+                        messages=compaction_messages,
+                        tools=None,  # 关键约束：compaction turn 禁用 tools
+                        temperature=0.2,
+                        run_id=run_id,
+                        turn_id=turn_id,
+                        extra={"purpose": "compaction"},
+                    )
                 )
                 async for ev in agen:
                     t = getattr(ev, "type", None)
@@ -1487,7 +1622,9 @@ class Agent:
                 injected: List[Tuple[Any, str, Optional[str]]] = []
                 resolved = self._skills_manager.resolve_mentions(task)
                 for skill, mention in resolved:
-                    await self._ensure_skill_env_vars(skill, run_id=run_id, turn_id=turn_id, emit=_emit_event)
+                    ok_to_inject = await self._ensure_skill_env_vars(skill, run_id=run_id, turn_id=turn_id, emit=_emit_event)
+                    if not ok_to_inject:
+                        continue
                     injected.append((skill, "mention", mention.mention_text))
                     _emit_event(
                         AgentEvent(
@@ -1537,7 +1674,33 @@ class Agent:
                     # 为了实现“硬 stop”（尽快中断正在进行的网络流读取），这里把 backend stream
                     # 放到独立 task 中消费，并用 queue + 短超时轮询 cancel_checker。
                     # 这样即使 SSE 长时间没有输出，也能在用户点击 Stop 后尽快退出 run。
-                    agen = self._backend.stream_chat(model=self._executor_model, messages=messages, tools=tools)
+                    def _on_retry(info: Dict[str, Any]) -> None:
+                        """backend 重试决策可观测（通过 AgentEvent + hooks 输出）。"""
+
+                        try:
+                            _emit_event(
+                                AgentEvent(
+                                    type="llm_retry_scheduled",
+                                    ts=_now_rfc3339(),
+                                    run_id=run_id,
+                                    turn_id=turn_id,
+                                    payload=dict(info or {}),
+                                )
+                            )
+                        except Exception:
+                            # fail-open：观测不应影响主链路
+                            pass
+
+                    agen = self._backend.stream_chat_v2(
+                        ChatRequest(
+                            model=self._executor_model,
+                            messages=messages,
+                            tools=tools,
+                            run_id=run_id,
+                            turn_id=turn_id,
+                            extra={"on_retry": _on_retry},
+                        )
+                    )
                     q_backend: "asyncio.Queue[Any]" = asyncio.Queue()
 
                     async def _consume_backend() -> None:
@@ -1698,7 +1861,8 @@ class Agent:
                                             "error_kind": "terminated",
                                             "message": "terminated by user decision (ask_first)",
                                             "retryable": False,
-                                            "events_path": str(events_path),
+                                            "events_path": wal_locator,
+                                            "wal_locator": wal_locator,
                                         },
                                     )
                                 )
@@ -1721,7 +1885,8 @@ class Agent:
                                                 "error_kind": "context_length_exceeded",
                                                 "message": f"context recovery failed: {ce}",
                                                 "retryable": False,
-                                                "events_path": str(events_path),
+                                                "events_path": wal_locator,
+                                                "wal_locator": wal_locator,
                                             },
                                         )
                                     )
@@ -1735,7 +1900,8 @@ class Agent:
                                         payload={
                                             "final_output": "",
                                             "artifacts": list(compaction_artifacts),
-                                            "events_path": str(events_path),
+                                            "events_path": wal_locator,
+                                            "wal_locator": wal_locator,
                                             "metadata": {
                                                 "notices": list(terminal_notices),
                                                 "handoff": {"artifact_path": handoff_artifact_path},
@@ -1786,7 +1952,8 @@ class Agent:
                                         "error_kind": "context_length_exceeded",
                                         "message": f"context recovery failed: {ce}",
                                         "retryable": False,
-                                        "events_path": str(events_path),
+                                        "events_path": wal_locator,
+                                        "wal_locator": wal_locator,
                                     },
                                 )
                             )
@@ -2232,7 +2399,8 @@ class Agent:
                                                 "error_kind": "config_error",
                                                 "message": f"ApprovalProvider is required for tool '{call.name}' but none is configured.",
                                                 "retryable": False,
-                                                "events_path": str(events_path),
+                                                "events_path": wal_locator,
+                                                "wal_locator": wal_locator,
                                                 "details": {
                                                     "tool": call.name,
                                                     "approval_key": approval_key,
@@ -2254,7 +2422,8 @@ class Agent:
                                                 "error_kind": "approval_denied",
                                                 "message": "Approval was denied repeatedly for the same action; aborting to prevent an infinite loop.",
                                                 "retryable": False,
-                                                "events_path": str(events_path),
+                                                "events_path": wal_locator,
+                                                "wal_locator": wal_locator,
                                                 "details": {
                                                     "tool": call.name,
                                                     "approval_key": approval_key,
@@ -2298,15 +2467,17 @@ class Agent:
                         payload={
                             "final_output": assistant_text,
                             "artifacts": list(compaction_artifacts),
-                            "events_path": str(events_path),
+                            "events_path": wal_locator,
+                            "wal_locator": wal_locator,
                             "metadata": {"notices": list(terminal_notices)},
                         },
                     )
                 )
                 return
         except BaseException as e:
-            failed = _classify_run_exception(e)
-            failed["events_path"] = str(events_path)
+            failed = _classify_run_exception(e).to_payload()
+            failed["events_path"] = wal_locator
+            failed["wal_locator"] = wal_locator
             _emit_event(
                 AgentEvent(
                     type="run_failed",

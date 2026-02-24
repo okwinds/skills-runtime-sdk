@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, Optional, Sequence, TYPE_CHECKING, Union
 from agent_sdk.core.contracts import AgentEvent
 from agent_sdk.core.errors import UserError
 from agent_sdk.state.jsonl_wal import JsonlWal
+from agent_sdk.state.wal_emitter import WalEmitter
 from agent_sdk.tools.protocol import HumanIOProvider, ToolCall, ToolResult, ToolResultPayload, ToolSpec
 
 try:  # 避免循环依赖；Executor 仅在 builtin tools 场景使用
@@ -122,6 +123,7 @@ class ToolExecutionContext:
     - workspace_root：相对路径解析基准目录
     - run_id：用于 WAL 事件关联
     - wal：可选；为 None 时不落盘
+    - event_emitter：可选；统一事件管道（WAL append + hooks + stream）。若提供，则 emit_event 不直接调用 wal.append
     - executor：可选；shell_exec 需要
     - human_io：可选；ask_human 需要
     - default_timeout_ms：tool 未提供 timeout_ms 时的默认值（shell_exec）
@@ -139,6 +141,7 @@ class ToolExecutionContext:
     workspace_root: Path
     run_id: str
     wal: Optional[JsonlWal] = None
+    event_emitter: Optional[WalEmitter] = None
     executor: Optional[Executor] = None
     human_io: Optional[HumanIOProvider] = None
     env: Optional[Dict[str, str]] = None
@@ -164,6 +167,15 @@ class ToolExecutionContext:
         - event_sink：用于实时推送（例如 Web SSE）；不建议在 sink 中做重 IO
         """
 
+        if self.event_emitter is not None:
+            # 统一事件基座：由 emitter 决定 WAL/hook/stream 的顺序。
+            # 注意：这里使用 append-only，避免 tool 执行期的旁路事件插入 approvals 序列。
+            self.event_emitter.append(event)
+            if self.event_sink is not None:
+                self.event_sink(event)
+            return
+
+        # 兼容：旧路径（不经过 hooks）。
         if self.wal is not None:
             self.wal.append(event)
         if self.event_sink is not None:

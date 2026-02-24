@@ -76,7 +76,12 @@ Notes:
 - `base_url`
 - `api_key_env`
 - `timeout_sec`
-- `max_retries`
+- `max_retries`: legacy retry count (compat). Used as fallback when `llm.retry.max_retries` is not set.
+- `retry`: retry/backoff policy (production-grade control)
+  - `retry.max_retries`: optional override (takes precedence over `llm.max_retries`)
+  - `retry.base_delay_sec`: exponential backoff base (seconds; default `0.5`)
+  - `retry.cap_delay_sec`: backoff cap (seconds; default `8.0`)
+  - `retry.jitter_ratio`: jitter ratio (`0..1`; default `0.1`)
 
 ### `models`
 
@@ -86,6 +91,7 @@ Notes:
 ### `skills`
 
 - `mode`: `explicit` (current default)
+- `env_var_missing_policy`: missing env var policy for skill dependencies: `ask_human|fail_fast|skip_skill` (default `ask_human`)
 - `scan.*`: scan policy
 - `injection.max_bytes`: injection budget
 - `actions.enabled`: skills actions toggle

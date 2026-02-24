@@ -192,6 +192,18 @@ class FakePgClient:
         return self._cursors.pop(0)
 
 
+class FakePgClientClosable(FakePgClient):
+    """带 close() 的 pgsql fake client（用于验证 factory/pool 的释放语义）。"""
+
+    def __init__(self, cursors: List[FakePgCursor], *, closed: List[str], tag: str) -> None:
+        super().__init__(cursors)
+        self._closed = closed
+        self._tag = tag
+
+    def close(self) -> None:
+        self._closed.append(self._tag)
+
+
 def _redis_skills_config(source_options: dict[str, Any], *, include_fs: bool = False, include_mem: bool = False) -> dict[str, Any]:
     """构造 redis 场景 skills 配置。"""
 
@@ -612,6 +624,56 @@ def test_pgsql_source_scan_and_inject_success_dict_rows(tmp_path: Path) -> None:
     assert pg_client.cursor_calls == 2
     [(body_sql, _body_params)] = body_cursor.executed
     assert re.search(r"\bbody\b", body_sql, flags=re.IGNORECASE) is not None
+
+
+def test_pgsql_source_factory_is_used_and_released_for_body_load(tmp_path: Path) -> None:
+    """PgSQL: 注入 factory 时，scan/body_loader 均应获取新 client 并在使用后释放。"""
+
+    meta_cursor = FakePgCursor(
+        rows=[
+            {
+                "id": 1,
+                "account": "alice",
+                "domain": "engineering",
+                "skill_name": "python_testing",
+                "description": "pytest patterns",
+                "body_size": 11,
+                "body_etag": "etag-1",
+                "created_at": TS,
+                "updated_at": TS,
+                "required_env_vars": [],
+                "metadata": {},
+                "scope": "repo",
+            }
+        ]
+    )
+    body_cursor = FakePgCursor(one={"body": "# Body\n"})
+
+    closed: List[str] = []
+    calls = {"n": 0}
+
+    def _factory() -> FakePgClientClosable:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return FakePgClientClosable([meta_cursor], closed=closed, tag="scan")
+        return FakePgClientClosable([body_cursor], closed=closed, tag="body")
+
+    mgr = _mk_manager(
+        tmp_path,
+        skills=_pgsql_skills_config({"schema": "public", "table": "skills"}),
+        source_clients={"src-pg": _factory},
+    )
+
+    report = mgr.scan()
+    assert report.errors == []
+    assert calls["n"] == 1
+    assert closed == ["scan"]
+
+    skill, mention = mgr.resolve_mentions("$[alice:engineering].python_testing")[0]
+    rendered = mgr.render_injected_skill(skill, source="mention", mention_text=mention.mention_text)
+    assert "Body" in rendered
+    assert calls["n"] == 2
+    assert closed == ["scan", "body"]
 
 
 def test_pgsql_source_scan_and_inject_success_tuple_rows(tmp_path: Path) -> None:

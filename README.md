@@ -114,23 +114,36 @@ skills-runtime-sdk skills --help
 ### Minimal Python
 
 ```python
+# BEGIN README_OFFLINE_MINIMAL
+import tempfile
 from pathlib import Path
 
 from agent_sdk import Agent
-from agent_sdk.bootstrap import resolve_effective_run_config
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
+from agent_sdk.llm.chat_sse import ChatStreamEvent
+from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
 
-cfg = resolve_effective_run_config(
-    workspace_root=Path("."),
-    config_paths=[],
+backend = FakeChatBackend(
+    calls=[
+        FakeChatCall(
+            events=[
+                ChatStreamEvent(type="text_delta", text="hi from offline backend"),
+                ChatStreamEvent(type="completed", finish_reason="stop"),
+            ]
+        )
+    ]
 )
 
-backend = OpenAIChatCompletionsBackend(cfg=cfg.llm, models=cfg.models)
-agent = Agent(workspace_root=Path("."), config=cfg, backend=backend)
+with tempfile.TemporaryDirectory() as d:
+    workspace_root = Path(d).resolve()
+    agent = Agent(workspace_root=workspace_root, backend=backend)
 
-result = agent.run("Say hi in one sentence.")
-print(result.final_text)
+    result = agent.run("Say hi in one sentence.")
+    print("final_output=", result.final_output)
+    print("events_path=", result.events_path)
+# END README_OFFLINE_MINIMAL
 ```
+
+For a real OpenAI-compatible backend (base_url/models/config overlays), see `help/03-sdk-python-api.md` and `help/examples/run_agent_minimal.py`.
 
 ## Help (recommended reading order)
 

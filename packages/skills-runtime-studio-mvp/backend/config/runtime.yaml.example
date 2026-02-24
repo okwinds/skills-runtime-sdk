@@ -22,6 +22,10 @@ models:
   planner: "YOUR_PLANNER_MODEL"
   executor: "YOUR_EXECUTOR_MODEL"
 
+skills:
+  # Studio backend 默认不注入 HumanIOProvider；当 skill 依赖 env var 缺失时，建议 fail_fast 以获得确定性失败与可观测 error_kind。
+  env_var_missing_policy: "fail_fast" # ask_human|fail_fast|skip_skill
+
 #
 # Safety / Sandbox（最佳实践：不打扰正常操作，但能拦截明显危险操作）
 #

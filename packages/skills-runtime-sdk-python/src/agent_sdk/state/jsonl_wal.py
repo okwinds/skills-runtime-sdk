@@ -43,6 +43,19 @@ class JsonlWal:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._next_index = self._scan_next_index()
 
+    def locator(self) -> str:
+        """
+        返回 WAL 定位符（locator）。
+
+        约束：
+        - 默认返回 WAL 文件的绝对路径字符串（不强制使用 file://）。
+        """
+
+        try:
+            return str(Path(self.path).resolve())
+        except Exception:
+            return str(self.path)
+
     def _scan_next_index(self) -> int:
         """扫描现有文件以获得下一个可用 line index（0-based）。"""
 

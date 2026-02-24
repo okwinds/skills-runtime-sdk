@@ -46,6 +46,39 @@ safety:
 - denylist：高危动作前置拒绝
 - `tool_allowlist/tool_denylist`：用于自定义工具（非 builtin tools）的无人值守治理：默认 `ask`，只有显式 allowlist 才可免审批执行；denylist 强制拒绝。
 
+### 6.3.1 程序化规则审批（云端无人值守推荐）
+
+当你没有“人类点击确认”的交互入口时，推荐注入规则审批 Provider（默认 fail-closed：未命中规则一律拒绝）：
+
+```python
+from pathlib import Path
+from agent_sdk import Agent
+from agent_sdk.safety import ApprovalRule, RuleBasedApprovalProvider
+from agent_sdk.safety.approvals import ApprovalDecision
+
+provider = RuleBasedApprovalProvider(
+    rules=[
+        # 示例：仅放行 `shell_exec` 且 argv[0] 为 pytest 的情况（其它一律拒绝）
+        ApprovalRule(
+            tool="shell_exec",
+            condition=lambda req: (req.args.get("argv") or [None])[0] == "pytest",
+            decision=ApprovalDecision.APPROVED,
+        )
+    ],
+    default=ApprovalDecision.DENIED,
+)
+
+agent = Agent(
+    workspace_root=Path(".").resolve(),
+    backend=...,  # 你的 LLM backend
+    approval_provider=provider,
+)
+```
+
+说明：
+- ApprovalRequest 由 SDK 生成并已做最小脱敏（不包含 env values、file_write content 明文等）。
+- `condition` 抛异常时会被视为“不命中”（fail-closed）。
+
 ## 6.4 Sandbox 策略（围栏）
 
 ### SDK 默认

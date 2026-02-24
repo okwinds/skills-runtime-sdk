@@ -16,6 +16,7 @@ import httpx
 
 from agent_sdk.config.loader import AgentSdkLlmConfig
 from agent_sdk.llm.chat_sse import ChatCompletionsSseParser, ChatStreamEvent
+from agent_sdk.llm.protocol import ChatRequest
 from agent_sdk.tools.protocol import ToolSpec, tool_spec_to_openai_tool
 
 
@@ -58,26 +59,26 @@ class OpenAIChatCompletionsBackend:
             raise ValueError(f"缺少 API key 环境变量：{self._cfg.api_key_env}")
         return {"Authorization": f"Bearer {key}"}
 
-    async def stream_chat(
-        self,
-        *,
-        model: str,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[ToolSpec]] = None,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[ChatStreamEvent]:
+    async def stream_chat_v2(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
         """
-        发起 streaming chat.completions 请求，并解析 SSE 事件流。
+        v2：发起 streaming chat.completions 请求，并解析 SSE 事件流。
 
-        参数：
-        - model/messages/tools：OpenAI-compatible 形状（tools 会被转换为 tools[] JSON schema）
+        说明：
+        - 通过 ChatRequest 承载请求参数；
+        - provider 特有扩展通过 request.extra 传递（可被忽略，但必须可预测）。
         """
 
-        payload: Dict[str, Any] = {"model": model, "messages": messages, "stream": True}
-        if tools:
-            payload["tools"] = [tool_spec_to_openai_tool(s) for s in tools]
-        if temperature is not None:
-            payload["temperature"] = temperature
+        payload: Dict[str, Any] = {"model": request.model, "messages": request.messages, "stream": True}
+        if request.tools:
+            payload["tools"] = [tool_spec_to_openai_tool(s) for s in request.tools]
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+        if request.max_tokens is not None:
+            payload["max_tokens"] = int(request.max_tokens)
+        if request.top_p is not None:
+            payload["top_p"] = float(request.top_p)
+        if request.response_format is not None:
+            payload["response_format"] = dict(request.response_format)
 
         def _retryable_status(code: int) -> bool:
             """判断 HTTP status 是否适合重试（保守）。"""
@@ -107,7 +108,23 @@ class OpenAIChatCompletionsBackend:
             except Exception:
                 return None
 
-        async def _sleep_backoff_ms(*, attempt: int, retry_after_ms: Optional[int]) -> None:
+        retry_cfg = getattr(self._cfg, "retry", None)
+        base_delay_sec = float(getattr(retry_cfg, "base_delay_sec", 0.5) or 0.5)
+        cap_delay_sec = float(getattr(retry_cfg, "cap_delay_sec", 8.0) or 8.0)
+        jitter_ratio = float(getattr(retry_cfg, "jitter_ratio", 0.1) or 0.1)
+        if jitter_ratio < 0:
+            jitter_ratio = 0.0
+        if jitter_ratio > 1:
+            jitter_ratio = 1.0
+
+        max_retries_cfg = getattr(retry_cfg, "max_retries", None) if retry_cfg is not None else None
+        max_retries = int(max_retries_cfg) if max_retries_cfg is not None else int(getattr(self._cfg, "max_retries", 0) or 0)
+
+        on_retry = request.extra.get("on_retry")
+
+        async def _sleep_backoff_ms(
+            *, attempt: int, retry_after_ms: Optional[int], notify_delay: Optional[callable] = None
+        ) -> float:
             """
             等待退避时间（指数退避 + 抖动）。
 
@@ -120,12 +137,19 @@ class OpenAIChatCompletionsBackend:
             if retry_after_ms is not None:
                 delay = retry_after_ms / 1000.0
             else:
-                base = min(8.0, 0.5 * (2 ** attempt))  # 0.5s, 1s, 2s, 4s, 8s...
-                jitter = random.uniform(0.0, base * 0.1)
+                base = base_delay_sec * (2 ** attempt)
+                base = min(cap_delay_sec, base)
+                jitter = random.uniform(0.0, base * jitter_ratio)
                 delay = base + jitter
+                delay = min(cap_delay_sec, delay)
+            if notify_delay is not None:
+                try:
+                    notify_delay(float(delay))
+                except Exception:
+                    pass
             await asyncio.sleep(delay)
+            return float(delay)
 
-        max_retries = int(getattr(self._cfg, "max_retries", 0) or 0)
         timeout = httpx.Timeout(self._cfg.timeout_sec)
         headers = {"Content-Type": "application/json"}
         headers.update(self._auth_header())
@@ -162,13 +186,64 @@ class OpenAIChatCompletionsBackend:
                 if emitted_any or attempt >= max_retries or not _retryable_status(status):
                     raise
                 retry_after_ms = _retry_after_ms_from_headers(exc.response.headers)
-                await _sleep_backoff_ms(attempt=attempt, retry_after_ms=retry_after_ms)
+                delay_sec = await _sleep_backoff_ms(
+                    attempt=attempt,
+                    retry_after_ms=retry_after_ms,
+                    notify_delay=(
+                        (lambda d: on_retry(
+                            {
+                                "provider": "openai",
+                                "error_kind": "http_status",
+                                "status_code": int(status),
+                                "attempt": int(attempt),
+                                "max_retries": int(max_retries),
+                                "retry_after_ms": int(retry_after_ms) if retry_after_ms is not None else None,
+                                "delay_ms": int(d * 1000),
+                            }
+                        ))
+                        if callable(on_retry)
+                        else None
+                    ),
+                )
                 attempt += 1
                 continue
             except (httpx.TimeoutException, httpx.RequestError):
                 # 网络错误：仅在未输出任何事件时允许重试，避免重复输出
                 if emitted_any or attempt >= max_retries:
                     raise
-                await _sleep_backoff_ms(attempt=attempt, retry_after_ms=None)
+                delay_sec = await _sleep_backoff_ms(
+                    attempt=attempt,
+                    retry_after_ms=None,
+                    notify_delay=(
+                        (lambda d: on_retry(
+                            {
+                                "provider": "openai",
+                                "error_kind": "request_error",
+                                "attempt": int(attempt),
+                                "max_retries": int(max_retries),
+                                "retry_after_ms": None,
+                                "delay_ms": int(d * 1000),
+                            }
+                        ))
+                        if callable(on_retry)
+                        else None
+                    ),
+                )
                 attempt += 1
                 continue
+
+    async def stream_chat(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[ToolSpec]] = None,
+        temperature: Optional[float] = None,
+    ) -> AsyncIterator[ChatStreamEvent]:
+        """
+        v1（legacy）：保持兼容；内部转到 v2 的 ChatRequest。
+        """
+
+        req = ChatRequest(model=model, messages=messages, tools=tools, temperature=temperature)
+        async for ev in self.stream_chat_v2(req):
+            yield ev

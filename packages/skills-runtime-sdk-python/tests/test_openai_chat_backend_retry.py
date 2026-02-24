@@ -9,6 +9,7 @@ import pytest
 
 from agent_sdk.config.loader import AgentSdkLlmConfig
 from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
+from agent_sdk.llm.protocol import ChatRequest
 
 
 class _FakeStreamResponse:
@@ -206,3 +207,137 @@ def test_openai_chat_does_not_retry_after_emitting_any_event(monkeypatch) -> Non
         asyncio.run(_go())
 
     assert scenario.client_creations == 1, "should not retry after emitted_any=True"
+
+
+def test_openai_chat_retries_on_500_then_success(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import agent_sdk.llm.openai_chat as mod
+
+    monkeypatch.setattr(mod.random, "uniform", lambda a, b: 0.0)
+
+    ok_lines = [
+        "data: " + json.dumps({"choices": [{"delta": {"content": "hi"}}]}),
+        "data: DONE",
+    ]
+    scenario = _Scenario(
+        [
+            _FakeStreamResponse(status_code=500, lines=[]),
+            _FakeStreamResponse(status_code=200, lines=ok_lines),
+        ]
+    )
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
+
+    cfg = AgentSdkLlmConfig(base_url="http://example.test/v1", api_key_env="OPENAI_API_KEY", max_retries=2, timeout_sec=1)
+    backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
+    types = _run_stream(backend)
+
+    assert scenario.client_creations == 2, "expected one retry (two attempts)"
+    assert "text_delta" in types
+    assert "completed" in types
+
+
+def test_openai_chat_does_not_retry_on_400(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import agent_sdk.llm.openai_chat as mod
+
+    scenario = _Scenario([_FakeStreamResponse(status_code=400, lines=[])])
+    monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
+
+    cfg = AgentSdkLlmConfig(base_url="http://example.test/v1", api_key_env="OPENAI_API_KEY", max_retries=3, timeout_sec=1)
+    backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
+
+    async def _go() -> None:
+        async for _ in backend.stream_chat(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None):
+            pass
+
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(_go())
+
+    assert scenario.client_creations == 1, "should not retry on non-retryable 4xx"
+
+
+def test_openai_chat_enforces_retry_max_retries(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import agent_sdk.llm.openai_chat as mod
+
+    sleeps: List[float] = []
+
+    async def _fake_sleep(delay: float) -> None:
+        sleeps.append(float(delay))
+
+    monkeypatch.setattr(mod.random, "uniform", lambda a, b: 0.0)
+    monkeypatch.setattr(mod.asyncio, "sleep", _fake_sleep)
+
+    # 500 持续失败：应在 max_retries=1 后停止（总 attempts=2）
+    scenario = _Scenario(
+        [
+            _FakeStreamResponse(status_code=500, lines=[]),
+            _FakeStreamResponse(status_code=500, lines=[]),
+            _FakeStreamResponse(status_code=500, lines=[]),  # 不应到达
+        ]
+    )
+    monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
+
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        max_retries=99,  # legacy 字段不应影响 retry.max_retries 显式覆盖
+        timeout_sec=1,
+        retry={"max_retries": 1, "base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.0},
+    )
+    backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
+
+    async def _go() -> None:
+        async for _ in backend.stream_chat(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None):
+            pass
+
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(_go())
+
+    assert scenario.client_creations == 2, "expected attempts=1+max_retries"
+    assert sleeps and abs(sleeps[0] - 0.5) < 1e-6
+
+
+def test_openai_chat_retry_is_observable_via_on_retry_callback(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import agent_sdk.llm.openai_chat as mod
+
+    observed: List[Dict[str, Any]] = []
+
+    def _on_retry(info: Dict[str, Any]) -> None:
+        observed.append(dict(info))
+
+    async def _fake_sleep(delay: float) -> None:
+        # 不阻塞单测
+        _ = delay
+
+    monkeypatch.setattr(mod.random, "uniform", lambda a, b: 0.0)
+    monkeypatch.setattr(mod.asyncio, "sleep", _fake_sleep)
+
+    ok_lines = [
+        "data: " + json.dumps({"choices": [{"delta": {"content": "hi"}}]}),
+        "data: DONE",
+    ]
+    scenario = _Scenario(
+        [
+            _FakeStreamResponse(status_code=500, lines=[]),
+            _FakeStreamResponse(status_code=200, lines=ok_lines),
+        ]
+    )
+    monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
+
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        timeout_sec=1,
+        retry={"max_retries": 1, "base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.0},
+    )
+    backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
+
+    async def _go() -> None:
+        req = ChatRequest(model="gpt-test", messages=[{"role": "user", "content": "hi"}], extra={"on_retry": _on_retry})
+        async for _ in backend.stream_chat_v2(req):
+            pass
+
+    asyncio.run(_go())
+
+    assert observed, "expected on_retry to be called at least once"
+    assert observed[0].get("provider") == "openai"
+    assert observed[0].get("error_kind") == "http_status"

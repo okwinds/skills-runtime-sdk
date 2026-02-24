@@ -19,8 +19,9 @@ Skills Runtime SDK（Python）。
 from __future__ import annotations
 
 from agent_sdk.core.agent import Agent, RunResult
+from agent_sdk.core.agent_builder import AgentBuilder
 from agent_sdk.core.coordinator import ChildResult, Coordinator
 
-__all__ = ["Agent", "ChildResult", "Coordinator", "RunResult", "__version__"]
+__all__ = ["Agent", "AgentBuilder", "ChildResult", "Coordinator", "RunResult", "__version__"]
 
 __version__ = "0.1.3"

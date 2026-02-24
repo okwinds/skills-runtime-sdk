@@ -76,7 +76,12 @@ SDK 运行时有效配置可来自四层（高到低）：
 - `base_url`
 - `api_key_env`
 - `timeout_sec`
-- `max_retries`
+- `max_retries`：legacy 重试次数（兼容；当 `llm.retry.max_retries` 未配置时作为回退）
+- `retry`：重试/退避策略（生产级可控）
+  - `retry.max_retries`：可选覆盖（优先于 `llm.max_retries`）
+  - `retry.base_delay_sec`：指数退避基线（秒；默认 `0.5`）
+  - `retry.cap_delay_sec`：退避上限（秒；默认 `8.0`）
+  - `retry.jitter_ratio`：抖动比例（`0..1`；默认 `0.1`）
 
 ### `models`
 
@@ -86,6 +91,7 @@ SDK 运行时有效配置可来自四层（高到低）：
 ### `skills`
 
 - `mode`：`explicit`（当前要求）
+- `env_var_missing_policy`：skill 依赖 env var 缺失策略：`ask_human|fail_fast|skip_skill`（默认 `ask_human`）
 - `scan.*`：扫描策略
 - `injection.max_bytes`：注入上限
 - `actions.enabled`：Skills actions 开关

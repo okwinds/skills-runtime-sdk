@@ -53,8 +53,9 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 ## 4) 你应该观察什么（证据链）
 
-1) `events_path`（WAL JSONL）：
-- 位置：`<workspace_root>/.skills_runtime_sdk/runs/<run_id>/events.jsonl`
+1) `events_path`（WAL locator；兼容字段）：
+- 默认 file WAL 时，它通常是路径：`<workspace_root>/.skills_runtime_sdk/runs/<run_id>/events.jsonl`
+- 若注入了非文件型 WAL（`WalBackend`），它也可能是 `wal://...` 形式的定位符；终态事件 payload 会同时提供 `wal_locator`（推荐字段）
 
 2) approvals 证据：
 - 事件：`approval_requested` / `approval_decided`

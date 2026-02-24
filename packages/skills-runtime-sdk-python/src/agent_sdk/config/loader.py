@@ -49,10 +49,27 @@ class AgentSdkLlmConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    class Retry(BaseModel):
+        """
+        LLM 重试/退避策略（生产级可控）。
+
+        说明：
+        - `max_retries` 为可选覆盖：未显式配置时回退到根字段 `llm.max_retries`（兼容旧配置）。
+        - base/cap/jitter 只影响“无 Retry-After 头”时的指数退避计算。
+        """
+
+        model_config = ConfigDict(extra="allow")
+
+        max_retries: Optional[int] = Field(default=None, ge=0)
+        base_delay_sec: float = Field(default=0.5, ge=0.0)
+        cap_delay_sec: float = Field(default=8.0, ge=0.0)
+        jitter_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+
     base_url: str
     api_key_env: str
     timeout_sec: int = Field(default=60, ge=1)
     max_retries: int = Field(default=3, ge=0)
+    retry: Retry = Field(default_factory=Retry)
 
 
 class AgentSdkModelsConfig(BaseModel):
@@ -246,6 +263,8 @@ class AgentSdkSkillsConfig(BaseModel):
     roots: List[str] = Field(default_factory=list)
     mode: str = Field(default="explicit")  # explicit|auto
     max_auto: int = Field(default=0, ge=0)
+    # skill 依赖的 env var 缺失时的处理策略（云端无人值守建议 fail_fast 或 skip_skill）。
+    env_var_missing_policy: str = Field(default="ask_human")  # fail_fast|ask_human|skip_skill
     versioning: Versioning = Field(default_factory=Versioning)
     strictness: Strictness = Field(default_factory=Strictness)
     spaces: List[Space] = Field(default_factory=list)

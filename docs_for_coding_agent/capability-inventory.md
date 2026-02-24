@@ -19,7 +19,7 @@
 
 ### CAP-SDK-002：Agent 基础闭环（run / run_stream）
 
-- 能力：run_stream 事件流；run 返回 final_output/events_path；WAL(JSONL) 落盘
+- 能力：run_stream 事件流；run 返回 final_output/events_path（locator；兼容字段）；默认 file WAL（JSONL）落盘，终态事件 payload 同时提供 `wal_locator`（推荐字段）
 - 入口（契约/使用）：`help/03-sdk-python-api.cn.md`
 - 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/core/agent.py`
 
@@ -73,7 +73,7 @@
 
 ### CAP-SDK-011：Observability（事件/错误分类）
 
-- 能力：error_kind 分类；events_path 可定位；sandbox/approvals 可观测字段
+- 能力：error_kind 分类；events_path（locator）与 wal_locator 可定位；sandbox/approvals 可观测字段
 - 入口（使用）：`help/09-troubleshooting.cn.md`
 - 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/observability/*`
 

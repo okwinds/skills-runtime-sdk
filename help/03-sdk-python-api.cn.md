@@ -11,6 +11,7 @@
 ```python
 from pathlib import Path
 from agent_sdk import Agent
+from agent_sdk import AgentBuilder
 from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
 from agent_sdk.config.loader import AgentSdkLlmConfig
 ```
@@ -29,7 +30,10 @@ llm_cfg = AgentSdkLlmConfig(
     base_url="https://api.openai.com/v1",
     api_key_env="OPENAI_API_KEY",
     timeout_sec=60,
+    # legacy：不配置 llm.retry.max_retries 时作为回退
     max_retries=3,
+    # 生产级：参数化退避（base/cap/jitter），并可用 retry.max_retries 覆盖次数
+    retry={"base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.1},
 )
 
 backend = OpenAIChatCompletionsBackend(llm_cfg)
@@ -38,6 +42,24 @@ agent = Agent(
     workspace_root=workspace_root,
     backend=backend,
     config_paths=[workspace_root / "config" / "runtime.yaml"],
+)
+```
+
+## 3.2.1 推荐：使用 AgentBuilder（减少组装错误）
+
+当你需要注入 `wal_backend`、`approval_provider`、`event_hooks` 等生产级组件时，推荐使用 `AgentBuilder`：
+
+```python
+from pathlib import Path
+from agent_sdk import AgentBuilder
+from agent_sdk.state.wal_protocol import InMemoryWal
+
+agent = (
+    AgentBuilder()
+    .workspace_root(Path(".").resolve())
+    .backend(backend)
+    .wal_backend(InMemoryWal())
+    .build()
 )
 ```
 
@@ -53,7 +75,10 @@ print(result.events_path)
 返回：
 - `status`: `completed|failed|cancelled`
 - `final_output`: 最终输出文本
-- `events_path`: 事件日志路径（`events.jsonl`）
+- `events_path`: 事件日志定位符（locator；可能是文件路径，也可能是 `wal://...`）
+
+说明：
+- 终态事件（`run_completed/run_failed/run_cancelled`）payload 同时包含 `events_path`（兼容字段）与 `wal_locator`（推荐字段）。
 
 ## 3.4 流式运行：`run_stream()`
 
@@ -71,6 +96,24 @@ for event in agent.run_stream("请给出测试计划"):
 - `tool_call_started`
 - `tool_call_finished`
 - `run_completed` / `run_failed`
+
+## 3.4.1 事件 hooks（可观测性）
+
+你可以注册一个或多个 hooks，接收每一条 `AgentEvent`（顺序与 stream 输出一致）：
+
+```python
+from agent_sdk.core.contracts import AgentEvent
+
+seen = []
+def hook(ev: AgentEvent) -> None:
+    seen.append(ev.type)
+
+agent = Agent(
+    workspace_root=Path(".").resolve(),
+    backend=backend,
+    event_hooks=[hook],
+)
+```
 
 ## 3.5 异步流式：`run_stream_async()`
 
@@ -135,8 +178,10 @@ agent.register_tool(spec, handler, override=False)
 from agent_sdk.safety.approvals import ApprovalProvider, ApprovalDecision, ApprovalRequest
 
 class AlwaysApprove(ApprovalProvider):
-    async def decide(self, req: ApprovalRequest) -> ApprovalDecision:
-        return ApprovalDecision(decision="approved")
+    async def request_approval(self, *, request: ApprovalRequest, timeout_ms=None) -> ApprovalDecision:  # type: ignore[override]
+        _ = request
+        _ = timeout_ms
+        return ApprovalDecision.APPROVED
 
 agent = Agent(
     workspace_root=Path(".").resolve(),
@@ -144,6 +189,14 @@ agent = Agent(
     config_paths=[Path("config/runtime.yaml")],
     approval_provider=AlwaysApprove(),
 )
+```
+
+无人值守推荐：规则审批（默认 fail-closed，未命中规则一律拒绝）：
+
+```python
+from agent_sdk.safety import ApprovalRule, RuleBasedApprovalProvider
+
+provider = RuleBasedApprovalProvider(rules=[ApprovalRule(tool="shell_exec", decision=ApprovalDecision.DENIED)])
 ```
 
 ## 3.8 使用 bootstrap 解析有效配置与来源
@@ -168,7 +221,7 @@ print(resolved.sources)  # 字段来源追踪
 from pathlib import Path
 from agent_sdk.observability.run_metrics import compute_run_metrics_summary
 
-events_path = Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl")
+events_path = Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl")  # 仅适用于文件型 WAL
 summary = compute_run_metrics_summary(events_path)
 print(summary)
 ```
