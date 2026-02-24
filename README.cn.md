@@ -141,7 +141,7 @@ with tempfile.TemporaryDirectory() as d:
 
     result = agent.run("用一句话打个招呼。")
     print("final_output=", result.final_output)
-    print("events_path=", result.events_path)
+    print("wal_locator=", result.wal_locator)
 # END README_OFFLINE_MINIMAL
 ```
 

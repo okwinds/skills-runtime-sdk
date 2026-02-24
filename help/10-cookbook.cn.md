@@ -29,7 +29,7 @@
    export OPENAI_API_KEY='...'
    ```
 
-3. 先跑 skills 预检与扫描（验证 roots + mention + overlay）：
+3. 先跑 skills 预检与扫描（验证 sources + mention + overlay）：
 
    ```bash
    PYTHONPATH=packages/skills-runtime-sdk-python/src \
@@ -72,7 +72,7 @@
 
 最小交互：
 1. `POST /sessions`
-2. `PUT /skills/roots`
+2. `PUT /skills/sources`
 3. `POST /runs`
 4. SSE 订阅 events
 5. 如有审批，调 `/approvals/{approval_key}` 提交决策
@@ -91,7 +91,7 @@
 - sandbox adapter 缺失
 - overlay 路径失效
 - approval 超时
-- roots 错配
+- sources 错配
 
 要求：
 - 记录恢复时间

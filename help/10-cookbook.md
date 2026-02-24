@@ -31,7 +31,7 @@ Checklist:
    export OPENAI_API_KEY='...'
    ```
 
-3. Run Skills CLI preflight + scan (validate roots + mentions + overlay correctness):
+3. Run Skills CLI preflight + scan (validate sources + mentions + overlay correctness):
 
    ```bash
    PYTHONPATH=packages/skills-runtime-sdk-python/src \
@@ -77,7 +77,7 @@ Goal: a product frontend can start runs and handle approvals without understandi
 Minimal flow:
 
 1. `POST /sessions`
-2. `PUT /skills/roots`
+2. `PUT /skills/sources`
 3. `POST /runs`
 4. Subscribe to SSE events
 5. If approvals appear, call `/approvals/{approval_key}` to submit decisions
@@ -98,7 +98,7 @@ Drill scenarios:
 - missing sandbox adapter
 - invalid overlay path
 - approval timeout
-- roots misconfiguration
+- sources misconfiguration
 
 Requirements:
 

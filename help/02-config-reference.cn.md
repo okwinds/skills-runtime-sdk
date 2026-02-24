@@ -11,7 +11,7 @@
 SDK 运行时有效配置可来自四层（高到低）：
 
 1. `session_settings`（产品层动态注入）
-2. 环境变量（`SKILLS_RUNTIME_SDK_*`，兼容 `AGENT_SDK_*`）
+2. 环境变量（`SKILLS_RUNTIME_SDK_*`）
 3. overlay YAML（`config/runtime.yaml` + `--config`）
 4. embedded default（SDK 内置默认配置：`agent_sdk/assets/default.yaml`）
 
@@ -25,7 +25,6 @@ SDK 运行时有效配置可来自四层（高到低）：
 - `run.max_wall_time_sec=1800`
 - `safety.mode=ask`
 - `sandbox.default_policy=none`（SDK 缺省）
-- `skills.mode=explicit`
 - `skills.scan.refresh_policy=always`
 - `prompt.template=default`
 
@@ -38,7 +37,7 @@ SDK 运行时有效配置可来自四层（高到低）：
 - `human_timeout_ms`：人类输入超时（可空）
 - `resume_strategy`：`summary|replay`（默认 `summary`；`replay` 为逐事件回放恢复）
 - `context_recovery`：上下文恢复策略（当 LLM 返回 `context_length_exceeded` 时触发）
-  - `context_recovery.mode`：`compact_first|ask_first|fail_fast`（默认 `fail_fast`，兼容旧行为）
+  - `context_recovery.mode`：`compact_first|ask_first|fail_fast`（默认 `fail_fast`）
   - `context_recovery.max_compactions_per_run`：单个 run 最大压缩次数（防无限循环）
   - `context_recovery.ask_first_fallback_mode`：`ask_first` 但无 HumanIOProvider 时的降级策略（`compact_first|fail_fast`）
   - `context_recovery.compaction_history_max_chars`：compaction turn 输入“对话节选”字符上限
@@ -65,7 +64,7 @@ SDK 运行时有效配置可来自四层（高到低）：
   - `dev`：默认不强制 OS sandbox（可用性优先）
   - `balanced`：推荐默认（restricted + auto backend；Linux 默认隔离网络）
   - `prod`：更偏生产硬化（提供更严格的基线；建议结合 overlay 按业务调整）
-  - `custom`：不做宏展开，仅由 `default_policy/os.*` 决定行为（兼容旧配置）
+  - `custom`：不做宏展开，仅由 `default_policy/os.*` 决定行为
 - `default_policy`：`none|restricted`
 - `os.mode`：`auto|none|seatbelt|bubblewrap`
 - `os.seatbelt.profile`：macOS sandbox-exec profile
@@ -76,9 +75,8 @@ SDK 运行时有效配置可来自四层（高到低）：
 - `base_url`
 - `api_key_env`
 - `timeout_sec`
-- `max_retries`：legacy 重试次数（兼容；当 `llm.retry.max_retries` 未配置时作为回退）
 - `retry`：重试/退避策略（生产级可控）
-  - `retry.max_retries`：可选覆盖（优先于 `llm.max_retries`）
+  - `retry.max_retries`
   - `retry.base_delay_sec`：指数退避基线（秒；默认 `0.5`）
   - `retry.cap_delay_sec`：退避上限（秒；默认 `8.0`）
   - `retry.jitter_ratio`：抖动比例（`0..1`；默认 `0.1`）
@@ -90,7 +88,8 @@ SDK 运行时有效配置可来自四层（高到低）：
 
 ### `skills`
 
-- `mode`：`explicit`（当前要求）
+- `spaces`：skill 空间（mention 命名空间）
+- `sources`：skill 来源（filesystem/redis/pgsql/in-memory）
 - `env_var_missing_policy`：skill 依赖 env var 缺失策略：`ask_human|fail_fast|skip_skill`（默认 `ask_human`）
 - `scan.*`：扫描策略
 - `injection.max_bytes`：注入上限
@@ -167,15 +166,12 @@ run:
 - `SKILLS_RUNTIME_SDK_LLM_BASE_URL`
 - `SKILLS_RUNTIME_SDK_LLM_API_KEY_ENV`
 
-兼容旧前缀：`AGENT_SDK_*`。
-
 ## 2.7 overlay 合并规则（必须记住）
 
 - 采用“深度合并 + 后者覆盖前者”
 - 路径发现顺序固定：
   1) `<workspace_root>/config/runtime.yaml`
-  2) 若 `runtime.yaml` 不存在且 `<workspace_root>/config/llm.yaml` 存在，则作为 legacy fallback 自动加入
-  3) `SKILLS_RUNTIME_SDK_CONFIG_PATHS`
+  2) `SKILLS_RUNTIME_SDK_CONFIG_PATHS`
 
 ## 2.8 配置排障命令
 

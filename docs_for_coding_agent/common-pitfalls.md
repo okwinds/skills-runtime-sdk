@@ -31,10 +31,11 @@ rg --no-ignore -n \"TODO\" docs/specs
 - `help/06-tools-and-safety.cn.md`
 - `help/09-troubleshooting.cn.md`
 
-## 4) skills.roots / skills.mode=auto 为什么会报错？
+## 4) skills 配置为什么会 fail-fast？
 
-本 SDK 的 Skills V2 是 explicit-only（框架级严格）：
-- legacy `skills.roots` / `skills.mode=auto` 明确不支持（避免“隐式发现”与不可回归）。
+本 SDK 的 skills 配置是 **strict schema**：
+- 只认显式的 `skills.spaces` / `skills.sources` 等字段；
+- 未知字段会直接报 `config_error`（避免“隐式发现/静默降级”带来的不可回归）。
 
 入口：
 - `help/05-skills-guide.cn.md`

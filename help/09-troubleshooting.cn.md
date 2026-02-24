@@ -57,13 +57,12 @@ echo "$SKILLS_RUNTIME_SDK_CONFIG_PATHS"
 
 ```bash
 echo "$SKILLS_RUNTIME_SDK_ENV_FILE"
-echo "$AGENT_SDK_ENV_FILE"
 ```
 
 修复：
 
 ```bash
-unset SKILLS_RUNTIME_SDK_ENV_FILE AGENT_SDK_ENV_FILE
+unset SKILLS_RUNTIME_SDK_ENV_FILE
 ```
 
 ---
@@ -122,25 +121,25 @@ bash scripts/integration/os_sandbox_bubblewrap_probe_docker.sh
 - 文本里写了 mention 但未注入
 
 定位：
-- 检查语法是否是合法 V2：`$[account:domain].skill_name`
-- 检查 session roots 与 skills scan 输出
+- 检查语法是否是合法 mention：`$[account:domain].skill_name`
+- 检查 session filesystem_sources 与 skills scan 输出
 
 修复：
 - 改为合法 mention
-- 修复 roots，重新 scan
+- 修复 sources，重新 scan
 
 ---
 
-### G) `target_root must be one of session roots`
+### G) `target_source must be one of session filesystem_sources`
 
 现象：
 - Studio 创建 skill 接口报 400
 
 定位：
-- 查看 session 当前 roots
+- 查看 session 当前 filesystem_sources
 
 修复：
-- 先 `PUT /skills/roots` 配置 roots，再创建 skill
+- 先 `PUT /skills/sources` 配置 sources，再创建 skill
 
 ## 9.3 排障辅助命令
 

@@ -134,7 +134,7 @@ $[examples:workflow].repo_patcher
 
 1. Planner：拆解出 `subtasks.json`（含每个子任务的产物路径）
 2. Subagents：并行执行，每个子任务只写自己的产物（互不影响）
-3. Aggregator：汇总产物 + events_path 指针，生成 `report.md`
+3. Aggregator：汇总产物 + wal_locator 指针，生成 `report.md`
 
 对应示例：
 - `examples/workflows/04_map_reduce_parallel_subagents/`
@@ -142,7 +142,7 @@ $[examples:workflow].repo_patcher
 验收观察点：
 - `subtasks.json` 存在且结构稳定（可迁移到真实项目）
 - 子任务产物互不覆盖（例如 `outputs/*.md`）
-- `report.md` 包含每个子任务的 `events_path`
+- `report.md` 包含每个子任务的 `wal_locator`
 
 ---
 
@@ -212,7 +212,7 @@ $[examples:workflow].repo_patcher
 
 - Router：读取输入（例如 `task_input.json`）→ 写 `route.json`
 - Worker(A/B/...)：各自只写自己的产物（例如 `outputs/path_a.md`）
-- Reporter：汇总写 `report.md`（包含 `events_path` 指针）
+- Reporter：汇总写 `report.md`（包含 `wal_locator` 指针）
 
 对应示例：
 - `examples/workflows/09_branching_router_workflow/`
@@ -230,7 +230,7 @@ $[examples:workflow].repo_patcher
 1. Controller：写重试预算（例如 2 次）与降级策略（`retry_plan.json`），并用 `update_plan` 同步进度
 2. Attempt：用 `shell_exec` 做尝试（允许失败，但必须留证据：exit_code/ok）
 3. Degrade：预算耗尽后，生成 fallback 产物（例如 `outputs/fallback.md`）
-4. Reporter：写 `report.md`（汇总每次 attempt 的 exit_code 与 `events_path`）
+4. Reporter：写 `report.md`（汇总每次 attempt 的 exit_code 与 `wal_locator`）
 
 对应示例：
 - `examples/workflows/10_retry_degrade_workflow/`

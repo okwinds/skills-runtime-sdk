@@ -57,13 +57,12 @@ Diagnosis:
 
 ```bash
 echo "$SKILLS_RUNTIME_SDK_ENV_FILE"
-echo "$AGENT_SDK_ENV_FILE"
 ```
 
 Fix:
 
 ```bash
-unset SKILLS_RUNTIME_SDK_ENV_FILE AGENT_SDK_ENV_FILE
+unset SKILLS_RUNTIME_SDK_ENV_FILE
 ```
 
 ---
@@ -128,25 +127,25 @@ Symptom:
 - You wrote a mention, but the skill body was not injected
 
 Diagnosis:
-- Ensure V2 syntax: `$[account:domain].skill_name`
-- Ensure session roots are correct, and skill scan finds the skill
+- Ensure mention syntax: `$[account:domain].skill_name`
+- Ensure session filesystem sources are correct, and skill scan finds the skill
 
 Fix:
 - Use a valid mention
-- Fix roots and rescan
+- Fix sources and rescan
 
 ---
 
-### G) `target_root must be one of session roots`
+### G) `target_source must be one of session filesystem_sources`
 
 Symptom:
 - Studio “create skill” API returns 400
 
 Diagnosis:
-- Check current session roots
+- Check current session filesystem sources
 
 Fix:
-- `PUT /skills/roots` first, then create the skill
+- `PUT /skills/sources` first, then create the skill
 
 ## 9.3 Helpful commands
 

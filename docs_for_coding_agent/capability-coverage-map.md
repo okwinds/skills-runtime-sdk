@@ -18,7 +18,7 @@
 | CAP-SDK-005 Sandbox | `help/sandbox-best-practices.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/sandbox/*` | `examples/step_by_step/04_sandbox_evidence_and_verification/` + `scripts/integration/os_sandbox_restriction_demo.sh` | `packages/skills-runtime-sdk-python/tests/test_os_sandbox_*.py` |
 | CAP-SDK-006 Exec Sessions | `help/08-architecture-internals.cn.md`（runtime server） | `packages/skills-runtime-sdk-python/src/agent_sdk/runtime/server.py` | `examples/step_by_step/05_exec_sessions_across_processes/` | `packages/skills-runtime-sdk-python/tests/test_tools_exec_sessions_*` |
 | CAP-SDK-007 Collab | `help/06-tools-and-safety.cn.md`（collab tools） | `packages/skills-runtime-sdk-python/src/agent_sdk/tools/collab.py` | `examples/step_by_step/06_collab_across_processes/` | `packages/skills-runtime-sdk-python/tests/test_tools_collab_*` |
-| CAP-SDK-008 Skills V2 | `help/05-skills-guide.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/skills/*` | `examples/skills/01_skills_preflight_and_scan/` | `packages/skills-runtime-sdk-python/tests/test_skills_*.py` |
+| CAP-SDK-008 Skills | `help/05-skills-guide.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/skills/*` | `examples/skills/01_skills_preflight_and_scan/` | `packages/skills-runtime-sdk-python/tests/test_skills_*.py` |
 | CAP-SDK-009 Sources | `help/05-skills-guide.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/skills/sources/*` |（集成脚本）`scripts/integration/skills_sources_docker_no_down.sh` | `packages/skills-runtime-sdk-python/tests/test_skills_sources_*.py` |
 | CAP-SDK-010 State/WAL | `help/08-architecture-internals.cn.md` | `packages/skills-runtime-sdk-python/src/agent_sdk/state/*` | `examples/state/01_wal_replay_and_fork/` | `packages/skills-runtime-sdk-python/tests/test_agent_resume_replay.py` |
 | CAP-SDK-012 Studio | `help/07-studio-guide.md` | `packages/skills-runtime-studio-mvp/backend/src/studio_api/app.py` | `help/examples/studio-api.http` | `packages/skills-runtime-studio-mvp/**/tests/*` |
@@ -48,7 +48,7 @@
   - Skills-First：每个角色能力来自 `skills/*/SKILL.md`，并通过 mention 触发 `skill_injected`
   - Multi-agent：`Coordinator` 同步调度 Analyze/Patch/QA/Report
   - Tools + Safety：apply_patch/shell_exec/file_write 全部走 approvals 证据链
-  - 产物：workspace 下生成 `report.md`，包含各子 agent 的 `events_path`
+  - 产物：workspace 下生成 `report.md`，包含各子 agent 的 `wal_locator`
 - `examples/workflows/02_single_agent_form_interview/`：
   - Single-agent：request_user_input + update_plan + file_write + shell_exec
   - 证据：human_request/human_response + plan_updated + approval_*
@@ -97,7 +97,7 @@
   - 产物：`retrieval.json` + `report.md`
 - `examples/workflows/18_fastapi_sse_gateway_minimal/`：
   - FastAPI/SSE 网关最小骨架：create run → SSE stream → approvals decide → terminal event
-  - 产物：`report.md` + events_path（默认 file WAL 下为 `.skills_runtime_sdk/runs/<run_id>/events.jsonl`）
+  - 产物：`report.md` + wal_locator（默认 file WAL 下为 `.skills_runtime_sdk/runs/<run_id>/events.jsonl`）
 - `examples/workflows/19_view_image_offline/`：
   - 离线 view_image：生成 PNG → view_image → image_meta.json/report.md
   - 产物：`generated.png` + `image_meta.json` + `report.md`

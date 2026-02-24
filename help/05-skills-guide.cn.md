@@ -93,20 +93,20 @@ python3 -m agent_sdk.cli.main skills scan \
   "name": "article-writer",
   "description": "写作技能",
   "body_markdown": "# 使用说明\n...",
-  "target_root": "<repo_root>/packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/skills"
+  "target_source": "<workspace_root>/.skills_runtime_sdk/skills"
 }
 ```
 
 ## 5.8 常见错误
 
-- `target_root must be one of session roots`
+- `target_source must be one of session filesystem_sources`
 - `validation_error`（name 不合法）
 - skills 扫描到同名冲突
 
 ## 5.9 最佳实践
 
 1. 统一命名规范，避免重名
-2. 每个 skills root 做明确用途分层（system/business/experiment）
+2. 每个 filesystem source 做明确用途分层（system/business/experiment）
 3. preflight/scan 作为 CI 门禁的一部分
 4. mention 写法不要依赖“猜测式输入”
 

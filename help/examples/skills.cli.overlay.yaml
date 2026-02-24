@@ -1,7 +1,6 @@
 config_version: 1
 
 skills:
-  mode: "explicit"
   scan:
     refresh_policy: "always"
     max_depth: 6

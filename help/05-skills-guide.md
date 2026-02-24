@@ -98,20 +98,20 @@ Request body:
   "name": "article-writer",
   "description": "writing skill",
   "body_markdown": "# Usage\n...",
-  "target_root": "<repo_root>/packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/skills"
+  "target_source": "<workspace_root>/.skills_runtime_sdk/skills"
 }
 ```
 
 ## 5.8 Common errors
 
-- `target_root must be one of session roots`
+- `target_source must be one of session filesystem_sources`
 - `validation_error` (invalid name)
 - duplicate skill name conflicts during scan
 
 ## 5.9 Best practices
 
 1. Use consistent naming, avoid duplicates
-2. Layer roots by purpose (system/business/experiment)
+2. Layer filesystem sources by purpose (system/business/experiment)
 3. Use preflight/scan as part of CI gates
 4. Do not rely on “guessing” mention formats
 

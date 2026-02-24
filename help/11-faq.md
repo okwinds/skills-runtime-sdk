@@ -8,7 +8,7 @@
 
 ## Q1: Why doesn’t `$skill_name` work?
 
-A: The supported syntax is V2: `$[account:domain].skill_name`. `$skill_name` is a legacy-looking fragment and is ignored in free text.
+A: The supported syntax is `$[account:domain].skill_name`. `$skill_name` is not a mention token and is ignored in free text.
 
 ## Q2: Why don’t invalid mentions throw an error?
 

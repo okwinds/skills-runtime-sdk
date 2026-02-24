@@ -30,10 +30,8 @@ llm_cfg = AgentSdkLlmConfig(
     base_url="https://api.openai.com/v1",
     api_key_env="OPENAI_API_KEY",
     timeout_sec=60,
-    # legacy fallback when llm.retry.max_retries is not set
-    max_retries=3,
-    # production-grade backoff params (base/cap/jitter), and optional retry.max_retries override
-    retry={"base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.1},
+    # production-grade retry/backoff params (max_retries/base/cap/jitter)
+    retry={"max_retries": 3, "base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.1},
 )
 
 backend = OpenAIChatCompletionsBackend(llm_cfg)
@@ -69,22 +67,22 @@ agent = (
 result = agent.run("Summarize the core modules in this repo")
 print(result.status)
 print(result.final_output)
-print(result.events_path)
+print(result.wal_locator)
 ```
 
 Returns:
 - `status`: `completed|failed|cancelled`
 - `final_output`: final text output
-- `events_path`: WAL locator (may be a file path or a `wal://...` URI)
+- `wal_locator`: WAL locator (may be a file path or a `wal://...` URI)
 
 Notes:
-- Terminal events (`run_completed/run_failed/run_cancelled`) include both `events_path` (compat) and `wal_locator` (recommended).
+- Terminal events (`run_completed/run_failed/run_cancelled`) include `wal_locator`.
 
 ## 3.4 Streaming run: `run_stream()`
 
 ```python
 for event in agent.run_stream("Give me a test plan"):
-    print(event.type, event.ts)
+    print(event.type, event.timestamp)
     if event.type == "run_completed":
         print(event.payload.get("final_output"))
 ```
@@ -221,8 +219,8 @@ print(resolved.sources)  # source tracking per leaf field
 from pathlib import Path
 from agent_sdk.observability.run_metrics import compute_run_metrics_summary
 
-events_path = Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl")  # file WAL only
-summary = compute_run_metrics_summary(events_path)
+wal_locator = str(Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl"))  # file WAL only
+summary = compute_run_metrics_summary(wal_locator=wal_locator)
 print(summary)
 ```
 

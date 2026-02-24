@@ -19,7 +19,7 @@
 
 ### CAP-SDK-002：Agent 基础闭环（run / run_stream）
 
-- 能力：run_stream 事件流；run 返回 final_output/events_path（locator；兼容字段）；默认 file WAL（JSONL）落盘，终态事件 payload 同时提供 `wal_locator`（推荐字段）
+- 能力：run_stream 事件流；run 返回 final_output/wal_locator（locator）；默认 file WAL（JSONL）落盘，终态事件 payload 同时提供 `wal_locator`
 - 入口（契约/使用）：`help/03-sdk-python-api.cn.md`
 - 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/core/agent.py`
 
@@ -53,7 +53,7 @@
 - 入口（使用）：`docs_for_coding_agent/01-recipes.md`（配方 3/7）
 - 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/tools/collab.py`
 
-### CAP-SDK-008：Skills V2（preflight/scan/mentions）
+### CAP-SDK-008：Skills（preflight/scan/mentions）
 
 - 能力：explicit spaces/sources；严格 mention；preflight 零 IO；scan 报告 jsonable
 - 入口（契约/使用）：`help/05-skills-guide.cn.md`
@@ -73,7 +73,7 @@
 
 ### CAP-SDK-011：Observability（事件/错误分类）
 
-- 能力：error_kind 分类；events_path（locator）与 wal_locator 可定位；sandbox/approvals 可观测字段
+- 能力：error_kind 分类；wal_locator（locator）与 wal_locator 可定位；sandbox/approvals 可观测字段
 - 入口（使用）：`help/09-troubleshooting.cn.md`
 - 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/observability/*`
 

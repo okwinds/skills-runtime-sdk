@@ -15,9 +15,8 @@ from typing import Any, Dict, List
 import yaml
 
 from agent_sdk import Agent
-from agent_sdk import bootstrap
 from agent_sdk.config.defaults import load_default_config_dict
-from agent_sdk.config.loader import AgentSdkLlmConfig, load_config_dicts
+from agent_sdk.config.loader import load_config_dicts
 from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
 
 
@@ -35,16 +34,8 @@ def _load_merged_config(config_paths: List[Path]) -> Any:
 def _build_agent(*, workspace_root: Path, config_paths: List[Path]) -> Agent:
     """构建 Agent。"""
 
-    resolved = bootstrap.resolve_effective_run_config(workspace_root=workspace_root, session_settings={})
     merged = _load_merged_config(config_paths)
-
-    llm_cfg = AgentSdkLlmConfig(
-        base_url=str(resolved.base_url),
-        api_key_env=str(resolved.api_key_env),
-        timeout_sec=int(getattr(merged.llm, "timeout_sec", 60)),
-        max_retries=int(getattr(merged.llm, "max_retries", 3)),
-    )
-    backend = OpenAIChatCompletionsBackend(llm_cfg)
+    backend = OpenAIChatCompletionsBackend(merged.llm)
 
     return Agent(
         workspace_root=workspace_root,
@@ -75,7 +66,7 @@ def main() -> int:
 
     result = agent.run(args.message)
     print(f"status={result.status}")
-    print(f"events_path={result.events_path}")
+    print(f"wal_locator={result.wal_locator}")
     print("final_output:")
     print(result.final_output)
     return 0

@@ -4,7 +4,7 @@ SDK 最小运行示例。
 用途：
 - 演示如何用 overlay 配置构造 Agent；
 - 演示如何消费 run_stream 事件；
-- 演示如何拿到 final_output 与 events_path。
+- 演示如何拿到 final_output 与 wal_locator。
 """
 
 from __future__ import annotations
@@ -16,9 +16,8 @@ from typing import Any, Dict, List
 import yaml
 
 from agent_sdk import Agent
-from agent_sdk import bootstrap
 from agent_sdk.config.defaults import load_default_config_dict
-from agent_sdk.config.loader import AgentSdkLlmConfig, load_config_dicts
+from agent_sdk.config.loader import load_config_dicts
 from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
 
 
@@ -53,16 +52,8 @@ def _build_agent(*, workspace_root: Path, config_paths: List[Path]) -> Agent:
     - 可运行的 Agent 实例。
     """
 
-    resolved = bootstrap.resolve_effective_run_config(workspace_root=workspace_root, session_settings={})
     merged = _load_merged_config(config_paths)
-
-    llm_cfg = AgentSdkLlmConfig(
-        base_url=str(resolved.base_url),
-        api_key_env=str(resolved.api_key_env),
-        timeout_sec=int(getattr(merged.llm, "timeout_sec", 60)),
-        max_retries=int(getattr(merged.llm, "max_retries", 3)),
-    )
-    backend = OpenAIChatCompletionsBackend(llm_cfg)
+    backend = OpenAIChatCompletionsBackend(merged.llm)
 
     return Agent(
         workspace_root=workspace_root,
@@ -93,17 +84,17 @@ def main() -> int:
     agent = _build_agent(workspace_root=workspace_root, config_paths=config_paths)
 
     final_output = ""
-    events_path = ""
+    wal_locator = ""
     print(f"[demo] workspace_root={workspace_root}")
     for event in agent.run_stream(args.message):
         print(f"[event] {event.type}")
         if event.type == "run_completed":
             final_output = str(event.payload.get("final_output") or "")
-            events_path = str(event.payload.get("events_path") or "")
+            wal_locator = str(event.payload.get("wal_locator") or "")
 
     print("\n[demo] final_output:\n")
     print(final_output)
-    print(f"\n[demo] events_path={events_path}")
+    print(f"\n[demo] wal_locator={wal_locator}")
     return 0
 
 

@@ -40,7 +40,7 @@ WF22 额外约束：
 WF18（HTTP + SSE）：
 - SSE stream 输出 `event:` + `data:`（单行 JSON）+ 空行分隔。
 - 至少包含：`approval_requested`、`approval_decided`、`run_completed`（或等价 terminal）。
-- 产出 `report.md`，包含 `run_id`、terminal event、`events_path` 指针与关键证据摘要。
+- 产出 `report.md`，包含 `run_id`、terminal event、`wal_locator` 指针与关键证据摘要。
 
 WF20（WAL 断言）：
 - WAL 必须出现：

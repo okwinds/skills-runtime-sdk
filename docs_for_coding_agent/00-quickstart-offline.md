@@ -33,7 +33,7 @@ pytest -q packages/skills-runtime-sdk-python/tests/test_examples_smoke.py
 ## 3) 逐个跑 step_by_step（理解核心闭环）
 
 建议按顺序：
-- `examples/step_by_step/01_offline_minimal_run/`：离线最小 run（FakeChatBackend）+ events_path
+- `examples/step_by_step/01_offline_minimal_run/`：离线最小 run（FakeChatBackend）+ wal_locator
 - `examples/step_by_step/02_offline_tool_call_read_file/`：tool_calls → 工具执行 → 回注 → 完成
 - `examples/step_by_step/03_approvals_and_safety/`：审批 ask/deny + approved_for_session 缓存
 - `examples/step_by_step/04_sandbox_evidence_and_verification/`：`data.sandbox` 证据字段 + 真实沙箱验证入口
@@ -53,7 +53,7 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 ## 4) 你应该观察什么（证据链）
 
-1) `events_path`（WAL locator；兼容字段）：
+1) `wal_locator`（WAL locator）：
 - 默认 file WAL 时，它通常是路径：`<workspace_root>/.skills_runtime_sdk/runs/<run_id>/events.jsonl`
 - 若注入了非文件型 WAL（`WalBackend`），它也可能是 `wal://...` 形式的定位符；终态事件 payload 会同时提供 `wal_locator`（推荐字段）
 

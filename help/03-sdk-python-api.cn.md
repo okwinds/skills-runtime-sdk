@@ -30,10 +30,8 @@ llm_cfg = AgentSdkLlmConfig(
     base_url="https://api.openai.com/v1",
     api_key_env="OPENAI_API_KEY",
     timeout_sec=60,
-    # legacy：不配置 llm.retry.max_retries 时作为回退
-    max_retries=3,
-    # 生产级：参数化退避（base/cap/jitter），并可用 retry.max_retries 覆盖次数
-    retry={"base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.1},
+    # 生产级：可控重试与退避（max_retries/base/cap/jitter）
+    retry={"max_retries": 3, "base_delay_sec": 0.5, "cap_delay_sec": 8.0, "jitter_ratio": 0.1},
 )
 
 backend = OpenAIChatCompletionsBackend(llm_cfg)
@@ -69,22 +67,22 @@ agent = (
 result = agent.run("请总结当前仓库的核心模块")
 print(result.status)
 print(result.final_output)
-print(result.events_path)
+print(result.wal_locator)
 ```
 
 返回：
 - `status`: `completed|failed|cancelled`
 - `final_output`: 最终输出文本
-- `events_path`: 事件日志定位符（locator；可能是文件路径，也可能是 `wal://...`）
+- `wal_locator`: 事件日志定位符（locator；可能是文件路径，也可能是 `wal://...`）
 
 说明：
-- 终态事件（`run_completed/run_failed/run_cancelled`）payload 同时包含 `events_path`（兼容字段）与 `wal_locator`（推荐字段）。
+- 终态事件（`run_completed/run_failed/run_cancelled`）payload 包含 `wal_locator`。
 
 ## 3.4 流式运行：`run_stream()`
 
 ```python
 for event in agent.run_stream("请给出测试计划"):
-    print(event.type, event.ts)
+    print(event.type, event.timestamp)
     if event.type == "run_completed":
         print(event.payload.get("final_output"))
 ```
@@ -221,8 +219,8 @@ print(resolved.sources)  # 字段来源追踪
 from pathlib import Path
 from agent_sdk.observability.run_metrics import compute_run_metrics_summary
 
-events_path = Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl")  # 仅适用于文件型 WAL
-summary = compute_run_metrics_summary(events_path)
+wal_locator = str(Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl"))  # 仅适用于文件型 WAL
+summary = compute_run_metrics_summary(wal_locator=wal_locator)
 print(summary)
 ```
 

@@ -145,7 +145,7 @@
 - 副作用（写文件/打补丁/跑命令）仍通过 builtin tools 执行，以保留 approvals/sandbox/WAL 的审计链路。
 
 关键能力组合：
-- Skills V2：spaces/sources 扫描与 mention 注入（`skill_injected`）
+- Skills：spaces/sources 扫描与 mention 注入（`skill_injected`）
 - Multi-agent：`Coordinator`（同步 child → summary → 汇总）
 - Tools：`read_file` + `apply_patch` + `shell_exec` + `file_write`
 - Safety + approvals：`safety.mode=ask`（离线示例用 scripted provider 自动批准）
@@ -166,7 +166,7 @@
    - Patch/QA/Report 的 WAL 中出现 `approval_requested/approval_decided`
    - `tool_call_finished.result.ok == true`（apply_patch/shell_exec/file_write）
 3. 产物：
-   - workspace 下生成 `report.md`（包含各步骤摘要 + events_path 指针）
+   - workspace 下生成 `report.md`（包含各步骤摘要 + wal_locator 指针）
 
 ---
 
@@ -201,7 +201,7 @@
 关键能力组合：
 - Planner：`update_plan` + `file_write(subtasks.json)`（结构化拆解 + 可审计产物）
 - Subagents：并行执行（每个子任务一个 Skill），各写独立产物（例如 `outputs/*.md`）
-- Aggregator：汇总产物 + events_path 指针，生成 `report.md`
+- Aggregator：汇总产物 + wal_locator 指针，生成 `report.md`
 - Skills-First：Planner/Subagent/Aggregator 全部通过 mentions 注入并产生 `skill_injected` 证据事件
 
 对应示例：
@@ -209,7 +209,7 @@
 
 验收建议：
 - 子任务产物互不覆盖（路径隔离）
-- `report.md` 中列出每个子任务的 `events_path`
+- `report.md` 中列出每个子任务的 `wal_locator`
 
 ---
 
@@ -289,7 +289,7 @@
 关键能力组合：
 - Router：`read_file` 读取输入 → `file_write(route.json)` 落盘决策
 - Branch worker：每个分支一个 Skill，各写独立产物（例如 `outputs/path_a.md`）
-- Reporter：`file_write(report.md)` 汇总（包含 `events_path` 指针）
+- Reporter：`file_write(report.md)` 汇总（包含 `wal_locator` 指针）
 
 对应示例：
 - `examples/workflows/09_branching_router_workflow/`
@@ -310,7 +310,7 @@
 - Controller：`update_plan` + `file_write(retry_plan.json)`（预算/策略可审计）
 - Attempt：`shell_exec`（允许失败；exit_code/ok 作为证据）
 - Degrade：`file_write(outputs/fallback.md)`（生成最小可用结果）
-- Reporter：`file_write(report.md)`（汇总每次 attempt 的 exit_code + events_path）
+- Reporter：`file_write(report.md)`（汇总每次 attempt 的 exit_code + wal_locator）
 
 对应示例：
 - `examples/workflows/10_retry_degrade_workflow/`

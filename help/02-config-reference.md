@@ -11,7 +11,7 @@
 An effective SDK runtime config can come from four layers (highest → lowest):
 
 1. `session_settings` (product layer injection)
-2. Environment variables (`SKILLS_RUNTIME_SDK_*`, with `AGENT_SDK_*` legacy compatibility)
+2. Environment variables (`SKILLS_RUNTIME_SDK_*`)
 3. YAML overlays (`config/runtime.yaml` + `--config`)
 4. Embedded defaults (SDK built-in defaults: `agent_sdk/assets/default.yaml`)
 
@@ -25,7 +25,6 @@ Where to find defaults:
 - `run.max_wall_time_sec=1800`
 - `safety.mode=ask`
 - `sandbox.default_policy=none` (SDK default)
-- `skills.mode=explicit`
 - `skills.scan.refresh_policy=always`
 - `prompt.template=default`
 
@@ -38,7 +37,7 @@ Where to find defaults:
 - `human_timeout_ms`: human input timeout (optional)
 - `resume_strategy`: `summary|replay` (default: `summary`)
 - `context_recovery`: context-length recovery (triggered on `context_length_exceeded`)
-  - `context_recovery.mode`: `compact_first|ask_first|fail_fast` (default: `fail_fast`, backwards compatible)
+  - `context_recovery.mode`: `compact_first|ask_first|fail_fast` (default: `fail_fast`)
   - `context_recovery.max_compactions_per_run`: max compactions per run (prevents loops)
   - `context_recovery.ask_first_fallback_mode`: fallback when `ask_first` but no HumanIOProvider (`compact_first|fail_fast`)
   - `context_recovery.compaction_history_max_chars`: max chars for the compaction transcript input
@@ -65,7 +64,7 @@ Notes:
   - `dev`: default does not enforce OS sandbox (availability-first)
   - `balanced`: recommended default (restricted + auto backend; Linux defaults to `unshare_net=true`)
   - `prod`: production-hardening baseline (tighten further via overlays)
-  - `custom`: no macro expansion; behavior is driven purely by `default_policy/os.*` (backwards compatible)
+  - `custom`: no macro expansion; behavior is driven purely by `default_policy/os.*`
 - `default_policy`: `none|restricted`
 - `os.mode`: `auto|none|seatbelt|bubblewrap`
 - `os.seatbelt.profile`: macOS `sandbox-exec` profile
@@ -76,9 +75,8 @@ Notes:
 - `base_url`
 - `api_key_env`
 - `timeout_sec`
-- `max_retries`: legacy retry count (compat). Used as fallback when `llm.retry.max_retries` is not set.
 - `retry`: retry/backoff policy (production-grade control)
-  - `retry.max_retries`: optional override (takes precedence over `llm.max_retries`)
+  - `retry.max_retries`
   - `retry.base_delay_sec`: exponential backoff base (seconds; default `0.5`)
   - `retry.cap_delay_sec`: backoff cap (seconds; default `8.0`)
   - `retry.jitter_ratio`: jitter ratio (`0..1`; default `0.1`)
@@ -90,7 +88,8 @@ Notes:
 
 ### `skills`
 
-- `mode`: `explicit` (current default)
+- `spaces`: skill spaces (mention namespace)
+- `sources`: skill sources (filesystem/redis/pgsql/in-memory)
 - `env_var_missing_policy`: missing env var policy for skill dependencies: `ask_human|fail_fast|skip_skill` (default `ask_human`)
 - `scan.*`: scan policy
 - `injection.max_bytes`: injection budget
@@ -167,15 +166,12 @@ run:
 - `SKILLS_RUNTIME_SDK_LLM_BASE_URL`
 - `SKILLS_RUNTIME_SDK_LLM_API_KEY_ENV`
 
-Legacy prefix: `AGENT_SDK_*`.
-
 ## 2.7 Overlay merge rules (must know)
 
 - Deep-merge, last overlay wins
 - Fixed discovery order:
   1) `<workspace_root>/config/runtime.yaml`
-  2) If missing and `<workspace_root>/config/llm.yaml` exists, it is added as legacy fallback
-  3) `SKILLS_RUNTIME_SDK_CONFIG_PATHS`
+  2) `SKILLS_RUNTIME_SDK_CONFIG_PATHS`
 
 ## 2.8 Troubleshooting helpers
 

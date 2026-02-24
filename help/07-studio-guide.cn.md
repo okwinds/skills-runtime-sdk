@@ -55,7 +55,7 @@ npm -C packages/skills-runtime-studio-mvp/frontend run dev
 - `GET /api/v1/sessions`
 - `POST /api/v1/sessions`
 - `DELETE /api/v1/sessions/{session_id}`
-- `PUT /api/v1/sessions/{session_id}/skills/roots`
+- `PUT /api/v1/sessions/{session_id}/skills/sources`
 - `GET /api/v1/sessions/{session_id}/skills`
 - `POST /studio/api/v1/sessions/{session_id}/skills`
 - `POST /api/v1/sessions/{session_id}/runs`
@@ -74,19 +74,19 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/sessions \
 ```
 
 说明：
-- 若 `skills_roots` 传 `null`（或不传），后端会自动回填默认 roots（generated root）。
-- 若你传 `[]`，表示“显式为空”，后续创建 skill 会因为 roots 为空而报错（这是有意的安全约束）。
+- 若 `filesystem_sources` 传 `null`（或不传），后端会使用默认 filesystem source（generated root）。
+- 若你传 `[]`，表示“显式为空”，后续创建 skill 会因为 sources 为空而报错（这是有意的安全约束）。
 
-### 2) 设置 roots
+### 2) 设置 filesystem sources
 
 ```bash
 SESSION_ID='<session_id>'
 WORKSPACE_ROOT="$(curl -s http://127.0.0.1:8000/api/v1/health | jq -r .workspace_root)"
 ROOT="${WORKSPACE_ROOT}/.skills_runtime_sdk/skills"
 
-curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/skills/roots" \
+curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/skills/sources" \
   -H 'Content-Type: application/json' \
-  -d "{\"roots\":[\"${ROOT}\"]}" | jq .
+  -d "{\"filesystem_sources\":[\"${ROOT}\"]}" | jq .
 ```
 
 ### 3) 创建 skill
@@ -146,7 +146,7 @@ npm -C packages/skills-runtime-studio-mvp/frontend run lint
 
 ## 7.8 推荐实践
 
-1. 把 session 的 roots 固定在受控目录
+1. 把 session 的 filesystem_sources 固定在受控目录
 2. 使用 pending approvals 接口做断线恢复
 3. 保留 `events.jsonl` 作为排障依据
 

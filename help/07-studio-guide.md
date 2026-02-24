@@ -55,7 +55,7 @@ npm -C packages/skills-runtime-studio-mvp/frontend run dev
 - `GET /api/v1/sessions`
 - `POST /api/v1/sessions`
 - `DELETE /api/v1/sessions/{session_id}`
-- `PUT /api/v1/sessions/{session_id}/skills/roots`
+- `PUT /api/v1/sessions/{session_id}/skills/sources`
 - `GET /api/v1/sessions/{session_id}/skills`
 - `POST /studio/api/v1/sessions/{session_id}/skills`
 - `POST /api/v1/sessions/{session_id}/runs`
@@ -74,19 +74,19 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/sessions \
 ```
 
 Notes:
-- If `skills_roots` is `null` (or omitted), the backend will backfill a default root (generated root).
-- If you pass `[]`, it means “explicitly empty roots”, and creating skills will fail by design (safety constraint).
+- If `filesystem_sources` is `null` (or omitted), the backend will use a default filesystem source (generated root).
+- If you pass `[]`, it means “explicitly empty sources”, and creating skills will fail by design (safety constraint).
 
-### 2) Set skill roots (optional)
+### 2) Set filesystem sources (optional)
 
 ```bash
 SESSION_ID='<session_id>'
 WORKSPACE_ROOT="$(curl -s http://127.0.0.1:8000/api/v1/health | jq -r .workspace_root)"
 ROOT="${WORKSPACE_ROOT}/.skills_runtime_sdk/skills"
 
-curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/skills/roots" \
+curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/skills/sources" \
   -H 'Content-Type: application/json' \
-  -d "{\"roots\":[\"${ROOT}\"]}" | jq .
+  -d "{\"filesystem_sources\":[\"${ROOT}\"]}" | jq .
 ```
 
 ### 3) Create a file-based skill
@@ -146,7 +146,7 @@ npm -C packages/skills-runtime-studio-mvp/frontend run lint
 
 ## 7.8 Recommendations
 
-1. Keep session roots within controlled directories
+1. Keep session filesystem sources within controlled directories
 2. Use `/approvals/pending` for reconnect/recovery
 3. Keep `events.jsonl` for forensics/debugging
 

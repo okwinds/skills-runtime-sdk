@@ -7,16 +7,16 @@ Content-Type: application/json
 
 {
   "title": "demo",
-  "skills_roots": []
+  "filesystem_sources": null
 }
 
-### 2) set roots
-PUT http://127.0.0.1:8000/api/v1/sessions/{{session_id}}/skills/roots
+### 2) set filesystem sources (optional)
+PUT http://127.0.0.1:8000/api/v1/sessions/{{session_id}}/skills/sources
 Content-Type: application/json
 
 {
-  "roots": [
-    "<repo_root>/packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/skills"
+  "filesystem_sources": [
+    "<workspace_root>/.skills_runtime_sdk/skills"
   ]
 }
 
