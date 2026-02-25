@@ -10,11 +10,18 @@ from pathlib import Path
 def test_workflow_eval_harness_smoke(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[3]
     src = repo_root / "packages" / "skills-runtime-sdk-python" / "src"
-    script = repo_root / "examples" / "workflows" / "15_workflow_eval_harness" / "run.py"
+    script = (
+        repo_root
+        / "docs_for_coding_agent"
+        / "examples"
+        / "workflows"
+        / "15_workflow_eval_harness"
+        / "run.py"
+    )
     assert script.exists()
 
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(src)
+    env["PYTHONPATH"] = os.pathsep.join([str(src), str(repo_root)])
     env["PYTHONUNBUFFERED"] = "1"
 
     workspace_root = (tmp_path / "eval").resolve()
@@ -46,4 +53,3 @@ def test_workflow_eval_harness_smoke(tmp_path: Path) -> None:
     obj = json.loads(score_path.read_text(encoding="utf-8"))
     assert "04" in obj
     assert 0.0 <= float(obj["04"]["score"]) <= 1.0
-

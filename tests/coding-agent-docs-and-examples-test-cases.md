@@ -59,8 +59,9 @@
 - **Requirement**：REQ-EX-02
 - **Priority**：High
 - **Steps**：
-  1. 检查 `examples/step_by_step`、`examples/tools`、`examples/skills`、`examples/state`、`examples/studio`、`examples/_shared` 是否存在。
-  2. 随机抽取每类至少 1 个示例目录，验证存在 `README.md`。
+  1. 检查 `examples/apps/`（面向人类的应用示例）、`examples/studio/`、`examples/_shared/` 是否存在。
+  2. 检查 `docs_for_coding_agent/examples/`（面向编码智能体的示例库）是否存在，并包含按主题分层的子目录（`step_by_step/`、`tools/`、`skills/`、`state/`、`workflows/`）。
+  3. 随机抽取每类至少 1 个示例目录，验证存在 `README.md`。
 - **Expected**：
   - 分层目录存在；
   - 示例目录包含 README。
