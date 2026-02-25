@@ -21,6 +21,35 @@ class _AlwaysDeny(ApprovalProvider):
         return ApprovalDecision.DENIED
 
 
+def _write_safety_overlay(
+    tmp_path: Path,
+    *,
+    mode: str,
+    allowlist: list[str] | None = None,
+    denylist: list[str] | None = None,
+) -> Path:
+    """
+    写入一个最小 safety overlay（用于测试 gate 行为）。
+
+    注意：测试只覆盖本次变更关心的字段，避免把全量配置复制进测试。
+    """
+
+    p = tmp_path / "runtime.overlay.yaml"
+    al = allowlist or []
+    dl = denylist or []
+    yaml_text = "safety:\n" f"  mode: \"{mode}\"\n"
+    if al:
+        yaml_text += "  allowlist:\n" + "".join(f"    - \"{x}\"\n" for x in al)
+    else:
+        yaml_text += "  allowlist: []\n"
+    if dl:
+        yaml_text += "  denylist:\n" + "".join(f"    - \"{x}\"\n" for x in dl)
+    else:
+        yaml_text += "  denylist: []\n"
+    p.write_text(yaml_text, encoding="utf-8")
+    return p
+
+
 def test_agent_minimal_loop_executes_tool_and_completes(tmp_path: Path) -> None:
     args = {"path": "hello.txt", "content": "hi", "create_dirs": True}
     call = ToolCall(call_id="c1", name="file_write", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
@@ -152,3 +181,176 @@ def test_agent_repeated_denied_approval_aborts_to_prevent_loop(tmp_path: Path) -
     failed = [e for e in events if e.type == "run_failed"]
     assert failed
     assert failed[-1].payload.get("error_kind") == "approval_denied"
+
+
+def test_agent_no_approval_provider_fails_fast_for_shell(tmp_path: Path) -> None:
+    overlay = _write_safety_overlay(tmp_path, mode="ask", allowlist=[], denylist=[])
+
+    args = {"command": ["/bin/echo", "hi"]}
+    call = ToolCall(call_id="c1", name="shell", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            )
+        ]
+    )
+
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=None, config_paths=[overlay])
+    result = agent.run("try shell")
+    assert result.status == "failed"
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    assert any(e.type == "approval_requested" for e in events)
+    failed = [e for e in events if e.type == "run_failed"]
+    assert failed[-1].payload.get("error_kind") == "config_error"
+
+
+def test_agent_no_approval_provider_fails_fast_for_shell_command(tmp_path: Path) -> None:
+    overlay = _write_safety_overlay(tmp_path, mode="ask", allowlist=[], denylist=[])
+
+    args = {"command": "echo hi"}
+    call = ToolCall(call_id="c1", name="shell_command", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            )
+        ]
+    )
+
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=None, config_paths=[overlay])
+    result = agent.run("try shell_command")
+    assert result.status == "failed"
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    assert any(e.type == "approval_requested" for e in events)
+    failed = [e for e in events if e.type == "run_failed"]
+    assert failed[-1].payload.get("error_kind") == "config_error"
+
+
+def test_agent_no_approval_provider_fails_fast_for_exec_command(tmp_path: Path) -> None:
+    overlay = _write_safety_overlay(tmp_path, mode="ask", allowlist=[], denylist=[])
+
+    args = {"cmd": "echo hi"}
+    call = ToolCall(call_id="c1", name="exec_command", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            )
+        ]
+    )
+
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=None, config_paths=[overlay])
+    result = agent.run("try exec_command")
+    assert result.status == "failed"
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    assert any(e.type == "approval_requested" for e in events)
+    failed = [e for e in events if e.type == "run_failed"]
+    assert failed[-1].payload.get("error_kind") == "config_error"
+
+
+def test_agent_no_approval_provider_fails_fast_for_write_stdin(tmp_path: Path) -> None:
+    overlay = _write_safety_overlay(tmp_path, mode="ask", allowlist=[], denylist=[])
+
+    args = {"session_id": 1, "chars": "hi\n"}
+    call = ToolCall(call_id="c1", name="write_stdin", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            )
+        ]
+    )
+
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=None, config_paths=[overlay])
+    result = agent.run("try write_stdin")
+    assert result.status == "failed"
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    assert any(e.type == "approval_requested" for e in events)
+    failed = [e for e in events if e.type == "run_failed"]
+    assert failed[-1].payload.get("error_kind") == "config_error"
+
+
+def test_allowlist_skips_approvals_for_shell_command_and_exec_command(tmp_path: Path) -> None:
+    overlay = _write_safety_overlay(tmp_path, mode="ask", allowlist=["echo"], denylist=[])
+
+    call1_args = {"command": "echo hi"}
+    call1 = ToolCall(call_id="c1", name="shell_command", args=call1_args, raw_arguments=json.dumps(call1_args, ensure_ascii=False))
+
+    call2_args = {"cmd": "echo hi", "yield_time_ms": 1}
+    call2 = ToolCall(call_id="c2", name="exec_command", args=call2_args, raw_arguments=json.dumps(call2_args, ensure_ascii=False))
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call1], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            ),
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call2], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            ),
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="text_delta", text="done"),
+                    ChatStreamEvent(type="completed", finish_reason="stop"),
+                ]
+            ),
+        ]
+    )
+
+    # approval_provider=None: 如果 allowlist 生效，不应触发 approvals，也不应 fail-fast
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=None, config_paths=[overlay])
+    result = agent.run("allowlist")
+    assert result.status == "completed"
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    assert not any(e.type == "approval_requested" for e in events)
+
+
+def test_mode_deny_blocks_shell_command_without_dispatch(tmp_path: Path) -> None:
+    overlay = _write_safety_overlay(tmp_path, mode="deny", allowlist=[], denylist=[])
+
+    args = {"command": "echo hi"}
+    call = ToolCall(call_id="c1", name="shell_command", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            ),
+            FakeChatCall(events=[ChatStreamEvent(type="completed", finish_reason="stop")]),
+        ]
+    )
+
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=None, config_paths=[overlay])
+    result = agent.run("deny")
+    assert result.status == "completed"
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    started = [e for e in events if e.type == "tool_call_started"]
+    assert not started
+    finished = [e for e in events if e.type == "tool_call_finished"]
+    assert finished
+    assert finished[0].payload["result"]["error_kind"] == "permission"

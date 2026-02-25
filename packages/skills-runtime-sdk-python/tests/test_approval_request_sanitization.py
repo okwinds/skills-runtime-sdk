@@ -126,3 +126,42 @@ def test_approval_request_for_apply_patch_does_not_include_patch_input(tmp_path:
     assert isinstance(req.get("content_sha256"), str)
 
     assert secret not in _event_text(events)
+
+
+def test_approval_request_for_shell_command_does_not_include_env_values(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.chdir(tmp_path)
+
+    secret = "SECRET_VALUE_456"
+    call = ToolCall(
+        call_id="c1",
+        name="shell_command",
+        args={"command": "echo ok", "env": {"OPENAI_API_KEY": secret}},
+        raw_arguments=None,
+    )
+    agent = Agent(backend=_Backend(call), workspace_root=tmp_path, approval_provider=_ApproveAll())
+    events = list(agent.run_stream("run"))
+
+    approval = next(e for e in events if e.type == "approval_requested")
+    req = approval.payload["request"]
+    assert "env" not in req
+    assert req.get("env_keys") == ["OPENAI_API_KEY"]
+
+    assert secret not in _event_text(events)
+
+
+def test_approval_request_for_write_stdin_does_not_include_chars(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.chdir(tmp_path)
+
+    secret = "WRITE_STDIN_SECRET"
+    call = ToolCall(call_id="c1", name="write_stdin", args={"session_id": 1, "chars": f"hello {secret}\n"}, raw_arguments=None)
+    agent = Agent(backend=_Backend(call), workspace_root=tmp_path, approval_provider=_ApproveAll())
+    events = list(agent.run_stream("write"))
+
+    approval = next(e for e in events if e.type == "approval_requested")
+    req = approval.payload["request"]
+    assert req.get("session_id") == 1
+    assert "chars" not in req
+    assert isinstance(req.get("bytes"), int)
+    assert isinstance(req.get("chars_sha256"), str)
+
+    assert secret not in _event_text(events)

@@ -54,7 +54,7 @@ from skills_runtime.llm.protocol import ChatRequest
 from skills_runtime.skills.manager import SkillsManager
 from skills_runtime.skills.models import Skill
 from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest, compute_approval_key
-from skills_runtime.safety.guard import evaluate_command_risk
+from skills_runtime.safety.guard import CommandRisk, evaluate_command_risk
 from skills_runtime.safety.policy import evaluate_policy_for_custom_tool, evaluate_policy_for_shell_exec
 from skills_runtime.tools.protocol import HumanIOProvider, ToolResultPayload
 from skills_runtime.sandbox import create_default_os_sandbox_adapter
@@ -76,6 +76,47 @@ def _format_argv(argv: list[str]) -> str:
     """
 
     return " ".join(shlex.quote(x) for x in argv)
+
+
+def _parse_shellish_command_to_argv(command: str) -> tuple[list[str], bool, str]:
+    """
+    将 “shell string” 尽力解析为 argv（用于 allowlist/denylist 与 risk 评估）。
+
+    约束与动机：
+    - `shell_command` / `exec_command` 使用 `/bin/sh -lc <command>` 执行；
+      若直接把 wrapper argv 交给 policy，会导致 allowlist/denylist 永远匹配不到（cmd0 会变成 /bin/sh）。
+    - 但 shell string 可能包含管道/重定向/控制符等语法；这类命令应被视为“复杂”，即使 allowlist 命中也建议走 approvals（避免 `pytest && rm -rf /` 误放行）。
+
+    返回：
+    - argv：解析结果（可能为空）
+    - is_complex：是否疑似包含 shell 控制语法（建议强制 approvals）
+    - reason：用于审计/调试的简短原因（不用于执行）
+    """
+
+    s = str(command or "")
+    if not s.strip():
+        return [], True, "empty command"
+
+    # fast path：明显复杂语法（best-effort；宁可误判为复杂，也不要误判为简单）
+    if "\n" in s or "`" in s or "$(" in s:
+        return [], True, "shell metacharacters detected"
+
+    try:
+        argv = shlex.split(s)
+    except Exception:
+        return [], True, "shlex split failed"
+
+    if not argv:
+        return [], True, "empty argv after parse"
+
+    # 若出现典型控制符/管道/重定向，则视为复杂命令（禁止 allowlist 直通）
+    control_tokens = {"&&", "||", ";", "|", "|&", "&"}
+    for tok in argv:
+        if tok in control_tokens:
+            return argv, True, f"control token detected: {tok}"
+        if tok.startswith(">") or tok.startswith("<"):
+            return argv, True, "redirection token detected"
+    return argv, False, "parsed"
 
 
 def _sanitize_approval_request(
@@ -129,6 +170,152 @@ def _sanitize_approval_request(
         cmd = _format_argv(argv) if argv else "<invalid argv>"
         summary = f"授权：shell_exec 执行命令：{cmd}（risk={risk.risk_level}）"
         return summary, req
+
+    if tool == "shell":
+        cmd_raw = args.get("command")
+        argv: list[str] = cmd_raw if isinstance(cmd_raw, list) and all(isinstance(x, str) for x in cmd_raw) else []
+        risk = evaluate_command_risk(argv) if argv else evaluate_command_risk([""])
+
+        env_keys: list[str] = []
+        env_raw = args.get("env")
+        if isinstance(env_raw, dict):
+            env_keys = sorted(str(k) for k in env_raw.keys())
+
+        sandbox_permissions = args.get("sandbox_permissions")
+        sandbox_perm = None
+        if isinstance(sandbox_permissions, str) and sandbox_permissions.strip():
+            sandbox_perm = sandbox_permissions.strip()
+
+        sandbox = args.get("sandbox")
+        sandbox_policy = None
+        if isinstance(sandbox, str) and sandbox.strip():
+            sandbox_policy = sandbox.strip()
+
+        req_shell: Dict[str, Any] = {
+            "argv": argv,
+            "cwd": args.get("workdir"),
+            "timeout_ms": args.get("timeout_ms"),
+            "tty": bool(args.get("tty") or False),
+            "env_keys": env_keys,
+            "sandbox": sandbox_policy,
+            "sandbox_permissions": sandbox_perm,
+            "risk": {"risk_level": risk.risk_level, "reason": risk.reason},
+        }
+        justification = args.get("justification")
+        if isinstance(justification, str) and justification.strip():
+            req_shell["justification"] = justification.strip()
+
+        cmd = _format_argv(argv) if argv else "<invalid argv>"
+        summary_shell = f"授权：shell 执行命令：{cmd}（risk={risk.risk_level}）"
+        return summary_shell, req_shell
+
+    if tool == "shell_command":
+        cmd_raw = args.get("command")
+        cmd_str = cmd_raw.strip() if isinstance(cmd_raw, str) else ""
+        argv_intent, is_complex, parse_reason = _parse_shellish_command_to_argv(cmd_str)
+
+        risk = (
+            CommandRisk(risk_level="high", reason=parse_reason)
+            if is_complex
+            else (evaluate_command_risk(argv_intent) if argv_intent else evaluate_command_risk([""]))
+        )
+
+        env_keys: list[str] = []
+        env_raw = args.get("env")
+        if isinstance(env_raw, dict):
+            env_keys = sorted(str(k) for k in env_raw.keys())
+
+        sandbox_permissions = args.get("sandbox_permissions")
+        sandbox_perm = None
+        if isinstance(sandbox_permissions, str) and sandbox_permissions.strip():
+            sandbox_perm = sandbox_permissions.strip()
+
+        sandbox = args.get("sandbox")
+        sandbox_policy = None
+        if isinstance(sandbox, str) and sandbox.strip():
+            sandbox_policy = sandbox.strip()
+
+        req_sc: Dict[str, Any] = {
+            "command": cmd_str,
+            "workdir": args.get("workdir"),
+            "timeout_ms": args.get("timeout_ms"),
+            "env_keys": env_keys,
+            "sandbox": sandbox_policy,
+            "sandbox_permissions": sandbox_perm,
+            "intent": {"argv": argv_intent, "is_complex": bool(is_complex), "reason": parse_reason},
+            "risk": {"risk_level": risk.risk_level, "reason": risk.reason},
+        }
+        justification = args.get("justification")
+        if isinstance(justification, str) and justification.strip():
+            req_sc["justification"] = justification.strip()
+
+        summary_sc = f"授权：shell_command 执行命令：{cmd_str or '<empty>'}（risk={risk.risk_level}）"
+        return summary_sc, req_sc
+
+    if tool == "exec_command":
+        cmd_raw = args.get("cmd")
+        cmd_str = cmd_raw.strip() if isinstance(cmd_raw, str) else ""
+        argv_intent, is_complex, parse_reason = _parse_shellish_command_to_argv(cmd_str)
+        risk = (
+            CommandRisk(risk_level="high", reason=parse_reason)
+            if is_complex
+            else (evaluate_command_risk(argv_intent) if argv_intent else evaluate_command_risk([""]))
+        )
+
+        sandbox_permissions = args.get("sandbox_permissions")
+        sandbox_perm = None
+        if isinstance(sandbox_permissions, str) and sandbox_permissions.strip():
+            sandbox_perm = sandbox_permissions.strip()
+
+        sandbox = args.get("sandbox")
+        sandbox_policy = None
+        if isinstance(sandbox, str) and sandbox.strip():
+            sandbox_policy = sandbox.strip()
+
+        tty_raw = args.get("tty")
+        tty_bool = True if tty_raw is None else bool(tty_raw)
+
+        req_ec: Dict[str, Any] = {
+            "cmd": cmd_str,
+            "workdir": args.get("workdir"),
+            "yield_time_ms": args.get("yield_time_ms"),
+            "max_output_tokens": args.get("max_output_tokens"),
+            "tty": tty_bool,
+            "sandbox": sandbox_policy,
+            "sandbox_permissions": sandbox_perm,
+            "intent": {"argv": argv_intent, "is_complex": bool(is_complex), "reason": parse_reason},
+            "risk": {"risk_level": risk.risk_level, "reason": risk.reason},
+        }
+        justification = args.get("justification")
+        if isinstance(justification, str) and justification.strip():
+            req_ec["justification"] = justification.strip()
+
+        summary_ec = f"授权：exec_command 启动命令：{cmd_str or '<empty>'}（risk={risk.risk_level}）"
+        return summary_ec, req_ec
+
+    if tool == "write_stdin":
+        session_id = args.get("session_id")
+        chars = args.get("chars")
+        yield_time_ms = args.get("yield_time_ms")
+        max_output_tokens = args.get("max_output_tokens")
+
+        bytes_count: Optional[int] = None
+        sha256: Optional[str] = None
+        if isinstance(chars, str):
+            b = chars.encode("utf-8")
+            bytes_count = len(b)
+            sha256 = hashlib.sha256(b).hexdigest()
+
+        req_ws: Dict[str, Any] = {
+            "session_id": session_id,
+            "yield_time_ms": yield_time_ms,
+            "max_output_tokens": max_output_tokens,
+            "bytes": bytes_count,
+            "chars_sha256": sha256,
+            "is_poll": bool(chars is None or chars == ""),
+        }
+        summary_ws = f"授权：write_stdin 写入 session：{session_id}（{bytes_count if bytes_count is not None else 0} bytes）"
+        return summary_ws, req_ws
 
     if tool == "file_write":
         path = args.get("path")
@@ -278,6 +465,7 @@ def _sanitize_tool_call_arguments_for_event(
     *,
     args: Dict[str, Any],
     redaction_values: Sequence[str] = (),
+    skills_manager: Optional[SkillsManager] = None,
 ) -> Dict[str, Any]:
     """
     将 tool args 转成“可观测但不泄露 secrets”的事件表示。
@@ -294,8 +482,8 @@ def _sanitize_tool_call_arguments_for_event(
     """
 
     # 对齐 approvals 的更严格表示（避免同一参数在不同事件里口径漂移）
-    if tool in ("shell_exec", "file_write", "skill_exec", "apply_patch"):
-        _summary, req = _sanitize_approval_request(tool, args=args, skills_manager=None)
+    if tool in ("shell_exec", "shell", "shell_command", "exec_command", "write_stdin", "file_write", "skill_exec", "apply_patch"):
+        _summary, req = _sanitize_approval_request(tool, args=args, skills_manager=skills_manager)
         return req
 
     def _redact_str(text: str) -> str:
@@ -1437,6 +1625,7 @@ class Agent:
             cancel_checker=self._cancel_checker,
             denied_approvals_by_key=dict(resume_replay_denied or {}),
         )
+        approved_exec_session_ids: set[int] = set()
 
         async def _perform_compaction_turn_and_rebuild_history(*, reason: str, turn_id: str) -> str:
             """
@@ -1735,7 +1924,10 @@ class Agent:
                                                     "call_id": c.call_id,
                                                     "name": c.name,
                                                     "arguments": _sanitize_tool_call_arguments_for_event(
-                                                        c.name, args=c.args, redaction_values=redaction_values
+                                                        c.name,
+                                                        args=c.args,
+                                                        redaction_values=redaction_values,
+                                                        skills_manager=self._skills_manager,
                                                     ),
                                                 }
                                                 for c in calls
@@ -1967,7 +2159,10 @@ class Agent:
                                     "call_id": call.call_id,
                                     "name": call.name,
                                     "arguments": _sanitize_tool_call_arguments_for_event(
-                                        call.name, args=call.args, redaction_values=redaction_values
+                                        call.name,
+                                        args=call.args,
+                                        redaction_values=redaction_values,
+                                        skills_manager=self._skills_manager,
                                     ),
                                     **(
                                         {
@@ -2066,8 +2261,8 @@ class Agent:
                                 )
                                 continue
                             requires_approval = policy.action == "ask"
-                        elif call.name == "shell_exec":
-                            argv = call.args.get("argv")
+                        elif call.name in ("shell_exec", "shell"):
+                            argv = call.args.get("argv") if call.name == "shell_exec" else call.args.get("command")
                             argv_list: list[str] = (
                                 argv if isinstance(argv, list) and all(isinstance(x, str) for x in argv) else []
                             )
@@ -2099,7 +2294,11 @@ class Agent:
                                         run_id=run_id,
                                         turn_id=turn_id,
                                         step_id=step_id,
-                                        payload={"call_id": call.call_id, "tool": call.name, "result": denied_result.details or {}},
+                                        payload={
+                                            "call_id": call.call_id,
+                                            "tool": call.name,
+                                            "result": denied_result.details or {},
+                                        },
                                     )
                                 )
                                 history.append(
@@ -2107,6 +2306,60 @@ class Agent:
                                 )
                                 continue
                             requires_approval = policy.action == "ask"
+                        elif call.name in ("shell_command", "exec_command"):
+                            cmd_key = "command" if call.name == "shell_command" else "cmd"
+                            cmd_raw = call.args.get(cmd_key)
+                            cmd_str = cmd_raw.strip() if isinstance(cmd_raw, str) else ""
+                            argv_intent, is_complex, _parse_reason = _parse_shellish_command_to_argv(cmd_str)
+                            risk = (
+                                CommandRisk(risk_level="high", reason="complex shell command")
+                                if is_complex
+                                else evaluate_command_risk(argv_intent)
+                            )
+                            policy = evaluate_policy_for_shell_exec(
+                                argv=argv_intent,
+                                risk=risk,
+                                safety=self._safety,
+                                sandbox_permissions=sandbox_permissions,
+                            )
+                            if policy.action == "deny":
+                                denied_payload = ToolResultPayload(
+                                    ok=False,
+                                    stdout="",
+                                    stderr=policy.reason,
+                                    exit_code=None,
+                                    duration_ms=0,
+                                    truncated=False,
+                                    data={"tool": call.name, "reason": policy.matched_rule},
+                                    error_kind="permission",
+                                    retryable=False,
+                                    retry_after_ms=None,
+                                )
+                                denied_result = ToolResult.from_payload(denied_payload, message="policy denied")
+                                _emit_event(
+                                    AgentEvent(
+                                        type="tool_call_finished",
+                                        timestamp=_now_rfc3339(),
+                                        run_id=run_id,
+                                        turn_id=turn_id,
+                                        step_id=step_id,
+                                        payload={
+                                            "call_id": call.call_id,
+                                            "tool": call.name,
+                                            "result": denied_result.details or {},
+                                        },
+                                    )
+                                )
+                                history.append(
+                                    {"role": "tool", "tool_call_id": call.call_id, "content": denied_result.content}
+                                )
+                                continue
+                            mode = str(getattr(self._safety, "mode", "ask") or "ask").strip().lower()
+                            if mode == "ask" and is_complex:
+                                # 复杂 shell string：即使 allowlist 命中也强制 approvals（避免误放行组合命令）
+                                requires_approval = True
+                            else:
+                                requires_approval = policy.action == "ask"
                         elif call.name == "skill_exec":
                             # skill_exec 的真实执行本质是 shell 命令；在审批/策略层按 shell_exec 同等处理。
                             _summary0, req0 = _sanitize_approval_request(
@@ -2163,6 +2416,41 @@ class Agent:
                                     )
                                     continue
                                 requires_approval = policy.action == "ask"
+                        elif call.name == "write_stdin":
+                            mode = str(getattr(self._safety, "mode", "ask") or "ask").strip().lower()
+                            if mode == "deny":
+                                denied_payload = ToolResultPayload(
+                                    ok=False,
+                                    stdout="",
+                                    stderr="Tool is denied by safety.mode=deny.",
+                                    exit_code=None,
+                                    duration_ms=0,
+                                    truncated=False,
+                                    data={"tool": call.name, "reason": "mode=deny"},
+                                    error_kind="permission",
+                                    retryable=False,
+                                    retry_after_ms=None,
+                                )
+                                denied_result = ToolResult.from_payload(denied_payload, message="policy denied")
+                                _emit_event(
+                                    AgentEvent(
+                                        type="tool_call_finished",
+                                        timestamp=_now_rfc3339(),
+                                        run_id=run_id,
+                                        turn_id=turn_id,
+                                        step_id=step_id,
+                                        payload={"call_id": call.call_id, "tool": call.name, "result": denied_result.details or {}},
+                                    )
+                                )
+                                history.append(
+                                    {"role": "tool", "tool_call_id": call.call_id, "content": denied_result.content}
+                                )
+                                continue
+
+                            sid_raw = call.args.get("session_id")
+                            sid = int(sid_raw) if isinstance(sid_raw, int) else None
+                            # session 已被认可（例如 exec_command 已通过 approvals）：后续交互不重复 ask
+                            requires_approval = (mode == "ask") and not (sid is not None and sid in approved_exec_session_ids)
                         elif call.name == "file_write":
                             mode = str(getattr(self._safety, "mode", "ask") or "ask").strip().lower()
                             if mode == "deny":
@@ -2307,6 +2595,11 @@ class Agent:
                                 _emit_cancelled()
                                 return
 
+                            if decision in (ApprovalDecision.APPROVED, ApprovalDecision.APPROVED_FOR_SESSION) and call.name == "write_stdin":
+                                sid_raw = call.args.get("session_id")
+                                if isinstance(sid_raw, int) and sid_raw > 0:
+                                    approved_exec_session_ids.add(int(sid_raw))
+
                             if decision == ApprovalDecision.DENIED:
                                 loop.record_denied_approval(approval_key)
                                 denied_payload = ToolResultPayload(
@@ -2403,6 +2696,14 @@ class Agent:
                         )
 
                         history.append({"role": "tool", "tool_call_id": call.call_id, "content": result.content})
+
+                        if call.name == "exec_command" and isinstance(result.details, dict):
+                            data = (result.details or {}).get("data") or {}
+                            if isinstance(data, dict):
+                                sid = data.get("session_id")
+                                running = data.get("running")
+                                if isinstance(sid, int) and bool(running):
+                                    approved_exec_session_ids.add(int(sid))
 
                     continue
 
