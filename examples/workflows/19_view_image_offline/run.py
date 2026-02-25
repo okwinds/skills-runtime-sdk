@@ -17,11 +17,11 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
-from agent_sdk.tools.protocol import ToolCall
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
+from skills_runtime.tools.protocol import ToolCall
 
 _PNG_1X1_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2Z0AAAAASUVORK5CYII="

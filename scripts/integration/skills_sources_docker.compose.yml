@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: skills
       POSTGRES_DB: skills
     volumes:
-      - ../../packages/skills-runtime-sdk-python/src/agent_sdk/assets/migrations/pgsql/0001_skills_catalog.up.sql:/docker-entrypoint-initdb.d/0001_skills_catalog.up.sql:ro
+      - ../../packages/skills-runtime-sdk-python/src/skills_runtime/assets/migrations/pgsql/0001_skills_catalog.up.sql:/docker-entrypoint-initdb.d/0001_skills_catalog.up.sql:ro
     # 默认不暴露端口到宿主机（runner 走 compose network）
 
   runner:

@@ -23,7 +23,7 @@ def _run_tools_cli(*, repo_root: Path, workspace_root: Path, argv: list[str], ti
     env["PYTHONPATH"] = str(src)
 
     p = subprocess.run(  # noqa: S603
-        [sys.executable, "-m", "agent_sdk.cli.main", "tools", *argv],
+        [sys.executable, "-m", "skills_runtime.cli.main", "tools", *argv],
         cwd=str(workspace_root),
         env=env,
         stdout=subprocess.PIPE,

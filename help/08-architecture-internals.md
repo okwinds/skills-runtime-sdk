@@ -118,7 +118,7 @@ Offline debugging example:
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
   python3 - <<'PY'
 from pathlib import Path
-from agent_sdk.runtime.client import RuntimeClient
+from skills_runtime.runtime.client import RuntimeClient
 
 ws = Path(".").resolve()
 client = RuntimeClient(workspace_root=ws)

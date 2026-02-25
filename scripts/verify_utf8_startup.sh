@@ -15,7 +15,7 @@ echo "[verify] workspace: $REPO_ROOT"
 echo "[verify] PYTHONPATH: $SDK_SRC"
 
 LANG=C LC_ALL=C PYTHONIOENCODING=ascii PYTHONPATH="$SDK_SRC" \
-  python3 -m agent_sdk.cli.main --help >/dev/null
+  python3 -m skills_runtime.cli.main --help >/dev/null
 
 echo "[ok] CLI --help works in C locale (ascii IO)"
 

@@ -5,9 +5,9 @@ from typing import Mapping, Optional
 
 import pytest
 
-from agent_sdk.skills.manager import SkillsManager
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.skills.manager import SkillsManager
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 class _FakeCommandResult:
@@ -146,7 +146,7 @@ def test_skill_exec_disabled_returns_permission(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="run_tests"), ctx)
     assert result.ok is False
@@ -164,7 +164,7 @@ def test_skill_exec_invalid_mention_returns_validation(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="x", skill_mention="$[bad"), ctx)
     assert result.ok is False
@@ -182,7 +182,7 @@ def test_skill_exec_unknown_skill_returns_not_found(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="x", skill_mention="$[alice:engineering].does_not_exist"), ctx)
     assert result.ok is False
@@ -212,7 +212,7 @@ def test_skill_exec_rejects_unknown_args(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     call = ToolCall(
         call_id="c1",
@@ -251,7 +251,7 @@ def test_skill_exec_source_unsupported_for_in_memory(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="run_tests"), ctx)
     assert result.ok is False
@@ -270,7 +270,7 @@ def test_skill_exec_action_not_found(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="does_not_exist"), ctx)
     assert result.ok is False
@@ -297,7 +297,7 @@ def test_skill_exec_action_argv_invalid(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="run_tests"), ctx)
     assert result.ok is False
@@ -335,7 +335,7 @@ def test_skill_exec_action_path_escape_is_rejected(tmp_path: Path, argv: list[st
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="run_tests"), ctx)
     assert result.ok is False
@@ -367,7 +367,7 @@ def test_skill_exec_executes_via_shell_exec_and_records_env(tmp_path: Path) -> N
     ex = _RecordingExecutor(result=_FakeCommandResult(ok=True, stdout="hello"))
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="run_tests"), ctx)
     assert result.ok is True
@@ -414,7 +414,7 @@ def test_skill_exec_action_missing_script_is_validation(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr, executor=ex)
 
-    from agent_sdk.tools.builtin.skill_exec import skill_exec
+    from skills_runtime.tools.builtin.skill_exec import skill_exec
 
     result = skill_exec(_call_exec(action_id="run_tests"), ctx)
     assert result.ok is False

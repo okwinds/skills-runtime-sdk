@@ -11,9 +11,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
 
 
 def main() -> int:

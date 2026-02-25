@@ -44,7 +44,7 @@ def _run_python_snippet(*, repo_root: Path, snippet: str, tmp_path: Path) -> sub
     以子进程运行 Python 片段，并返回 CompletedProcess（stdout/stderr 用于断言与排障）。
 
     约束：
-    - 必须离线可运行：通过 PYTHONPATH 指向 repo 内的 `agent_sdk` 源码。
+    - 必须离线可运行：通过 PYTHONPATH 指向 repo 内的 `skills_runtime` 源码。
     - 在临时目录执行，避免污染仓库工作区。
     """
 

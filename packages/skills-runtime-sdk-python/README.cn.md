@@ -35,7 +35,7 @@
 - 运行单测：
   - `pytest -q`
 - 快速自检 import：
-  - `python -c "import agent_sdk; print(agent_sdk.__version__)"`
+  - `python -c "import skills_runtime; print(skills_runtime.__version__)"`
 
 说明（环境兼容性）：
 - 若你的 Python 运行环境因为 locale/编码导致启动时报 `UnicodeDecodeError`（常见于 `.pth` 内含非 ASCII 路径），可临时使用：
@@ -72,8 +72,8 @@
 ## Prompt 配置（系统/开发者提示词可配置）
 
 SDK 默认自带一份最佳实践模板（随 package 分发，不依赖仓库内的过程文档目录）：
-- 默认配置：`agent_sdk/assets/default.yaml`
-- 默认 prompt 模板：`agent_sdk/assets/prompts/default/{system.md,developer.md}`
+- 默认配置：`skills_runtime/assets/default.yaml`
+- 默认 prompt 模板：`skills_runtime/assets/prompts/default/{system.md,developer.md}`
 
 你可以用 overlay 配置覆盖（推荐）：
 - 在 `config/runtime.yaml` 或其它 overlay 文件中增加：
@@ -88,7 +88,7 @@ SDK 默认自带一份最佳实践模板（随 package 分发，不依赖仓库�
 
 SDK 核心（`Agent`）不会隐式读取 `.env` 或自动发现 overlay（避免库代码副作用）。若你希望“开箱即用 + 可排障”，推荐在应用层调用 bootstrap：
 
-- 实现：`agent_sdk.bootstrap.resolve_effective_run_config(...)`
+- 实现：`skills_runtime.bootstrap.resolve_effective_run_config(...)`
 - 说明：见 `help/02-config-reference.md`（overlay 发现顺序与环境变量）
 
 你可以用它得到：

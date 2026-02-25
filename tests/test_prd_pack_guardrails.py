@@ -68,7 +68,7 @@ def test_prompt_set_points_to_repo_assets_and_override_fields() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     text = _read_text_if_exists(repo_root / "docs" / "prds" / "skills-runtime-sdk-web-mvp" / "PROMPT_SET.md")
 
-    assert "packages/skills-runtime-sdk-python/src/agent_sdk/assets/prompts/default/" in text
+    assert "packages/skills-runtime-sdk-python/src/skills_runtime/assets/prompts/default/" in text
     assert "prompt.system_path" in text
     assert "prompt.developer_path" in text
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from agent_sdk.llm.chat_sse import iter_chat_completions_stream_events
-from agent_sdk.llm.errors import ContextLengthExceededError
+from skills_runtime.llm.chat_sse import iter_chat_completions_stream_events
+from skills_runtime.llm.errors import ContextLengthExceededError
 
 
 def test_chat_sse_tool_calls_arguments_aggregated_and_flushed() -> None:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.observability.run_metrics import compute_run_metrics_summary
+from skills_runtime.observability.run_metrics import compute_run_metrics_summary
 
 
 def _write_events(path: Path, events: list[dict]) -> None:

@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 import pytest
 
-from agent_sdk.cli.main import main
+from skills_runtime.cli.main import main
 
 
 def _parse_last_json(stdout: str) -> Dict[str, Any]:

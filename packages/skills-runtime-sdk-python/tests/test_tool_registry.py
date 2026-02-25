@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.core.errors import UserError
-from agent_sdk.state.jsonl_wal import JsonlWal
-from agent_sdk.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec, tool_spec_to_openai_tool
-from agent_sdk.tools.registry import ToolExecutionContext, ToolRegistry
+from skills_runtime.core.errors import UserError
+from skills_runtime.state.jsonl_wal import JsonlWal
+from skills_runtime.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec, tool_spec_to_openai_tool
+from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 
 
 def test_tool_registry_duplicate_register_rejected(tmp_path: Path) -> None:

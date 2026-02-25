@@ -66,7 +66,7 @@ $[account:domain].skill_name
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main skills preflight \
+python3 -m skills_runtime.cli.main skills preflight \
   --workspace-root . \
   --config help/examples/skills.cli.overlay.yaml \
   --pretty
@@ -76,7 +76,7 @@ python3 -m agent_sdk.cli.main skills preflight \
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main skills scan \
+python3 -m skills_runtime.cli.main skills scan \
   --workspace-root . \
   --config help/examples/skills.cli.overlay.yaml \
   --pretty

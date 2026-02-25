@@ -13,7 +13,7 @@ def test_load_dotenv_if_present_loads_workspace_root_dotenv(tmp_path: Path, monk
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_ENV_FILE", raising=False)
     monkeypatch.delenv("X_BOOT", raising=False)
-    p = __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    p = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert p is not None
     assert Path(p) == (ws / ".env")
     assert os.environ.get("X_BOOT") == "1"
@@ -26,7 +26,7 @@ def test_load_dotenv_if_present_does_not_override_existing_env_by_default(tmp_pa
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_ENV_FILE", raising=False)
     monkeypatch.setenv("X_BOOT", "from_process")
-    __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert os.environ.get("X_BOOT") == "from_process"
 
 
@@ -37,7 +37,7 @@ def test_load_dotenv_if_present_override_true_overrides_existing_env(tmp_path: P
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_ENV_FILE", raising=False)
     monkeypatch.setenv("X_BOOT", "from_process")
-    __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=True)
+    __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=True)
     assert os.environ.get("X_BOOT") == "from_file"
 
 
@@ -50,7 +50,7 @@ def test_load_dotenv_if_present_uses_skills_runtime_sdk_env_file_relative_to_wor
 
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_ENV_FILE", "config/dev.env")
     monkeypatch.delenv("X_BOOT", raising=False)
-    p = __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    p = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert p is not None
     assert Path(p) == envp
     assert os.environ.get("X_BOOT") == "2"
@@ -65,7 +65,7 @@ def test_load_dotenv_if_present_missing_skills_runtime_sdk_env_file_fails_fast(t
 
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_ENV_FILE", "config/missing.env")
     with pytest.raises(ValueError):
-        __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+        __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
 
 
 def test_load_dotenv_if_present_ignores_legacy_env_file_key(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -82,7 +82,7 @@ def test_load_dotenv_if_present_ignores_legacy_env_file_key(tmp_path: Path, monk
     monkeypatch.setenv(legacy_key, "config/legacy.env")
     monkeypatch.delenv("X_BOOT", raising=False)
 
-    p = __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    p = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert p is None
     assert os.environ.get("X_BOOT") is None
 
@@ -103,7 +103,7 @@ def test_load_dotenv_if_present_prefers_skills_runtime_sdk_env_file(tmp_path: Pa
     monkeypatch.setenv(legacy_key, "config/old.env")
     monkeypatch.delenv("X_BOOT", raising=False)
 
-    p = __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    p = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert p is not None
     assert Path(p) == env_new
     assert os.environ.get("X_BOOT") == "from_new"
@@ -131,7 +131,7 @@ def test_load_dotenv_parses_export_quotes_and_comments(tmp_path: Path, monkeypat
     for k in ["A", "B", "C", "D"]:
         monkeypatch.delenv(k, raising=False)
 
-    __import__("agent_sdk.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert os.environ.get("A") == "1"
     assert os.environ.get("B") == "2"
     assert os.environ.get("C") == "3"
@@ -146,7 +146,7 @@ def test_discover_overlay_paths_reads_env_list_and_appends_default_runtime_yaml(
     (ws / "config" / "runtime.yaml").write_text("config_version: 1\n", encoding="utf-8")
 
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_CONFIG_PATHS", "a.yaml;config/runtime.yaml")
-    paths = __import__("agent_sdk.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
+    paths = __import__("skills_runtime.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
     assert [p.name for p in paths] == ["runtime.yaml", "a.yaml"]
 
 
@@ -157,7 +157,7 @@ def test_discover_overlay_paths_deduplicates_by_canonical_path(tmp_path: Path, m
     (ws / "config" / "runtime.yaml").write_text("config_version: 1\n", encoding="utf-8")
 
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_CONFIG_PATHS", "config/runtime.yaml;./config/runtime.yaml")
-    paths = __import__("agent_sdk.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
+    paths = __import__("skills_runtime.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
     assert len(paths) == 1
     assert paths[0] == (ws / "config" / "runtime.yaml").resolve()
 
@@ -169,7 +169,7 @@ def test_discover_overlay_paths_does_not_discover_legacy_llm_yaml(tmp_path: Path
     (ws / "config" / "llm.yaml").write_text("config_version: 1\n", encoding="utf-8")
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_CONFIG_PATHS", raising=False)
-    paths = __import__("agent_sdk.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
+    paths = __import__("skills_runtime.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
     assert paths == []
 
 
@@ -185,7 +185,7 @@ def test_discover_overlay_paths_ignores_legacy_config_paths_env(tmp_path: Path, 
     legacy_key = "AGENT" + "_SDK_CONFIG_PATHS"
     monkeypatch.setenv(legacy_key, "overlay.yaml")
 
-    paths = __import__("agent_sdk.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
+    paths = __import__("skills_runtime.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
     assert paths == []
 
 
@@ -197,7 +197,7 @@ def test_discover_overlay_paths_prefers_runtime_yaml_when_both_exist(tmp_path: P
     (ws / "config" / "llm.yaml").write_text("config_version: 1\n", encoding="utf-8")
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_CONFIG_PATHS", raising=False)
-    paths = __import__("agent_sdk.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
+    paths = __import__("skills_runtime.bootstrap").bootstrap.discover_overlay_paths(workspace_root=ws)
     assert len(paths) == 1
     assert paths[0] == (ws / "config" / "runtime.yaml").resolve()
 
@@ -231,7 +231,7 @@ def test_resolve_effective_run_config_uses_yaml_when_no_env_or_session(tmp_path:
     ]:
         monkeypatch.delenv(k, raising=False)
 
-    cfg = __import__("agent_sdk.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
+    cfg = __import__("skills_runtime.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
     assert cfg.planner_model == "yaml-planner"
     assert cfg.executor_model == "yaml-executor"
     assert cfg.base_url == "http://yaml.test/v1"
@@ -262,7 +262,7 @@ def test_resolve_effective_run_config_env_overrides_yaml(tmp_path: Path, monkeyp
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_EXECUTOR_MODEL", "env-executor")
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_LLM_BASE_URL", "http://env.test/v1")
 
-    cfg = __import__("agent_sdk.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
+    cfg = __import__("skills_runtime.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
     assert cfg.executor_model == "env-executor"
     assert cfg.base_url == "http://env.test/v1"
     assert cfg.sources["models.executor"] == "env:SKILLS_RUNTIME_SDK_EXECUTOR_MODEL"
@@ -298,7 +298,7 @@ def test_resolve_effective_run_config_ignores_legacy_env(tmp_path: Path, monkeyp
     monkeypatch.setenv(legacy_exec, "env-executor")
     monkeypatch.setenv(legacy_base_url, "http://env.test/v1")
 
-    cfg = __import__("agent_sdk.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
+    cfg = __import__("skills_runtime.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
     assert cfg.executor_model == "yaml-executor"
     assert cfg.base_url == "http://yaml.test/v1"
     assert cfg.sources["models.executor"].startswith("yaml:")
@@ -316,7 +316,7 @@ def test_resolve_effective_run_config_prefers_skills_runtime_sdk_env(tmp_path: P
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_PLANNER_MODEL", "env-planner-new")
     legacy_planner = "AGENT" + "_SDK_PLANNER_MODEL"
     monkeypatch.setenv(legacy_planner, "env-planner-old")
-    cfg = __import__("agent_sdk.bootstrap").bootstrap.resolve_effective_run_config(
+    cfg = __import__("skills_runtime.bootstrap").bootstrap.resolve_effective_run_config(
         workspace_root=ws,
         session_settings={"models": {}, "llm": {}},
     )
@@ -331,7 +331,7 @@ def test_resolve_effective_run_config_session_overrides_env(tmp_path: Path, monk
     (ws / "config" / "runtime.yaml").write_text("config_version: 1\n", encoding="utf-8")
 
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_PLANNER_MODEL", "env-planner")
-    cfg = __import__("agent_sdk.bootstrap").bootstrap.resolve_effective_run_config(
+    cfg = __import__("skills_runtime.bootstrap").bootstrap.resolve_effective_run_config(
         workspace_root=ws,
         session_settings={"models": {"planner": "session-planner"}, "llm": {}},
     )
@@ -357,7 +357,7 @@ def test_resolve_effective_run_config_reports_overlay_yaml_source(tmp_path: Path
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_CONFIG_PATHS", str(overlay))
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_EXECUTOR_MODEL", raising=False)
 
-    cfg = __import__("agent_sdk.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
+    cfg = __import__("skills_runtime.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
     assert cfg.executor_model == "overlay-executor"
     assert "overlay:" in cfg.sources["models.executor"]
 
@@ -367,4 +367,4 @@ def test_resolve_effective_run_config_missing_overlay_raises_value_error(tmp_pat
     ws.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_CONFIG_PATHS", "missing.yaml")
     with pytest.raises(ValueError):
-        __import__("agent_sdk.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})
+        __import__("skills_runtime.bootstrap").bootstrap.resolve_effective_run_config(workspace_root=ws, session_settings={"models": {}, "llm": {}})

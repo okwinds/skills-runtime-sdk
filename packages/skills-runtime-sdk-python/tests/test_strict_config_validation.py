@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 import pytest
 
-from agent_sdk.config.loader import load_config_dicts
+from skills_runtime.config.loader import load_config_dicts
 
 
 def _base_cfg() -> Dict[str, Any]:

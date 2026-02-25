@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.skills.manager import SkillsManager
+from skills_runtime.skills.manager import SkillsManager
 
 
 def _mk_manager(tmp_path: Path, *, account: str, domain: str, skills_root: Path) -> SkillsManager:

@@ -101,7 +101,7 @@ python -m pip install -U "skills-runtime-sdk[all]"
 ```
 
 Notes:
-- The import name is `agent_sdk` (package name differs from module name).
+- The import name is `skills_runtime` (package name differs from module name).
 - `pip install` ships the SDK; **Studio MVP is a repo example** (run it from source).
 
 ### CLI
@@ -118,9 +118,9 @@ skills-runtime-sdk skills --help
 import tempfile
 from pathlib import Path
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
 
 backend = FakeChatBackend(
     calls=[

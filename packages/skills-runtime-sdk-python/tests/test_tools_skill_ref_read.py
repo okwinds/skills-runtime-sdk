@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.skills.manager import SkillsManager
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.skills.manager import SkillsManager
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 def _write_skill_bundle(
@@ -99,7 +99,7 @@ def test_skill_ref_read_disabled_returns_permission(tmp_path: Path) -> None:
     mgr = _mk_manager(workspace_root=tmp_path, skills_root=skills_root, skills_config_extra={"references": {"enabled": False}})
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     result = skill_ref_read(_call_ref_read(ref_path="references/a.txt"), ctx)
     assert result.error_kind == "permission"
@@ -118,7 +118,7 @@ def test_skill_ref_read_invalid_mention_returns_validation(tmp_path: Path) -> No
     )
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     call = ToolCall(call_id="c1", name="skill_ref_read", args={"skill_mention": "$[bad", "ref_path": "references/a.txt"})
     result = skill_ref_read(call, ctx)
@@ -139,7 +139,7 @@ def test_skill_ref_read_unknown_skill_returns_not_found(tmp_path: Path) -> None:
     )
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     call = ToolCall(
         call_id="c1",
@@ -164,7 +164,7 @@ def test_skill_ref_read_rejects_unknown_args(tmp_path: Path) -> None:
     mgr = _mk_manager(workspace_root=tmp_path, skills_root=skills_root, skills_config_extra={"references": {"enabled": True}})
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     call = ToolCall(
         call_id="c1",
@@ -192,7 +192,7 @@ def test_skill_ref_read_source_unsupported_for_in_memory(tmp_path: Path) -> None
     mgr.scan()
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     result = skill_ref_read(_call_ref_read(ref_path="references/a.txt"), ctx)
     assert result.ok is False
@@ -222,7 +222,7 @@ def test_skill_ref_read_path_invalid_is_permission(tmp_path: Path, ref_path: str
     mgr = _mk_manager(workspace_root=tmp_path, skills_root=skills_root, skills_config_extra={"references": {"enabled": True}})
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     result = skill_ref_read(_call_ref_read(ref_path=ref_path), ctx)
     assert result.ok is False
@@ -246,7 +246,7 @@ def test_skill_ref_read_assets_requires_allow_assets(tmp_path: Path) -> None:
     )
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     result = skill_ref_read(_call_ref_read(ref_path="assets/x.txt"), ctx)
     assert result.ok is False
@@ -280,7 +280,7 @@ def test_skill_ref_read_path_escape_via_symlink_is_rejected(tmp_path: Path) -> N
     mgr = _mk_manager(workspace_root=tmp_path, skills_root=skills_root, skills_config_extra={"references": {"enabled": True}})
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     result = skill_ref_read(_call_ref_read(ref_path="references/link.txt"), ctx)
     assert result.ok is False
@@ -299,7 +299,7 @@ def test_skill_ref_read_not_found_returns_not_found(tmp_path: Path) -> None:
     mgr = _mk_manager(workspace_root=tmp_path, skills_root=skills_root, skills_config_extra={"references": {"enabled": True}})
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     result = skill_ref_read(_call_ref_read(ref_path="references/missing.txt"), ctx)
     assert result.ok is False
@@ -323,7 +323,7 @@ def test_skill_ref_read_truncates_and_marks_truncated(tmp_path: Path) -> None:
     )
     ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
 
-    from agent_sdk.tools.builtin.skill_ref_read import skill_ref_read
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
 
     result = skill_ref_read(_call_ref_read(ref_path="references/big.txt", max_bytes=120), ctx)
     assert result.ok is True

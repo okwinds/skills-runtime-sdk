@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from agent_sdk.core.agent import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.protocol import ChatRequest
-from agent_sdk.tools.protocol import ToolSpec
+from skills_runtime.core.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.protocol import ChatRequest
+from skills_runtime.tools.protocol import ToolSpec
 
 
 class _StubBackend:

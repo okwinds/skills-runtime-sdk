@@ -17,7 +17,7 @@
 - `bash scripts/pytest.sh`
 
 常用夹具：
-- `agent_sdk.llm.fake.FakeChatBackend`：脚本化 streaming 事件序列
+- `skills_runtime.llm.fake.FakeChatBackend`：脚本化 streaming 事件序列
 
 ### 1.2 可选集成验证（有环境才跑）
 

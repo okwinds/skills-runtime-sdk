@@ -5,11 +5,11 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 import pytest
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.errors import ContextLengthExceededError
-from agent_sdk.llm.protocol import ChatRequest
-from agent_sdk.tools.protocol import HumanIOProvider, ToolSpec
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.errors import ContextLengthExceededError
+from skills_runtime.llm.protocol import ChatRequest
+from skills_runtime.tools.protocol import HumanIOProvider, ToolSpec
 
 
 class _CtxOnceThenOkBackend:

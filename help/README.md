@@ -66,4 +66,4 @@ Supplemental topics (not numbered):
 - Python `>=3.10` is required (`packages/skills-runtime-sdk-python/pyproject.toml`)
 - Use `<repo_root>` placeholders in docs (avoid machine-specific absolute paths)
 - Never commit secrets: only `.env.example` goes into the repo, real keys stay in local `.env`
-- Treat Help as the operational handbook; for deeper details, read code under `packages/skills-runtime-sdk-python/src/agent_sdk/*`
+- Treat Help as the operational handbook; for deeper details, read code under `packages/skills-runtime-sdk-python/src/skills_runtime/*`

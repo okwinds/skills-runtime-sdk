@@ -26,7 +26,7 @@ def test_cli_help_does_not_crash_in_c_locale(tmp_path: Path) -> None:
     env["PYTHONIOENCODING"] = "ascii"
 
     p = subprocess.run(  # noqa: S603
-        [sys.executable, "-m", "agent_sdk.cli.main", "--help"],
+        [sys.executable, "-m", "skills_runtime.cli.main", "--help"],
         cwd=str(tmp_path),
         env=env,
         stdout=subprocess.PIPE,

@@ -4,12 +4,12 @@ import json
 import asyncio
 from pathlib import Path
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.safety.approvals import ApprovalDecision, ApprovalRequest
-from agent_sdk.safety.rule_approvals import ApprovalRule, RuleBasedApprovalProvider
-from agent_sdk.tools.protocol import ToolCall
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.safety.approvals import ApprovalDecision, ApprovalRequest
+from skills_runtime.safety.rule_approvals import ApprovalRule, RuleBasedApprovalProvider
+from skills_runtime.tools.protocol import ToolCall
 
 
 def test_rule_based_provider_fail_closed_by_default() -> None:

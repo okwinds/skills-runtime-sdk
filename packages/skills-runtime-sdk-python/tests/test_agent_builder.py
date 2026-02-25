@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from agent_sdk import AgentBuilder
-from agent_sdk.core.contracts import AgentEvent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.state.wal_protocol import InMemoryWal
-from agent_sdk.tools.protocol import ToolCall
+from skills_runtime import AgentBuilder
+from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.state.wal_protocol import InMemoryWal
+from skills_runtime.tools.protocol import ToolCall
 
 
 def _write_skills_overlay(workspace_root: Path, *, skills_root: Path) -> Path:

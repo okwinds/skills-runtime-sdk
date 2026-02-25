@@ -13,10 +13,10 @@ import argparse
 import json
 from pathlib import Path
 
-from agent_sdk.core.executor import Executor
-from agent_sdk.tools.builtin import register_builtin_tools
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext, ToolRegistry
+from skills_runtime.core.executor import Executor
+from skills_runtime.tools.builtin import register_builtin_tools
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 
 
 def _print_sandbox(result_details: dict) -> None:

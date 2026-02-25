@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.core.exec_sessions import PersistentExecSessionManager
-from agent_sdk.runtime.client import RuntimeClient
-from agent_sdk.runtime.paths import get_runtime_paths
+from skills_runtime.core.exec_sessions import PersistentExecSessionManager
+from skills_runtime.runtime.client import RuntimeClient
+from skills_runtime.runtime.paths import get_runtime_paths
 
 
 @pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")

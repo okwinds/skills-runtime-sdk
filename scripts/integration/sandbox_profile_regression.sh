@@ -56,12 +56,12 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from agent_sdk.config.loader import load_config_dicts
-from agent_sdk.core.executor import Executor
-from agent_sdk.sandbox import create_default_os_sandbox_adapter
-from agent_sdk.tools.builtin.shell_exec import shell_exec
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.config.loader import load_config_dicts
+from skills_runtime.core.executor import Executor
+from skills_runtime.sandbox import create_default_os_sandbox_adapter
+from skills_runtime.tools.builtin.shell_exec import shell_exec
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 profile = str(${PROFILE!r}).strip().lower()
 ws = Path(".").resolve()

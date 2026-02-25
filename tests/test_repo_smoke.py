@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import sys
+import importlib
+from importlib.machinery import PathFinder
 
 import pytest
 
@@ -35,7 +37,13 @@ def test_packages_are_importable_without_install() -> None:
 
     sys.path.insert(0, str(sdk_src))
 
-    import agent_sdk  # noqa: F401
+    import skills_runtime  # noqa: F401
+
+    # 说明：旧命名空间 `agent_sdk` 必须“硬断”（tombstone），避免误用。
+    # 同时开发机/CI 的 site-packages 可能安装了同名第三方包，所以需要确保解析来源是 repo 的 sdk_src。
+    assert PathFinder.find_spec("agent_sdk", [str(sdk_src)]) is not None
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("agent_sdk")
 
 
 def test_legacy_web_mvp_is_importable_when_enabled() -> None:

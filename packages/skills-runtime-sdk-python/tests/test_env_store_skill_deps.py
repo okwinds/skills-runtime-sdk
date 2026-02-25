@@ -8,12 +8,12 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 import pytest
 
-from agent_sdk.core.agent import Agent
-from agent_sdk.core.contracts import AgentEvent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.protocol import ChatRequest
-from agent_sdk.skills.loader import load_skill_from_path
-from agent_sdk.tools.protocol import ToolSpec
+from skills_runtime.core.agent import Agent
+from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.protocol import ChatRequest
+from skills_runtime.skills.loader import load_skill_from_path
+from skills_runtime.tools.protocol import ToolSpec
 
 
 class _StubBackend:
@@ -308,7 +308,7 @@ def test_tool_output_is_redacted_from_env_store_values(tmp_path: Path, monkeypat
     monkeypatch.chdir(tmp_path)
 
     secret = "S3CR3T-XYZ"
-    from agent_sdk.tools.protocol import ToolCall
+    from skills_runtime.tools.protocol import ToolCall
 
     class _ToolCallingBackend:
         def __init__(self) -> None:

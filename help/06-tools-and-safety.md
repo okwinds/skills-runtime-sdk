@@ -52,9 +52,9 @@ If you don’t have a “human click” approval UI, inject a rule-based provide
 
 ```python
 from pathlib import Path
-from agent_sdk import Agent
-from agent_sdk.safety import ApprovalRule, RuleBasedApprovalProvider
-from agent_sdk.safety.approvals import ApprovalDecision
+from skills_runtime.agent import Agent
+from skills_runtime.safety import ApprovalRule, RuleBasedApprovalProvider
+from skills_runtime.safety.approvals import ApprovalDecision
 
 provider = RuleBasedApprovalProvider(
     rules=[
@@ -172,7 +172,7 @@ Use for long-running or interactive commands:
 - `help/sandbox-best-practices.md`
 - `help/04-cli-reference.md`
 - `help/09-troubleshooting.md`
-- Code entrypoints: `packages/skills-runtime-sdk-python/src/agent_sdk/tools/*`, `packages/skills-runtime-sdk-python/src/agent_sdk/safety/*`, `packages/skills-runtime-sdk-python/src/agent_sdk/sandbox.py`
+- Code entrypoints: `packages/skills-runtime-sdk-python/src/skills_runtime/tools/*`, `packages/skills-runtime-sdk-python/src/skills_runtime/safety/*`, `packages/skills-runtime-sdk-python/src/skills_runtime/sandbox.py`
 
 ---
 

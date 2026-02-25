@@ -16,7 +16,7 @@ If you don't install the entrypoint, you can run via module:
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main <command> <subcommand> [flags]
+python3 -m skills_runtime.cli.main <command> <subcommand> [flags]
 ```
 
 ## 4.2 Common flags (most subcommands)
@@ -42,7 +42,7 @@ Purpose: validate skills config and availability (no real run execution).
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main skills preflight \
+python3 -m skills_runtime.cli.main skills preflight \
   --workspace-root . \
   --config help/examples/skills.cli.overlay.yaml \
   --pretty
@@ -54,7 +54,7 @@ Purpose: metadata-only scan for skills (does not read large bodies).
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main skills scan \
+python3 -m skills_runtime.cli.main skills scan \
   --workspace-root . \
   --config help/examples/skills.cli.overlay.yaml \
   --pretty
@@ -101,7 +101,7 @@ python3 -m agent_sdk.cli.main skills scan \
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main tools read-file \
+python3 -m skills_runtime.cli.main tools read-file \
   --workspace-root . \
   --file-path help/README.md \
   --offset 1 \
@@ -113,7 +113,7 @@ python3 -m agent_sdk.cli.main tools read-file \
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main tools shell \
+python3 -m skills_runtime.cli.main tools shell \
   --workspace-root . \
   --yes \
   --timeout-ms 30000 \
@@ -126,7 +126,7 @@ python3 -m agent_sdk.cli.main tools shell \
 ```bash
 # start
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main tools exec-command \
+python3 -m skills_runtime.cli.main tools exec-command \
   --workspace-root . \
   --yes \
   --cmd "python -u -c \"print('ready'); import time; time.sleep(2)\"" \
@@ -134,7 +134,7 @@ python3 -m agent_sdk.cli.main tools exec-command \
 
 # then write
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main tools write-stdin \
+python3 -m skills_runtime.cli.main tools write-stdin \
   --workspace-root . \
   --yes \
   --session-id <id> \
@@ -157,7 +157,7 @@ Compute run metrics from `events.jsonl`.
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main runs metrics \
+python3 -m skills_runtime.cli.main runs metrics \
   --workspace-root . \
   --run-id <run_id> \
   --pretty

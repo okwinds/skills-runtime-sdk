@@ -55,7 +55,7 @@ A：常见原因是 Linux 上 `bwrap` 缺失、路径权限不同、或 overlay/
 A：推荐顺序：
 1. `help/08-architecture-internals.md`
 2. `help/06-tools-and-safety.md`（tools/approvals/sandbox 的心智模型与可观测字段）
-3. 对应实现代码（`packages/skills-runtime-sdk-python/src/agent_sdk/*`，从 `agent_sdk/core/agent.py` 与 `agent_sdk/tools/builtin/*` 入手）
+3. 对应实现代码（`packages/skills-runtime-sdk-python/src/skills_runtime/*`，从 `skills_runtime/core/agent.py` 与 `skills_runtime/tools/builtin/*` 入手）
 
 ---
 

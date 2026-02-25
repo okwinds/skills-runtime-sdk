@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_sdk.tools.protocol import ToolSpec, tool_spec_to_openai_tool
+from skills_runtime.tools.protocol import ToolSpec, tool_spec_to_openai_tool
 
 
 def test_tool_spec_to_openai_tool_ignores_orchestration_metadata() -> None:

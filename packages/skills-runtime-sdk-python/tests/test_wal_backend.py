@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
-from agent_sdk.state.jsonl_wal import JsonlWal
-from agent_sdk.state.wal_protocol import InMemoryWal, WalBackend
-from agent_sdk.tools.protocol import ToolCall
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
+from skills_runtime.state.jsonl_wal import JsonlWal
+from skills_runtime.state.wal_protocol import InMemoryWal, WalBackend
+from skills_runtime.tools.protocol import ToolCall
 
 
 class _AlwaysApprove(ApprovalProvider):
@@ -22,7 +22,7 @@ def test_in_memory_wal_append_and_iter_events_order() -> None:
     assert wal.locator() == "wal://in-memory/test"
 
     # 使用最小 AgentEvent 形状（避免依赖额外字段）。
-    from agent_sdk.core.contracts import AgentEvent
+    from skills_runtime.core.contracts import AgentEvent
 
     e1 = AgentEvent(type="run_started", timestamp="2026-02-05T00:00:00Z", run_id="r1", payload={"n": 1})
     e2 = AgentEvent(type="run_completed", timestamp="2026-02-05T00:00:01Z", run_id="r1", payload={"n": 2})

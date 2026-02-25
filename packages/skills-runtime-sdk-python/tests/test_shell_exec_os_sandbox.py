@@ -6,9 +6,9 @@ from typing import Mapping, Optional
 
 import pytest
 
-from agent_sdk.tools.builtin.shell_exec import shell_exec
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.tools.builtin.shell_exec import shell_exec
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 class _FakeCommandResult:
@@ -51,7 +51,7 @@ class _PrefixSandboxAdapter:
         env: Optional[Mapping[str, str]],
         workspace_root: Path,
     ):
-        from agent_sdk.sandbox import PreparedCommand
+        from skills_runtime.sandbox import PreparedCommand
 
         return PreparedCommand(argv=self._prefix + list(argv), cwd=cwd)
 
@@ -183,7 +183,7 @@ def test_shell_exec_sandbox_restricted_passes_workspace_root_to_adapter(tmp_path
     class _CaptureAdapter:
         def prepare_shell_exec(self, *, argv, cwd, env, workspace_root):
             captured["workspace_root"] = workspace_root
-            from agent_sdk.sandbox import PreparedCommand
+            from skills_runtime.sandbox import PreparedCommand
 
             return PreparedCommand(argv=list(argv), cwd=cwd)
 
@@ -203,7 +203,7 @@ def test_shell_exec_sandbox_restricted_passes_cwd_to_adapter(tmp_path: Path) -> 
     class _CaptureAdapter:
         def prepare_shell_exec(self, *, argv, cwd, env, workspace_root):
             captured["cwd"] = cwd
-            from agent_sdk.sandbox import PreparedCommand
+            from skills_runtime.sandbox import PreparedCommand
 
             return PreparedCommand(argv=list(argv), cwd=cwd)
 
@@ -218,7 +218,7 @@ def test_shell_exec_sandbox_restricted_passes_cwd_to_adapter(tmp_path: Path) -> 
 
 @pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
 def test_seatbelt_sandbox_exec_available_on_mac_or_skip() -> None:
-    from agent_sdk.sandbox import SeatbeltSandboxAdapter
+    from skills_runtime.sandbox import SeatbeltSandboxAdapter
 
     adapter = SeatbeltSandboxAdapter(profile="(version 1) (allow default)")
     # 只验证可用性检测本身不抛异常；不强制在非 mac 上可用

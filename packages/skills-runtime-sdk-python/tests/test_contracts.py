@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from agent_sdk.core.contracts import AgentEvent
+from skills_runtime.core.contracts import AgentEvent
 
 
 def test_agent_event_json_roundtrip_fixed_timestamp() -> None:

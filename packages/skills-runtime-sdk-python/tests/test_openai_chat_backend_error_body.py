@@ -5,9 +5,9 @@ from typing import Any, AsyncIterator
 
 import httpx
 
-from agent_sdk.config.loader import AgentSdkLlmConfig
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
-from agent_sdk.llm.protocol import ChatRequest
+from skills_runtime.config.loader import AgentSdkLlmConfig
+from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
+from skills_runtime.llm.protocol import ChatRequest
 
 
 class _FakeResponse:
@@ -54,7 +54,7 @@ class _FakeClient:
 
 def test_openai_chat_backend_reads_error_body_before_raise(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # patch httpx.AsyncClient used by backend
-    import agent_sdk.llm.openai_chat as mod
+    import skills_runtime.llm.openai_chat as mod
 
     fake_client = _FakeClient()
     monkeypatch.setattr(mod.httpx, "AsyncClient", lambda *a, **k: fake_client)

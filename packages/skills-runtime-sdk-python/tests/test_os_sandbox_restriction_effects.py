@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.core.executor import Executor
-from agent_sdk.sandbox import BubblewrapSandboxAdapter, SeatbeltSandboxAdapter
-from agent_sdk.tools.builtin.shell_exec import shell_exec
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.core.executor import Executor
+from skills_runtime.sandbox import BubblewrapSandboxAdapter, SeatbeltSandboxAdapter
+from skills_runtime.tools.builtin.shell_exec import shell_exec
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 def _mk_ctx(*, workspace_root: Path, sandbox_adapter) -> ToolExecutionContext:

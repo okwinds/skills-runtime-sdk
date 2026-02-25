@@ -52,9 +52,9 @@ safety:
 
 ```python
 from pathlib import Path
-from agent_sdk import Agent
-from agent_sdk.safety import ApprovalRule, RuleBasedApprovalProvider
-from agent_sdk.safety.approvals import ApprovalDecision
+from skills_runtime.agent import Agent
+from skills_runtime.safety import ApprovalRule, RuleBasedApprovalProvider
+from skills_runtime.safety.approvals import ApprovalDecision
 
 provider = RuleBasedApprovalProvider(
     rules=[
@@ -172,7 +172,7 @@ agent = Agent(
 - `help/sandbox-best-practices.cn.md`
 - `help/04-cli-reference.cn.md`
 - `help/09-troubleshooting.cn.md`
-- 源码入口：`packages/skills-runtime-sdk-python/src/agent_sdk/tools/*`、`packages/skills-runtime-sdk-python/src/agent_sdk/safety/*`、`packages/skills-runtime-sdk-python/src/agent_sdk/sandbox.py`
+- 源码入口：`packages/skills-runtime-sdk-python/src/skills_runtime/tools/*`、`packages/skills-runtime-sdk-python/src/skills_runtime/safety/*`、`packages/skills-runtime-sdk-python/src/skills_runtime/sandbox.py`
 
 ---
 

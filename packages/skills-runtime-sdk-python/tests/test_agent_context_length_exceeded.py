@@ -4,11 +4,11 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 from pathlib import Path
 
-from agent_sdk import Agent
-from agent_sdk.llm.errors import ContextLengthExceededError
-from agent_sdk.llm.protocol import ChatRequest
-from agent_sdk.state.jsonl_wal import JsonlWal
-from agent_sdk.tools.protocol import ToolSpec
+from skills_runtime.agent import Agent
+from skills_runtime.llm.errors import ContextLengthExceededError
+from skills_runtime.llm.protocol import ChatRequest
+from skills_runtime.state.jsonl_wal import JsonlWal
+from skills_runtime.tools.protocol import ToolSpec
 
 
 class _LengthBackend:

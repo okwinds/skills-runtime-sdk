@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.skills.manager import SkillsManager
+from skills_runtime.skills.manager import SkillsManager
 
 
 def _write_skill(

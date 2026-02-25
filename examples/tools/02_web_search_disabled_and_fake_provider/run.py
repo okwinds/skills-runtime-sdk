@@ -15,9 +15,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from agent_sdk.tools.builtin import register_builtin_tools
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext, ToolRegistry
+from skills_runtime.tools.builtin import register_builtin_tools
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 
 
 def _run_tools_cli(*, repo_root: Path, workspace_root: Path, argv: list[str], timeout_sec: int = 20) -> dict:
@@ -34,7 +34,7 @@ def _run_tools_cli(*, repo_root: Path, workspace_root: Path, argv: list[str], ti
     env["PYTHONUNBUFFERED"] = "1"
 
     p = subprocess.run(  # noqa: S603
-        [sys.executable, "-m", "agent_sdk.cli.main", "tools", *argv],
+        [sys.executable, "-m", "skills_runtime.cli.main", "tools", *argv],
         cwd=str(workspace_root),
         env=env,
         stdout=subprocess.PIPE,

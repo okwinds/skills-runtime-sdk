@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_sdk.tools.builtin import register_builtin_tools
-from agent_sdk.tools.registry import ToolExecutionContext, ToolRegistry
+from skills_runtime.tools.builtin import register_builtin_tools
+from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 
 
 def test_register_builtin_tools_has_expected_codex_parity_set(tmp_path: Path) -> None:

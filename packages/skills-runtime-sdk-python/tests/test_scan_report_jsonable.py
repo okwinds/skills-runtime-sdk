@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.core.errors import FrameworkIssue
-from agent_sdk.skills.models import ScanReport, Skill
+from skills_runtime.core.errors import FrameworkIssue
+from skills_runtime.skills.models import ScanReport, Skill
 
 
 def _mk_skill(*, path: Path | None, metadata: dict, called: dict[str, int]) -> Skill:

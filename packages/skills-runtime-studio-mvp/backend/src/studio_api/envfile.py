@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from agent_sdk import bootstrap as agent_bootstrap
+from skills_runtime import bootstrap as agent_bootstrap
 
 
 def load_dotenv_for_workspace(*, workspace_root: Path) -> Optional[Path]:

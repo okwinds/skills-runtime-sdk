@@ -10,19 +10,19 @@
 
 ```python
 from pathlib import Path
-from agent_sdk import Agent
-from agent_sdk import AgentBuilder
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
-from agent_sdk.config.loader import AgentSdkLlmConfig
+from skills_runtime.agent import Agent
+from skills_runtime import AgentBuilder
+from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
+from skills_runtime.config.loader import AgentSdkLlmConfig
 ```
 
 ## 3.2 构造 Agent（最小可运行）
 
 ```python
 from pathlib import Path
-from agent_sdk import Agent
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
-from agent_sdk.config.loader import AgentSdkLlmConfig
+from skills_runtime.agent import Agent
+from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
+from skills_runtime.config.loader import AgentSdkLlmConfig
 
 workspace_root = Path(".").resolve()
 
@@ -49,8 +49,8 @@ agent = Agent(
 
 ```python
 from pathlib import Path
-from agent_sdk import AgentBuilder
-from agent_sdk.state.wal_protocol import InMemoryWal
+from skills_runtime import AgentBuilder
+from skills_runtime.state.wal_protocol import InMemoryWal
 
 agent = (
     AgentBuilder()
@@ -100,7 +100,7 @@ for event in agent.run_stream("请给出测试计划"):
 你可以注册一个或多个 hooks，接收每一条 `AgentEvent`（顺序与 stream 输出一致）：
 
 ```python
-from agent_sdk.core.contracts import AgentEvent
+from skills_runtime.core.contracts import AgentEvent
 
 seen = []
 def hook(ev: AgentEvent) -> None:
@@ -130,7 +130,7 @@ asyncio.run(main())
 `Agent.tool` 支持把 Python 函数直接注册为 tool。
 
 ```python
-from agent_sdk import Agent
+from skills_runtime.agent import Agent
 
 @agent.tool(name="sum_numbers", description="计算两个整数之和")
 def sum_numbers(a: int, b: int) -> int:
@@ -150,8 +150,8 @@ print(result.final_output)
 当你已经有预构造的 `ToolSpec` 与 handler（例如做集成桥接/注入自定义工具）时，可使用 `Agent.register_tool(...)`：
 
 ```python
-from agent_sdk import Agent
-from agent_sdk.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec
+from skills_runtime.agent import Agent
+from skills_runtime.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec
 
 spec = ToolSpec(
     name="hello_tool",
@@ -173,7 +173,7 @@ agent.register_tool(spec, handler, override=False)
 ## 3.7 注入审批提供者（ApprovalProvider）
 
 ```python
-from agent_sdk.safety.approvals import ApprovalProvider, ApprovalDecision, ApprovalRequest
+from skills_runtime.safety.approvals import ApprovalProvider, ApprovalDecision, ApprovalRequest
 
 class AlwaysApprove(ApprovalProvider):
     async def request_approval(self, *, request: ApprovalRequest, timeout_ms=None) -> ApprovalDecision:  # type: ignore[override]
@@ -192,7 +192,7 @@ agent = Agent(
 无人值守推荐：规则审批（默认 fail-closed，未命中规则一律拒绝）：
 
 ```python
-from agent_sdk.safety import ApprovalRule, RuleBasedApprovalProvider
+from skills_runtime.safety import ApprovalRule, RuleBasedApprovalProvider
 
 provider = RuleBasedApprovalProvider(rules=[ApprovalRule(tool="shell_exec", decision=ApprovalDecision.DENIED)])
 ```
@@ -201,7 +201,7 @@ provider = RuleBasedApprovalProvider(rules=[ApprovalRule(tool="shell_exec", deci
 
 ```python
 from pathlib import Path
-from agent_sdk import bootstrap
+from skills_runtime import bootstrap
 
 resolved = bootstrap.resolve_effective_run_config(
     workspace_root=Path(".").resolve(),
@@ -217,7 +217,7 @@ print(resolved.sources)  # 字段来源追踪
 
 ```python
 from pathlib import Path
-from agent_sdk.observability.run_metrics import compute_run_metrics_summary
+from skills_runtime.observability.run_metrics import compute_run_metrics_summary
 
 wal_locator = str(Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl"))  # 仅适用于文件型 WAL
 summary = compute_run_metrics_summary(wal_locator=wal_locator)

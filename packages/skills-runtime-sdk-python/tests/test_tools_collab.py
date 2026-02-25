@@ -4,14 +4,14 @@ import json
 import time
 from pathlib import Path
 
-from agent_sdk.core.collab_manager import ChildAgentContext, CollabManager
-from agent_sdk.tools.builtin.close_agent import close_agent
-from agent_sdk.tools.builtin.resume_agent import resume_agent
-from agent_sdk.tools.builtin.send_input import send_input
-from agent_sdk.tools.builtin.spawn_agent import spawn_agent
-from agent_sdk.tools.builtin.wait import wait_tool
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.core.collab_manager import ChildAgentContext, CollabManager
+from skills_runtime.tools.builtin.close_agent import close_agent
+from skills_runtime.tools.builtin.resume_agent import resume_agent
+from skills_runtime.tools.builtin.send_input import send_input
+from skills_runtime.tools.builtin.spawn_agent import spawn_agent
+from skills_runtime.tools.builtin.wait import wait_tool
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 def _payload(result) -> dict:  # type: ignore[no-untyped-def]

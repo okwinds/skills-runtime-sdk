@@ -7,7 +7,7 @@ from typing import Any, Dict, Tuple
 
 from fastapi.testclient import TestClient
 
-from agent_sdk.safety.approvals import ApprovalDecision, ApprovalRequest
+from skills_runtime.safety.approvals import ApprovalDecision, ApprovalRequest
 
 
 def _load_app_mod(tmp_path):

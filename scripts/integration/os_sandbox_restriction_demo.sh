@@ -53,11 +53,11 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   "${PY_BIN}" - <<'PY'
 from pathlib import Path
 
-from agent_sdk.core.executor import Executor
-from agent_sdk.sandbox import SeatbeltSandboxAdapter
-from agent_sdk.tools.builtin.shell_exec import shell_exec
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.core.executor import Executor
+from skills_runtime.sandbox import SeatbeltSandboxAdapter
+from skills_runtime.tools.builtin.shell_exec import shell_exec
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 ws = Path(".").resolve()
 
@@ -105,11 +105,11 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from agent_sdk.core.executor import Executor
-from agent_sdk.sandbox import BubblewrapSandboxAdapter
-from agent_sdk.tools.builtin.shell_exec import shell_exec
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.core.executor import Executor
+from skills_runtime.sandbox import BubblewrapSandboxAdapter
+from skills_runtime.tools.builtin.shell_exec import shell_exec
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 ws = Path(".").resolve()
 

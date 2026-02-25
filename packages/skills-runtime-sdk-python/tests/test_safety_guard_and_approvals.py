@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from agent_sdk.safety.approvals import compute_approval_key
-from agent_sdk.safety.guard import evaluate_command_risk
+from skills_runtime.safety.approvals import compute_approval_key
+from skills_runtime.safety.guard import evaluate_command_risk
 
 
 def test_guard_detects_sudo_high_risk() -> None:

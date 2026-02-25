@@ -10,9 +10,9 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 import pytest
 
-from agent_sdk.config.loader import AgentSdkSkillsConfig, load_config_dicts
-from agent_sdk.core.errors import FrameworkError
-from agent_sdk.skills.manager import SkillsManager
+from skills_runtime.config.loader import AgentSdkSkillsConfig, load_config_dicts
+from skills_runtime.core.errors import FrameworkError
+from skills_runtime.skills.manager import SkillsManager
 
 
 TS = "2026-02-07T00:00:00Z"

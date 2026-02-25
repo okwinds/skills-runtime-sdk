@@ -26,7 +26,7 @@ python -m pip install -U "skills-runtime-sdk[pgsql]"
 python -m pip install -U "skills-runtime-sdk[all]"
 ```
 
-Note: the import name is `agent_sdk` (package name differs from module name).
+Note: the import name is `skills_runtime` (package name differs from module name).
 
 ## Dev & tests
 
@@ -37,7 +37,7 @@ From this directory:
 - Run tests:
   - `pytest -q`
 - Quick import check:
-  - `python -c "import agent_sdk; print(agent_sdk.__version__)"`
+  - `python -c "import skills_runtime; print(skills_runtime.__version__)"`
 
 If you hit `UnicodeDecodeError` on some machines due to locale/encoding, try:
 
@@ -67,7 +67,7 @@ Do not commit `.env` (it is ignored).
 
 `Agent` does not implicitly load `.env` or auto-discover overlays (avoid import-time side effects). For an “easy to run + easy to debug” experience, use bootstrap:
 
-- `agent_sdk.bootstrap.resolve_effective_run_config(...)`
+- `skills_runtime.bootstrap.resolve_effective_run_config(...)`
 
 It gives you:
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_sdk.core.contracts import AgentEvent
-from agent_sdk.state.jsonl_wal import JsonlWal
+from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.state.jsonl_wal import JsonlWal
 
 
 def test_wal_append_and_iter_events_order(tmp_path: Path) -> None:

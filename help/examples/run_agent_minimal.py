@@ -15,10 +15,10 @@ from typing import Any, Dict, List
 
 import yaml
 
-from agent_sdk import Agent
-from agent_sdk.config.defaults import load_default_config_dict
-from agent_sdk.config.loader import load_config_dicts
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
+from skills_runtime.agent import Agent
+from skills_runtime.config.defaults import load_default_config_dict
+from skills_runtime.config.loader import load_config_dicts
+from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
 
 
 def _load_merged_config(config_paths: List[Path]) -> Any:

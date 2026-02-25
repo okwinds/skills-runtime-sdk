@@ -4,7 +4,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from agent_sdk.core.executor import Executor
+from skills_runtime.core.executor import Executor
 
 
 def _echo_argv() -> list[str]:

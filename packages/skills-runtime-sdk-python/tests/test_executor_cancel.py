@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.core.executor import Executor
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.protocol import ChatRequest
-from agent_sdk.tools.protocol import ToolCall, ToolSpec
-from agent_sdk.tools.builtin.shell_exec import shell_exec
-from agent_sdk.tools.registry import ToolExecutionContext
-from agent_sdk.core.agent import Agent
+from skills_runtime.core.executor import Executor
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.protocol import ChatRequest
+from skills_runtime.tools.protocol import ToolCall, ToolSpec
+from skills_runtime.tools.builtin.shell_exec import shell_exec
+from skills_runtime.tools.registry import ToolExecutionContext
+from skills_runtime.core.agent import Agent
 
 
 def _sleep_argv() -> list[str]:

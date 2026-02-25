@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_sdk.prompts.history import trim_history
-from agent_sdk.prompts.manager import PromptManager, PromptTemplates
-from agent_sdk.skills.manager import SkillsManager
-from agent_sdk.tools.protocol import ToolSpec
+from skills_runtime.prompts.history import trim_history
+from skills_runtime.prompts.manager import PromptManager, PromptTemplates
+from skills_runtime.skills.manager import SkillsManager
+from skills_runtime.tools.protocol import ToolSpec
 
 
 def _write_skill(dir_path: Path, *, name: str, description: str) -> None:

@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_sdk.core.executor import Executor
-from agent_sdk.tools.builtin.shell_command import shell_command
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.core.executor import Executor
+from skills_runtime.tools.builtin.shell_command import shell_command
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 def _payload(result) -> dict:  # type: ignore[no-untyped-def]

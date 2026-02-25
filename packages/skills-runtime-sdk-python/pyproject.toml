@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-skills-runtime-sdk = "agent_sdk.cli.main:main"
+skills-runtime-sdk = "skills_runtime.cli.main:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
@@ -36,7 +36,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"agent_sdk.assets" = ["default.yaml", "prompts/default/*.md", "migrations/pgsql/*.sql"]
+"skills_runtime.assets" = ["default.yaml", "prompts/default/*.md", "migrations/pgsql/*.sql"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"

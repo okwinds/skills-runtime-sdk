@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
+from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
 
 
 @dataclass(frozen=True)

@@ -4,13 +4,13 @@ import json
 from pathlib import Path
 from typing import List
 
-from agent_sdk import Agent
-from agent_sdk.core.contracts import AgentEvent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.state.wal_protocol import InMemoryWal
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.state.wal_emitter import WalEmitter
+from skills_runtime.agent import Agent
+from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.state.wal_protocol import InMemoryWal
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.state.wal_emitter import WalEmitter
 
 
 def test_wal_emitter_pipeline_order_emit_and_stream_only() -> None:

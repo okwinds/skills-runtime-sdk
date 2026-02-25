@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_sdk.config.loader import load_config
+from skills_runtime.config.loader import load_config
 
 
 def _find_sdk_default_yaml(start: Path) -> Path:
@@ -11,11 +11,11 @@ def _find_sdk_default_yaml(start: Path) -> Path:
 
     说明：
     - 开源发布场景下，仓库可能不会包含/发布 docs/specs 下的 default.yaml（例如被 .gitignore 排除）。
-    - SDK 运行时默认值以 `agent_sdk/assets/default.yaml` 为准（安装包内也会携带）。
+    - SDK 运行时默认值以 `skills_runtime/assets/default.yaml` 为准（安装包内也会携带）。
     """
 
     try:
-        import agent_sdk.assets as _assets
+        import skills_runtime.assets as _assets
 
         p = (Path(_assets.__file__).resolve().parent / "default.yaml").resolve()
         if p.exists():
@@ -26,10 +26,10 @@ def _find_sdk_default_yaml(start: Path) -> Path:
     # fallback：开发态（未安装）时从 repo 相对路径探测
     start = start.resolve()
     for parent in [start, *start.parents]:
-        p2 = parent / "packages" / "skills-runtime-sdk-python" / "src" / "agent_sdk" / "assets" / "default.yaml"
+        p2 = parent / "packages" / "skills-runtime-sdk-python" / "src" / "skills_runtime" / "assets" / "default.yaml"
         if p2.exists():
             return p2.resolve()
-    raise RuntimeError("default.yaml not found (expected agent_sdk/assets/default.yaml)")
+    raise RuntimeError("default.yaml not found (expected skills_runtime/assets/default.yaml)")
 
 
 def test_load_config_default_plus_overlay(tmp_path: Path) -> None:

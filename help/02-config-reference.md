@@ -13,11 +13,11 @@ An effective SDK runtime config can come from four layers (highest → lowest):
 1. `session_settings` (product layer injection)
 2. Environment variables (`SKILLS_RUNTIME_SDK_*`)
 3. YAML overlays (`config/runtime.yaml` + `--config`)
-4. Embedded defaults (SDK built-in defaults: `agent_sdk/assets/default.yaml`)
+4. Embedded defaults (SDK built-in defaults: `skills_runtime/assets/default.yaml`)
 
 Where to find defaults:
-- In this repo: `packages/skills-runtime-sdk-python/src/agent_sdk/assets/default.yaml`
-- In an installed package: `agent_sdk/assets/default.yaml`
+- In this repo: `packages/skills-runtime-sdk-python/src/skills_runtime/assets/default.yaml`
+- In an installed package: `skills_runtime/assets/default.yaml`
 
 ## 2.2 Default config highlights
 
@@ -185,7 +185,7 @@ PY
 
 # Preflight skills config
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main skills preflight --workspace-root . --config help/examples/skills.cli.overlay.yaml --pretty
+python3 -m skills_runtime.cli.main skills preflight --workspace-root . --config help/examples/skills.cli.overlay.yaml --pretty
 ```
 
 ## 2.9 Anti-patterns (avoid)

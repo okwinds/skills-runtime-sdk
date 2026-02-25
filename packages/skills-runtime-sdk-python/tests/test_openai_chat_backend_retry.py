@@ -7,9 +7,9 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 import httpx
 import pytest
 
-from agent_sdk.config.loader import AgentSdkLlmConfig
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
-from agent_sdk.llm.protocol import ChatRequest
+from skills_runtime.config.loader import AgentSdkLlmConfig
+from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
+from skills_runtime.llm.protocol import ChatRequest
 
 
 class _FakeStreamResponse:
@@ -115,7 +115,7 @@ def _run_stream(backend: OpenAIChatCompletionsBackend) -> List[str]:
 
 
 def test_openai_chat_retries_on_429_with_retry_after(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import agent_sdk.llm.openai_chat as mod
+    import skills_runtime.llm.openai_chat as mod
 
     sleeps: List[float] = []
 
@@ -153,7 +153,7 @@ def test_openai_chat_retries_on_429_with_retry_after(monkeypatch) -> None:  # ty
 
 
 def test_openai_chat_retries_on_request_error_before_emitting(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import agent_sdk.llm.openai_chat as mod
+    import skills_runtime.llm.openai_chat as mod
 
     sleeps: List[float] = []
 
@@ -193,7 +193,7 @@ def test_openai_chat_retries_on_request_error_before_emitting(monkeypatch) -> No
 
 
 def test_openai_chat_does_not_retry_after_emitting_any_event(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import agent_sdk.llm.openai_chat as mod
+    import skills_runtime.llm.openai_chat as mod
 
     monkeypatch.setattr(mod.random, "uniform", lambda a, b: 0.0)
 
@@ -227,7 +227,7 @@ def test_openai_chat_does_not_retry_after_emitting_any_event(monkeypatch) -> Non
 
 
 def test_openai_chat_retries_on_500_then_success(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import agent_sdk.llm.openai_chat as mod
+    import skills_runtime.llm.openai_chat as mod
 
     monkeypatch.setattr(mod.random, "uniform", lambda a, b: 0.0)
 
@@ -259,7 +259,7 @@ def test_openai_chat_retries_on_500_then_success(monkeypatch) -> None:  # type: 
 
 
 def test_openai_chat_does_not_retry_on_400(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import agent_sdk.llm.openai_chat as mod
+    import skills_runtime.llm.openai_chat as mod
 
     scenario = _Scenario([_FakeStreamResponse(status_code=400, lines=[])])
     monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
@@ -284,7 +284,7 @@ def test_openai_chat_does_not_retry_on_400(monkeypatch) -> None:  # type: ignore
 
 
 def test_openai_chat_enforces_retry_max_retries(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import agent_sdk.llm.openai_chat as mod
+    import skills_runtime.llm.openai_chat as mod
 
     sleeps: List[float] = []
 
@@ -325,7 +325,7 @@ def test_openai_chat_enforces_retry_max_retries(monkeypatch) -> None:  # type: i
 
 
 def test_openai_chat_retry_is_observable_via_on_retry_callback(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import agent_sdk.llm.openai_chat as mod
+    import skills_runtime.llm.openai_chat as mod
 
     observed: List[Dict[str, Any]] = []
 

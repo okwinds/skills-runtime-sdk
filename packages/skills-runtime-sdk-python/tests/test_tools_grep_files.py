@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 def _mk_ctx(*, workspace_root: Path) -> ToolExecutionContext:
@@ -57,7 +57,7 @@ def _assert_files(result) -> list[str]:  # type: ignore[no-untyped-def]
 def test_grep_files_validation_missing_pattern(tmp_path: Path) -> None:
     """pattern 缺失必须失败（validation）。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     ctx = _mk_ctx(workspace_root=tmp_path)
     call = ToolCall(call_id="c1", name="grep_files", args={})
@@ -70,7 +70,7 @@ def test_grep_files_validation_missing_pattern(tmp_path: Path) -> None:
 def test_grep_files_validation_blank_pattern(tmp_path: Path, pattern: str) -> None:
     """pattern.trim() 不能为空，否则 validation。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     ctx = _mk_ctx(workspace_root=tmp_path)
     result = grep_files(_call_grep(pattern=pattern), ctx)
@@ -81,7 +81,7 @@ def test_grep_files_validation_blank_pattern(tmp_path: Path, pattern: str) -> No
 def test_grep_files_permission_escape_workspace(tmp_path: Path) -> None:
     """path 越界必须拒绝（permission）。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     ctx = _mk_ctx(workspace_root=tmp_path)
     result = grep_files(_call_grep(pattern="x", path="/"), ctx)
@@ -92,7 +92,7 @@ def test_grep_files_permission_escape_workspace(tmp_path: Path) -> None:
 def test_grep_files_ok_no_matches_returns_empty(tmp_path: Path) -> None:
     """无匹配必须返回 ok=true 且 files=[]。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8")
     ctx = _mk_ctx(workspace_root=tmp_path)
@@ -104,7 +104,7 @@ def test_grep_files_ok_no_matches_returns_empty(tmp_path: Path) -> None:
 def test_grep_files_finds_matching_files(tmp_path: Path) -> None:
     """有匹配时返回包含匹配的文件路径列表。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8")
     (tmp_path / "b.txt").write_text("world\n", encoding="utf-8")
@@ -117,7 +117,7 @@ def test_grep_files_finds_matching_files(tmp_path: Path) -> None:
 def test_grep_files_include_glob_filters(tmp_path: Path) -> None:
     """include glob 必须生效。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     (tmp_path / "a.md").write_text("x=1\n", encoding="utf-8")
     (tmp_path / "b.txt").write_text("x=1\n", encoding="utf-8")
@@ -130,7 +130,7 @@ def test_grep_files_include_glob_filters(tmp_path: Path) -> None:
 def test_grep_files_limit_stops_early(tmp_path: Path) -> None:
     """limit 必须限制返回文件数。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     for i in range(10):
         (tmp_path / f"f{i}.txt").write_text("hit\n", encoding="utf-8")
@@ -143,7 +143,7 @@ def test_grep_files_limit_stops_early(tmp_path: Path) -> None:
 def test_grep_files_ignores_dot_entries_by_default(tmp_path: Path) -> None:
     """默认忽略 . 开头文件/目录（与常见 rg 行为一致）。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     (tmp_path / ".hidden.txt").write_text("hit\n", encoding="utf-8")
     (tmp_path / "visible.txt").write_text("hit\n", encoding="utf-8")
@@ -157,7 +157,7 @@ def test_grep_files_ignores_dot_entries_by_default(tmp_path: Path) -> None:
 def test_grep_files_handles_binary_like_bytes(tmp_path: Path) -> None:
     """遇到不可 UTF-8 解码内容不应崩溃（可视为不匹配）。"""
 
-    from agent_sdk.tools.builtin.grep_files import grep_files
+    from skills_runtime.tools.builtin.grep_files import grep_files
 
     (tmp_path / "bin.dat").write_bytes(b"\xff\xfe\x00\x00")
     ctx = _mk_ctx(workspace_root=tmp_path)

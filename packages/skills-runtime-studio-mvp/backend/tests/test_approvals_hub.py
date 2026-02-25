@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Dict
 
-from agent_sdk.safety.approvals import ApprovalDecision, ApprovalRequest
+from skills_runtime.safety.approvals import ApprovalDecision, ApprovalRequest
 
 from studio_api.approvals import ApprovalHub
 

@@ -4,7 +4,7 @@ WAL fork + replay resume 示例（Skills-First，离线可回归）。
 实现目标：
 - 第一次 run：写 checkpoint 后“故意中断”（Fake backend calls 耗尽 → run_failed）
 - Fork Planner：读取 WAL 并建议 fork 点
-- Fork：调用 `agent_sdk.state.fork.fork_run(...)` 生成新 run
+- Fork：调用 `skills_runtime.state.fork.fork_run(...)` 生成新 run
 - 第二次 run：以 replay resume 继续执行并写 final
 - Reporter：生成 report.md（含 evidence 指针）
 """
@@ -16,12 +16,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
-from agent_sdk.state.fork import fork_run
-from agent_sdk.tools.protocol import ToolCall
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
+from skills_runtime.state.fork import fork_run
+from skills_runtime.tools.protocol import ToolCall
 
 
 def _write_overlay(*, workspace_root: Path, skills_root: Path, safety_mode: str = "ask", resume_strategy: str = "replay") -> Path:

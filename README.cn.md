@@ -103,7 +103,7 @@ python -m pip install -U "skills-runtime-sdk[all]"
 ```
 
 注意：
-- Python 的 import 名称是 `agent_sdk`（包名与模块名不同）。
+- Python 的 import 名称是 `skills_runtime`（包名与模块名不同）。
 - `pip install` 安装的是 SDK；**Studio MVP 是仓库内的 example**（需要从源码运行）。
 
 ### CLI
@@ -120,9 +120,9 @@ skills-runtime-sdk skills --help
 import tempfile
 from pathlib import Path
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
 
 backend = FakeChatBackend(
     calls=[

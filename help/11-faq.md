@@ -56,7 +56,7 @@ A: Recommended order:
 
 1. `help/08-architecture-internals.md`
 2. `help/06-tools-and-safety.md` (mental model + observability fields)
-3. Code under `packages/skills-runtime-sdk-python/src/agent_sdk/*` (start at `agent_sdk/core/agent.py` and `agent_sdk/tools/builtin/*`)
+3. Code under `packages/skills-runtime-sdk-python/src/skills_runtime/*` (start at `skills_runtime/core/agent.py` and `skills_runtime/tools/builtin/*`)
 
 ---
 

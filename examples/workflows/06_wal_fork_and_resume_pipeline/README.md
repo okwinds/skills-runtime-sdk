@@ -4,7 +4,7 @@
 
 1. **第一次 run（Checkpoint Writer）**：写入一个 checkpoint 产物后，模拟进程异常/中断（run_failed）。
 2. **Fork Planner**：读取 WAL（`events.jsonl`）并选择一个“安全的 fork 点”（示例：最后一次成功写 checkpoint 的事件行号）。
-3. **Fork**：调用 `agent_sdk.state.fork.fork_run(...)` 生成新的 run（新 run_id 的 events.jsonl 前缀）。
+3. **Fork**：调用 `skills_runtime.state.fork.fork_run(...)` 生成新的 run（新 run_id 的 events.jsonl 前缀）。
 4. **第二次 run（Resume Finisher）**：以 `run.resume_strategy=replay` 恢复历史与 approvals cache，继续完成剩余步骤，并写最终产物。
 5. **Reporter**：写 `report.md` 汇总 src/dst run 与 evidence 指针。
 

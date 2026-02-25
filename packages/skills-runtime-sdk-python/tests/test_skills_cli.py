@@ -31,7 +31,7 @@ def _write_skill(dir_path: Path, *, name: str, description: str, body: str = "bo
 def _run_cli(args: list[str], capsys) -> Tuple[int, Dict[str, Any], str]:  # type: ignore[no-untyped-def]
     """运行 CLI 并返回 (exit_code, parsed_json, raw_stdout)。"""
 
-    from agent_sdk.cli.main import main
+    from skills_runtime.cli.main import main
 
     code = main(args)
     out = capsys.readouterr().out

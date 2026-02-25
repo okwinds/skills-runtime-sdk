@@ -13,8 +13,8 @@ import argparse
 import json
 from pathlib import Path
 
-from agent_sdk.config.loader import AgentSdkSkillsConfig
-from agent_sdk.skills.manager import SkillsManager
+from skills_runtime.config.loader import AgentSdkSkillsConfig
+from skills_runtime.skills.manager import SkillsManager
 
 
 def main() -> int:

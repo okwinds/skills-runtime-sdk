@@ -10,19 +10,19 @@
 
 ```python
 from pathlib import Path
-from agent_sdk import Agent
-from agent_sdk import AgentBuilder
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
-from agent_sdk.config.loader import AgentSdkLlmConfig
+from skills_runtime.agent import Agent
+from skills_runtime import AgentBuilder
+from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
+from skills_runtime.config.loader import AgentSdkLlmConfig
 ```
 
 ## 3.2 Construct a minimal runnable Agent
 
 ```python
 from pathlib import Path
-from agent_sdk import Agent
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
-from agent_sdk.config.loader import AgentSdkLlmConfig
+from skills_runtime.agent import Agent
+from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
+from skills_runtime.config.loader import AgentSdkLlmConfig
 
 workspace_root = Path(".").resolve()
 
@@ -49,8 +49,8 @@ When you need to inject production components like `wal_backend`, `approval_prov
 
 ```python
 from pathlib import Path
-from agent_sdk import AgentBuilder
-from agent_sdk.state.wal_protocol import InMemoryWal
+from skills_runtime import AgentBuilder
+from skills_runtime.state.wal_protocol import InMemoryWal
 
 agent = (
     AgentBuilder()
@@ -100,7 +100,7 @@ Common event types:
 Register one or more hooks to receive every `AgentEvent` (same order as the stream output):
 
 ```python
-from agent_sdk.core.contracts import AgentEvent
+from skills_runtime.core.contracts import AgentEvent
 
 seen = []
 def hook(ev: AgentEvent) -> None:
@@ -130,7 +130,7 @@ asyncio.run(main())
 `Agent.tool` can register a Python function as a tool.
 
 ```python
-from agent_sdk import Agent
+from skills_runtime.agent import Agent
 
 @agent.tool(name="sum_numbers", description="Sum two integers")
 def sum_numbers(a: int, b: int) -> int:
@@ -150,8 +150,8 @@ Notes:
 If you already have a `ToolSpec` and a handler (e.g., building an integration bridge), use `Agent.register_tool(...)`:
 
 ```python
-from agent_sdk import Agent
-from agent_sdk.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec
+from skills_runtime.agent import Agent
+from skills_runtime.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec
 
 spec = ToolSpec(
     name="hello_tool",
@@ -173,7 +173,7 @@ Notes:
 ## 3.7 Inject an approvals provider (`ApprovalProvider`)
 
 ```python
-from agent_sdk.safety.approvals import ApprovalProvider, ApprovalDecision, ApprovalRequest
+from skills_runtime.safety.approvals import ApprovalProvider, ApprovalDecision, ApprovalRequest
 
 class AlwaysApprove(ApprovalProvider):
     async def request_approval(self, *, request: ApprovalRequest, timeout_ms=None) -> ApprovalDecision:  # type: ignore[override]
@@ -192,7 +192,7 @@ agent = Agent(
 For unattended runs, use rule-based approvals (fail-closed by default: anything unmatched is denied):
 
 ```python
-from agent_sdk.safety import ApprovalRule, RuleBasedApprovalProvider
+from skills_runtime.safety import ApprovalRule, RuleBasedApprovalProvider
 
 provider = RuleBasedApprovalProvider(rules=[ApprovalRule(tool="shell_exec", decision=ApprovalDecision.DENIED)])
 ```
@@ -201,7 +201,7 @@ provider = RuleBasedApprovalProvider(rules=[ApprovalRule(tool="shell_exec", deci
 
 ```python
 from pathlib import Path
-from agent_sdk import bootstrap
+from skills_runtime import bootstrap
 
 resolved = bootstrap.resolve_effective_run_config(
     workspace_root=Path(".").resolve(),
@@ -217,7 +217,7 @@ print(resolved.sources)  # source tracking per leaf field
 
 ```python
 from pathlib import Path
-from agent_sdk.observability.run_metrics import compute_run_metrics_summary
+from skills_runtime.observability.run_metrics import compute_run_metrics_summary
 
 wal_locator = str(Path(".skills_runtime_sdk/runs/<run_id>/events.jsonl"))  # file WAL only
 summary = compute_run_metrics_summary(wal_locator=wal_locator)

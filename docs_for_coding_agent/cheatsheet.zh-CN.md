@@ -51,17 +51,17 @@ Skills 预检与扫描（确认 spaces/sources 配置是否正确）：
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-  python3 -m agent_sdk.cli.main skills preflight --workspace-root . --config help/examples/skills.cli.overlay.yaml --pretty
+  python3 -m skills_runtime.cli.main skills preflight --workspace-root . --config help/examples/skills.cli.overlay.yaml --pretty
 
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-  python3 -m agent_sdk.cli.main skills scan --workspace-root . --config help/examples/skills.cli.overlay.yaml --pretty
+  python3 -m skills_runtime.cli.main skills scan --workspace-root . --config help/examples/skills.cli.overlay.yaml --pretty
 ```
 
 Tools CLI（用于验证 tools registry/exec sessions/collab/web_search 等）：
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-  python3 -m agent_sdk.cli.main tools list --pretty
+  python3 -m skills_runtime.cli.main tools list --pretty
 ```
 
 ## 5) 沙箱 / Docker（关键结论）

@@ -49,7 +49,7 @@
 - **Priority**：High
 - **Preconditions**：
   - 可运行 Python
-  - tools CLI 可调用（`python -m agent_sdk.cli.main tools ...`）
+  - tools CLI 可调用（`python -m skills_runtime.cli.main tools ...`）
 - **Test Steps**：
   1. 进程 A 调用 `tools exec-command` 启动交互式 session（REPL 模式：readline）。
   2. 进程 B 调用 `tools write-stdin` 写入 `hello\\r` 并轮询输出直到退出。
@@ -98,7 +98,7 @@
 - **Priority**：High
 - **Test Steps**：
   1. 设置环境变量：`LANG=C`、`LC_ALL=C`、`PYTHONIOENCODING=ascii`。
-  2. 执行：`python -m agent_sdk.cli.main --help`。
+  2. 执行：`python -m skills_runtime.cli.main --help`。
 - **Expected Results**：
   - 进程返回码为 0
 - **Automation**：`packages/skills-runtime-sdk-python/tests/test_cli_utf8_startup_c_locale.py::test_cli_help_does_not_crash_in_c_locale`

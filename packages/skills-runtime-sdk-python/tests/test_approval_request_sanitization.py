@@ -4,11 +4,11 @@ import json
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from agent_sdk.core.agent import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.protocol import ChatRequest
-from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
-from agent_sdk.tools.protocol import ToolCall, ToolSpec
+from skills_runtime.core.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.protocol import ChatRequest
+from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
+from skills_runtime.tools.protocol import ToolCall, ToolSpec
 
 
 class _Backend:

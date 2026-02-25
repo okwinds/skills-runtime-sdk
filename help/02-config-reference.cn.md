@@ -13,13 +13,13 @@ SDK 运行时有效配置可来自四层（高到低）：
 1. `session_settings`（产品层动态注入）
 2. 环境变量（`SKILLS_RUNTIME_SDK_*`）
 3. overlay YAML（`config/runtime.yaml` + `--config`）
-4. embedded default（SDK 内置默认配置：`agent_sdk/assets/default.yaml`）
+4. embedded default（SDK 内置默认配置：`skills_runtime/assets/default.yaml`）
 
 ## 2.2 默认配置（关键字段）
 
 参考：
-- 源码仓库内：`packages/skills-runtime-sdk-python/src/agent_sdk/assets/default.yaml`
-- 安装包内：`agent_sdk/assets/default.yaml`
+- 源码仓库内：`packages/skills-runtime-sdk-python/src/skills_runtime/assets/default.yaml`
+- 安装包内：`skills_runtime/assets/default.yaml`
 
 - `run.max_steps=40`
 - `run.max_wall_time_sec=1800`
@@ -185,7 +185,7 @@ PY
 
 # preflight 校验 skills 配置
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-python3 -m agent_sdk.cli.main skills preflight --workspace-root . --config help/examples/skills.cli.overlay.yaml --pretty
+python3 -m skills_runtime.cli.main skills preflight --workspace-root . --config help/examples/skills.cli.overlay.yaml --pretty
 ```
 
 ## 2.9 反例（不要这样配）

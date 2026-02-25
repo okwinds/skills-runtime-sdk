@@ -66,7 +66,7 @@
 - 本框架默认要求 Python `>=3.10`（`packages/skills-runtime-sdk-python/pyproject.toml`）
 - 文档示例默认使用 `<repo_root>` 占位，不写机器绝对路径
 - secrets 不入库：只使用 `.env.example` + 本地 `.env`
-- 建议把 Help 当作“可直接使用的操作手册”；如需更深的实现细节，再看对应源码（`packages/skills-runtime-sdk-python/src/agent_sdk/*`）
+- 建议把 Help 当作“可直接使用的操作手册”；如需更深的实现细节，再看对应源码（`packages/skills-runtime-sdk-python/src/skills_runtime/*`）
 
 ## 一条建议
 

@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_sdk.core.contracts import AgentEvent
-from agent_sdk.tools.builtin.update_plan import update_plan
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.tools.builtin.update_plan import update_plan
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 def _payload(result) -> dict:  # type: ignore[no-untyped-def]

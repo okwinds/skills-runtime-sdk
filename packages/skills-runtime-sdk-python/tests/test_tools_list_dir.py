@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 def _mk_ctx(*, workspace_root: Path) -> ToolExecutionContext:
@@ -57,7 +57,7 @@ def _assert_has_entries(result) -> list[dict]:  # type: ignore[no-untyped-def]
 def test_list_dir_validation_missing_dir_path(tmp_path: Path) -> None:
     """dir_path 缺失必须失败（validation）。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     ctx = _mk_ctx(workspace_root=tmp_path)
     call = ToolCall(call_id="c1", name="list_dir", args={})
@@ -69,7 +69,7 @@ def test_list_dir_validation_missing_dir_path(tmp_path: Path) -> None:
 def test_list_dir_permission_escape_workspace(tmp_path: Path) -> None:
     """dir_path 越界必须拒绝（permission）。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     ctx = _mk_ctx(workspace_root=tmp_path)
     result = list_dir(_call_list_dir(dir_path="/"), ctx)
@@ -80,7 +80,7 @@ def test_list_dir_permission_escape_workspace(tmp_path: Path) -> None:
 def test_list_dir_not_found(tmp_path: Path) -> None:
     """目录不存在必须失败（not_found）。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     ctx = _mk_ctx(workspace_root=tmp_path)
     result = list_dir(_call_list_dir(dir_path=str((tmp_path / "missing").resolve())), ctx)
@@ -91,7 +91,7 @@ def test_list_dir_not_found(tmp_path: Path) -> None:
 def test_list_dir_validation_dir_path_is_file(tmp_path: Path) -> None:
     """dir_path 指向文件必须失败（validation）。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     p = tmp_path / "a.txt"
     p.write_text("x", encoding="utf-8")
@@ -105,7 +105,7 @@ def test_list_dir_validation_dir_path_is_file(tmp_path: Path) -> None:
 def test_list_dir_validation_depth(depth: int, tmp_path: Path) -> None:
     """depth 必须 >= 1，否则 validation。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     (tmp_path / "d").mkdir()
     ctx = _mk_ctx(workspace_root=tmp_path)
@@ -118,7 +118,7 @@ def test_list_dir_validation_depth(depth: int, tmp_path: Path) -> None:
 def test_list_dir_validation_offset(offset: int, tmp_path: Path) -> None:
     """offset 必须 >= 1，否则 validation。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     (tmp_path / "d").mkdir()
     ctx = _mk_ctx(workspace_root=tmp_path)
@@ -131,7 +131,7 @@ def test_list_dir_validation_offset(offset: int, tmp_path: Path) -> None:
 def test_list_dir_validation_limit(limit: int, tmp_path: Path) -> None:
     """limit 必须 >= 1，否则 validation。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     (tmp_path / "d").mkdir()
     ctx = _mk_ctx(workspace_root=tmp_path)
@@ -143,7 +143,7 @@ def test_list_dir_validation_limit(limit: int, tmp_path: Path) -> None:
 def test_list_dir_offset_exceeds_count_is_validation(tmp_path: Path) -> None:
     """offset 超过条目数必须失败（validation）。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     d = tmp_path / "d"
     d.mkdir()
@@ -157,7 +157,7 @@ def test_list_dir_offset_exceeds_count_is_validation(tmp_path: Path) -> None:
 def test_list_dir_depth_1_lists_only_top_level(tmp_path: Path) -> None:
     """depth=1 只列顶层，不展开子目录。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     d = tmp_path / "d"
     d.mkdir()
@@ -175,7 +175,7 @@ def test_list_dir_depth_1_lists_only_top_level(tmp_path: Path) -> None:
 def test_list_dir_sorted_and_marks_types(tmp_path: Path) -> None:
     """输出条目必须稳定排序，并标记 dir/symlink/file 类型。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     d = tmp_path / "d"
     d.mkdir()
@@ -199,7 +199,7 @@ def test_list_dir_sorted_and_marks_types(tmp_path: Path) -> None:
 def test_list_dir_limit_truncates_and_sets_truncated(tmp_path: Path) -> None:
     """limit 生效时必须截断，并设置 truncated=true。"""
 
-    from agent_sdk.tools.builtin.list_dir import list_dir
+    from skills_runtime.tools.builtin.list_dir import list_dir
 
     d = tmp_path / "d"
     d.mkdir()

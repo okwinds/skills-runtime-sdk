@@ -5,8 +5,8 @@ from typing import Any, Dict, Iterable, List
 
 import pytest
 
-from agent_sdk.config.loader import AgentSdkSkillsConfig, load_config_dicts
-from agent_sdk.skills.manager import SkillsManager
+from skills_runtime.config.loader import AgentSdkSkillsConfig, load_config_dicts
+from skills_runtime.skills.manager import SkillsManager
 
 
 def _base_config(skills: dict[str, Any]) -> dict[str, Any]:

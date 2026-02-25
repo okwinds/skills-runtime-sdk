@@ -10,14 +10,14 @@ from fastapi import Body, FastAPI, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from agent_sdk import Agent
-from agent_sdk import bootstrap as agent_bootstrap
-from agent_sdk.config.loader import load_config_dicts
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.llm.openai_chat import OpenAIChatCompletionsBackend
-from agent_sdk.skills.manager import SkillsManager
-from agent_sdk.tools.protocol import ToolCall
+from skills_runtime.agent import Agent
+from skills_runtime import bootstrap as agent_bootstrap
+from skills_runtime.config.loader import load_config_dicts
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
+from skills_runtime.skills.manager import SkillsManager
+from skills_runtime.tools.protocol import ToolCall
 
 from studio_api.approvals import ApprovalHub
 from studio_api.envfile import load_dotenv_for_workspace
@@ -191,7 +191,7 @@ def _build_agent(*, session_id: str, run_id: str) -> Agent:
 
     # 读取 overlay 合并后的默认 timeout/max_retries（best-effort）
     merged_dicts: List[Dict[str, Any]] = []
-    from agent_sdk.config.defaults import load_default_config_dict
+    from skills_runtime.config.defaults import load_default_config_dict
     import yaml
 
     merged_dicts.append(load_default_config_dict())

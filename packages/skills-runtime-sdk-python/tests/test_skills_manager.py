@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.core.errors import FrameworkError
-from agent_sdk.skills.loader import load_skill_from_path
-from agent_sdk.skills.manager import SkillsManager
-from agent_sdk.skills.mentions import extract_skill_mentions
+from skills_runtime.core.errors import FrameworkError
+from skills_runtime.skills.loader import load_skill_from_path
+from skills_runtime.skills.manager import SkillsManager
+from skills_runtime.skills.mentions import extract_skill_mentions
 
 
 def _write_skill(dir_path: Path, *, name: str, description: str, body: str = "body\n") -> Path:

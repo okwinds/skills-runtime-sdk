@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.state.jsonl_wal import JsonlWal
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.state.jsonl_wal import JsonlWal
 
 
 def test_agent_config_paths_are_overlays_on_default(tmp_path: Path) -> None:

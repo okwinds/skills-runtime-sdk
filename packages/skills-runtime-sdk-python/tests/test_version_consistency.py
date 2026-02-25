@@ -7,7 +7,7 @@ import tomllib
 def test_sdk_version_matches_pyproject() -> None:
     """
     版本一致性护栏：
-    - `agent_sdk.__version__` 必须与 pyproject.toml 的 project.version 一致。
+    - `skills_runtime.__version__` 必须与 pyproject.toml 的 project.version 一致。
     - 避免出现“打了 tag/发了 release，但构建出来的包版本没变”的问题（PyPI 会拒绝重复文件名）。
     """
 
@@ -17,6 +17,6 @@ def test_sdk_version_matches_pyproject() -> None:
 
     expected = data["project"]["version"]
 
-    from agent_sdk import __version__
+    from skills_runtime import __version__
 
     assert __version__ == expected

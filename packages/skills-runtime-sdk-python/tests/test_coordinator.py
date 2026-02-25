@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.llm.protocol import ChatRequest
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.llm.protocol import ChatRequest
 
 
 class _AssertAssistantHistoryContainsBackend:
@@ -61,7 +61,7 @@ def test_coordinator_run_with_child_injects_summary(tmp_path: Path) -> None:
     primary = Agent(model="fake-model", backend=primary_backend, workspace_root=tmp_path)
 
     # NOTE：Coordinator 在实现前不存在；本测试用于 TDD（先红后绿）。
-    from agent_sdk import Coordinator
+    from skills_runtime import Coordinator
 
     coord = Coordinator(agents=[primary, child])
     result = coord.run_with_child(task="do it", child_task="make a plan")

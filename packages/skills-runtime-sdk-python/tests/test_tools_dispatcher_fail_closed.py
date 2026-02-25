@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import List
 
-from agent_sdk.core.contracts import AgentEvent
-from agent_sdk.tools.dispatcher import ToolDispatchInputs, ToolDispatcher
-from agent_sdk.tools.protocol import ToolCall, ToolResult
+from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.tools.dispatcher import ToolDispatchInputs, ToolDispatcher
+from skills_runtime.tools.protocol import ToolCall, ToolResult
 
 
 class _DummyRegistry:

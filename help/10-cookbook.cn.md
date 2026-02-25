@@ -33,10 +33,10 @@
 
    ```bash
    PYTHONPATH=packages/skills-runtime-sdk-python/src \
-     python3 -m agent_sdk.cli.main skills preflight --workspace-root . --config /tmp/sdk.overlay.yaml --pretty
+     python3 -m skills_runtime.cli.main skills preflight --workspace-root . --config /tmp/sdk.overlay.yaml --pretty
 
    PYTHONPATH=packages/skills-runtime-sdk-python/src \
-     python3 -m agent_sdk.cli.main skills scan --workspace-root . --config /tmp/sdk.overlay.yaml --pretty
+     python3 -m skills_runtime.cli.main skills scan --workspace-root . --config /tmp/sdk.overlay.yaml --pretty
    ```
 
 4. 跑最小 Python 示例（验证 run + tools/approvals/sandbox 的基础链路）：

@@ -15,67 +15,67 @@
 
 - 能力：默认配置 + 多 overlay 深度合并；支持 workspace_root 语义；不落盘 secrets
 - 入口（契约/使用）：`help/02-config-reference.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/config/loader.py`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/config/loader.py`
 
 ### CAP-SDK-002：Agent 基础闭环（run / run_stream）
 
 - 能力：run_stream 事件流；run 返回 final_output/wal_locator（locator）；默认 file WAL（JSONL）落盘，终态事件 payload 同时提供 `wal_locator`
 - 入口（契约/使用）：`help/03-sdk-python-api.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/core/agent.py`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/core/agent.py`
 
 ### CAP-SDK-003：Tools 协议与注册表（ToolRegistry）
 
 - 能力：ToolSpec/ToolCall/ToolResult 契约；builtin tools 注册；dispatch 落 `tool_call_*` 事件
 - 入口（契约/使用）：`help/06-tools-and-safety.cn.md`（含证据字段）
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/tools/registry.py`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/tools/registry.py`
 
 ### CAP-SDK-004：Safety + Approvals
 
 - 能力：allow/ask/deny；审批超时；审计字段与 error_kind 分类
 - 入口（契约/使用）：`help/06-tools-and-safety.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/safety/*`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/safety/*`
 
 ### CAP-SDK-005：OS Sandbox（seatbelt/bubblewrap）
 
 - 能力：框架层 sandbox policy gate；OS adapter auto；可观测 `data.sandbox.*`
 - 入口（契约/使用）：`help/sandbox-best-practices.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/sandbox/*`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/sandbox/*`
 
 ### CAP-SDK-006：Exec sessions（exec_command/write_stdin）
 
 - 能力：PTY-backed exec sessions；跨进程可复用（runtime server 生命周期内）
 - 入口（使用）：`docs_for_coding_agent/01-recipes.md`（配方 3）
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/runtime/server.py`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/runtime/server.py`
 
 ### CAP-SDK-007：Collab primitives（spawn/wait/send/close/resume）
 
 - 能力：跨进程 child id；wait 可观测 cancelled/completed
 - 入口（使用）：`docs_for_coding_agent/01-recipes.md`（配方 3/7）
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/tools/collab.py`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/tools/collab.py`
 
 ### CAP-SDK-008：Skills（preflight/scan/mentions）
 
 - 能力：explicit spaces/sources；严格 mention；preflight 零 IO；scan 报告 jsonable
 - 入口（契约/使用）：`help/05-skills-guide.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/skills/*`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/skills/*`
 
 ### CAP-SDK-009：Skills sources（filesystem/in-memory/redis/pgsql）
 
 - 能力：sources contract；redis/pgsql 可选依赖；离线回归夹具
 - 入口（契约/使用）：`help/05-skills-guide.cn.md`（sources 段落）
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/skills/sources/*`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/skills/sources/*`
 
 ### CAP-SDK-010：State / WAL（resume replay + fork）
 
 - 能力：JSONL WAL；resume_strategy=replay；fork_run 分叉复跑
 - 入口（契约/使用）：`help/08-architecture-internals.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/state/*`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/state/*`
 
 ### CAP-SDK-011：Observability（事件/错误分类）
 
 - 能力：error_kind 分类；wal_locator（locator）与 wal_locator 可定位；sandbox/approvals 可观测字段
 - 入口（使用）：`help/09-troubleshooting.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/observability/*`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/observability/*`
 
 ### CAP-SDK-012：Studio MVP（API + SSE）
 
@@ -86,7 +86,7 @@
 
 - 能力：skills preflight/scan；tools list/run；明确 exit code 语义
 - 入口（契约/使用）：`help/04-cli-reference.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/agent_sdk/cli/*`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/cli/*`
 
 ### CAP-SDK-014：Plan + Human I/O（update_plan / request_user_input）
 

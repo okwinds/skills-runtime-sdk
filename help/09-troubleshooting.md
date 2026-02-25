@@ -157,8 +157,8 @@ curl -s http://127.0.0.1:8000/api/v1/health | jq .
 curl -s http://127.0.0.1:8000/api/v1/runs/<run_id>/approvals/pending | jq .
 
 # skills preflight/scan (CLI)
-PYTHONPATH=packages/skills-runtime-sdk-python/src python3 -m agent_sdk.cli.main skills preflight --workspace-root . --config /tmp/skills.cli.overlay.yaml --pretty
-PYTHONPATH=packages/skills-runtime-sdk-python/src python3 -m agent_sdk.cli.main skills scan --workspace-root . --config /tmp/skills.cli.overlay.yaml --pretty
+PYTHONPATH=packages/skills-runtime-sdk-python/src python3 -m skills_runtime.cli.main skills preflight --workspace-root . --config /tmp/skills.cli.overlay.yaml --pretty
+PYTHONPATH=packages/skills-runtime-sdk-python/src python3 -m skills_runtime.cli.main skills scan --workspace-root . --config /tmp/skills.cli.overlay.yaml --pretty
 ```
 
 ## 9.4 Troubleshooting log (recommended)

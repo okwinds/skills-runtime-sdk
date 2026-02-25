@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_sdk.tools.builtin.read_file import read_file
-from agent_sdk.tools.protocol import ToolCall
-from agent_sdk.tools.registry import ToolExecutionContext
+from skills_runtime.tools.builtin.read_file import read_file
+from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.tools.registry import ToolExecutionContext
 
 
 def _mk_ctx(tmp_path: Path) -> ToolExecutionContext:

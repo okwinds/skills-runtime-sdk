@@ -3,11 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from agent_sdk import Agent
-from agent_sdk.llm.chat_sse import ChatStreamEvent
-from agent_sdk.llm.fake import FakeChatBackend, FakeChatCall
-from agent_sdk.llm.protocol import ChatRequest
-from agent_sdk.tools.protocol import ToolCall
+from skills_runtime.agent import Agent
+from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
+from skills_runtime.llm.protocol import ChatRequest
+from skills_runtime.tools.protocol import ToolCall
 
 
 class _AssertReplayHistoryBackend:
@@ -101,8 +101,8 @@ def test_agent_resume_replay_restores_approved_for_session_cache(tmp_path: Path)
       SDK 应使用 replay 恢复的缓存直接走 cached 路径，并继续执行工具。
     """
 
-    from agent_sdk.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
-    from agent_sdk.state.jsonl_wal import JsonlWal
+    from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
+    from skills_runtime.state.jsonl_wal import JsonlWal
 
     class _ApproveForSessionOnce(ApprovalProvider):
         def __init__(self) -> None:
