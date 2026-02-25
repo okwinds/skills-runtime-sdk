@@ -12,7 +12,8 @@ Purpose: give a coding agent a runnable “happy path” + key entrypoints.
 
 - Help (integration/ops manual): `help/README.md`
 - Coding-agent docs index: `docs_for_coding_agent/DOCS_INDEX.md`
-- Examples library (offline-by-default): `examples/`
+- Examples library (offline-by-default, teaching/coverage): `docs_for_coding_agent/examples/`
+- Human-facing app examples: `examples/apps/`
 
 ## Offline verification
 

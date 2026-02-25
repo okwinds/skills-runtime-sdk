@@ -163,7 +163,7 @@ python3 -m skills_runtime.cli.main runs metrics \
   --pretty
 ```
 
-Or pass `--events-path` directly.
+Or pass `--wal-locator <path>` directly (filesystem-only; relative paths are resolved under `--workspace-root`).
 
 ---
 

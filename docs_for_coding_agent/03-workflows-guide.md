@@ -64,7 +64,7 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 推荐目录结构：
 
 ```
-examples/workflows/<nn_name>/
+docs_for_coding_agent/examples/workflows/<nn_name>/
   README.md
   run.py
   skills/
@@ -110,7 +110,7 @@ $[examples:workflow].repo_patcher
 当你希望“规则/政策/标准/说明材料”可复用、可随 skill 一起分发时，把它们放入：
 - `skills/<skill>/references/*`
 
-运行期用 `skill_ref_read` 读取（示例见 `examples/workflows/03_multi_agent_reference_driven_pipeline/`）。
+运行期用 `skill_ref_read` 读取（示例见 `docs_for_coding_agent/examples/workflows/03_multi_agent_reference_driven_pipeline/`）。
 
 注意：
 - `skill_ref_read` 默认 fail-closed，需要在 overlay 显式开启 `skills.references.enabled=true`。
@@ -124,7 +124,7 @@ $[examples:workflow].repo_patcher
 - `request_user_input`（结构化题目 + 选项）
 - `update_plan`（把关键推进过程结构化可见）
 
-示例见 `examples/workflows/02_single_agent_form_interview/`。
+示例见 `docs_for_coding_agent/examples/workflows/02_single_agent_form_interview/`。
 
 ---
 
@@ -137,7 +137,7 @@ $[examples:workflow].repo_patcher
 3. Aggregator：汇总产物 + wal_locator 指针，生成 `report.md`
 
 对应示例：
-- `examples/workflows/04_map_reduce_parallel_subagents/`
+- `docs_for_coding_agent/examples/workflows/04_map_reduce_parallel_subagents/`
 
 验收观察点：
 - `subtasks.json` 存在且结构稳定（可迁移到真实项目）
@@ -155,7 +155,7 @@ $[examples:workflow].repo_patcher
 - Reporter：只写（file_write）
 
 对应示例：
-- `examples/workflows/05_multi_agent_code_review_fix_qa_report/`
+- `docs_for_coding_agent/examples/workflows/05_multi_agent_code_review_fix_qa_report/`
 
 ---
 
@@ -168,7 +168,7 @@ $[examples:workflow].repo_patcher
 - 用 `run.resume_strategy=replay` 运行新 run，尽量恢复 tool outputs 与 approvals cache
 
 对应示例：
-- `examples/workflows/06_wal_fork_and_resume_pipeline/`
+- `docs_for_coding_agent/examples/workflows/06_wal_fork_and_resume_pipeline/`
 
 验收观察点：
 - `run_started.payload.resume.enabled == true` 且 `strategy == replay`
@@ -185,7 +185,7 @@ $[examples:workflow].repo_patcher
 - 通过 builtin tool `skill_exec` 执行动作（仍走 approvals/sandbox/WAL 证据链）
 
 对应示例：
-- `examples/workflows/07_skill_exec_actions_module/`
+- `docs_for_coding_agent/examples/workflows/07_skill_exec_actions_module/`
 
 ---
 
@@ -199,10 +199,10 @@ $[examples:workflow].repo_patcher
 - approvals：监听 `approval_requested` 并调用 decide API
 
 对应示例（集成，需显式 opt-in）：
-- `examples/workflows/08_studio_sse_integration/`
+- `docs_for_coding_agent/examples/workflows/08_studio_sse_integration/`
 
 离线最小骨架（不依赖 Studio）：
-- `examples/workflows/18_fastapi_sse_gateway_minimal/`
+- `docs_for_coding_agent/examples/workflows/18_fastapi_sse_gateway_minimal/`
 
 ---
 
@@ -215,7 +215,7 @@ $[examples:workflow].repo_patcher
 - Reporter：汇总写 `report.md`（包含 `wal_locator` 指针）
 
 对应示例：
-- `examples/workflows/09_branching_router_workflow/`
+- `docs_for_coding_agent/examples/workflows/09_branching_router_workflow/`
 
 验收观察点：
 - `route.json` 存在且结构稳定（可迁移到真实项目）
@@ -233,7 +233,7 @@ $[examples:workflow].repo_patcher
 4. Reporter：写 `report.md`（汇总每次 attempt 的 exit_code 与 `wal_locator`）
 
 对应示例：
-- `examples/workflows/10_retry_degrade_workflow/`
+- `docs_for_coding_agent/examples/workflows/10_retry_degrade_workflow/`
 
 验收观察点：
 - attempt 的 `tool_call_finished.ok == false` 也必须存在（失败仍可审计）
@@ -251,7 +251,7 @@ $[examples:workflow].repo_patcher
 - 需要在执行中途给子 agent 追加输入（例如补充约束/数据）
 
 对应示例：
-- `examples/workflows/11_collab_parallel_subagents_workflow/`
+- `docs_for_coding_agent/examples/workflows/11_collab_parallel_subagents_workflow/`
 
 验收观察点：
 - master 的 WAL 中 `spawn_agent/send_input/wait` 都应有 `tool_call_finished.ok == true`
@@ -266,7 +266,7 @@ $[examples:workflow].repo_patcher
 - `write_stdin` 写入输入并轮询输出
 
 对应示例：
-- `examples/workflows/12_exec_sessions_engineering_workflow/`
+- `docs_for_coding_agent/examples/workflows/12_exec_sessions_engineering_workflow/`
 
 验收观察点：
 - `exec_command/write_stdin` 都应留下 approvals/WAL 证据链
@@ -283,7 +283,7 @@ $[examples:workflow].repo_patcher
 - 输出 score + diff 摘要（Markdown + JSON）
 
 对应示例：
-- `examples/workflows/15_workflow_eval_harness/`
+- `docs_for_coding_agent/examples/workflows/15_workflow_eval_harness/`
 
 验收观察点：
 - `eval_score.json` 可被 CI 读取

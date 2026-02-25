@@ -60,11 +60,10 @@ Notes:
 
 ### `sandbox`
 
-- `profile`: `custom|dev|balanced|prod` (macro for staged tightening)
+- `profile`: `dev|balanced|prod` (macro for staged tightening)
   - `dev`: default does not enforce OS sandbox (availability-first)
   - `balanced`: recommended default (restricted + auto backend; Linux defaults to `unshare_net=true`)
   - `prod`: production-hardening baseline (tighten further via overlays)
-  - `custom`: no macro expansion; behavior is driven purely by `default_policy/os.*`
 - `default_policy`: `none|restricted`
 - `os.mode`: `auto|none|seatbelt|bubblewrap`
 - `os.seatbelt.profile`: macOS `sandbox-exec` profile
@@ -116,7 +115,7 @@ safety:
   approval_timeout_ms: 60000
 
 sandbox:
-  profile: "balanced" # dev/balanced/prod/custom
+  profile: "balanced" # dev/balanced/prod
   # profile expansion overrides default_policy/os.*; use overlays to fine-tune seatbelt/bwrap params
   default_policy: "restricted"
   os:

@@ -12,7 +12,8 @@
 
 - 接入/运维手册（Help）：`help/README.cn.md`
 - 编码智能体教学索引：`docs_for_coding_agent/DOCS_INDEX.md`
-- 示例库（离线可回归）：`examples/`
+- 示例库（离线可回归，教学/能力覆盖）：`docs_for_coding_agent/examples/`
+- 示例库（面向人类的应用示例）：`examples/apps/`
 
 ## 2) 最短跑通（离线）
 
@@ -61,7 +62,7 @@ Tools CLI（用于验证 tools registry/exec sessions/collab/web_search 等）�
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-  python3 -m skills_runtime.cli.main tools list --pretty
+  python3 -m skills_runtime.cli.main tools list-dir --workspace-root . --dir-path . --pretty
 ```
 
 ## 5) 沙箱 / Docker（关键结论）

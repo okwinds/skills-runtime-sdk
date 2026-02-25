@@ -60,11 +60,10 @@ SDK 运行时有效配置可来自四层（高到低）：
 
 ### `sandbox`
 
-- `profile`：`custom|dev|balanced|prod`（高层宏；用于分阶段收紧）
+- `profile`：`dev|balanced|prod`（高层宏；用于分阶段收紧）
   - `dev`：默认不强制 OS sandbox（可用性优先）
   - `balanced`：推荐默认（restricted + auto backend；Linux 默认隔离网络）
   - `prod`：更偏生产硬化（提供更严格的基线；建议结合 overlay 按业务调整）
-  - `custom`：不做宏展开，仅由 `default_policy/os.*` 决定行为
 - `default_policy`：`none|restricted`
 - `os.mode`：`auto|none|seatbelt|bubblewrap`
 - `os.seatbelt.profile`：macOS sandbox-exec profile
@@ -116,7 +115,7 @@ safety:
   approval_timeout_ms: 60000
 
 sandbox:
-  profile: "balanced" # dev/balanced/prod/custom
+  profile: "balanced" # dev/balanced/prod
   # profile 展开后会覆盖 default_policy/os.*；如需精细化请用 overlay 覆盖 seatbelt/bwrap 参数
   default_policy: "restricted"
   os:

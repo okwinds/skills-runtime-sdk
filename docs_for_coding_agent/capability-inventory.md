@@ -51,7 +51,7 @@
 
 - 能力：跨进程 child id；wait 可观测 cancelled/completed
 - 入口（使用）：`docs_for_coding_agent/01-recipes.md`（配方 3/7）
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/tools/collab.py`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/tools/builtin/spawn_agent.py`
 
 ### CAP-SDK-008：Skills（preflight/scan/mentions）
 
@@ -84,7 +84,7 @@
 
 ### CAP-SDK-013：CLI（skills/tools）
 
-- 能力：skills preflight/scan；tools list/run；明确 exit code 语义
+- 能力：skills preflight/scan；tools 内置能力调用（list-dir/read-file/grep-files/...）；明确 exit code 语义
 - 入口（契约/使用）：`help/04-cli-reference.cn.md`
 - 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/cli/*`
 
