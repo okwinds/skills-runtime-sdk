@@ -133,7 +133,7 @@ skills:
     - id: "examples-fs"
       type: "filesystem"
       options:
-        root: "examples/skills"
+        root: "examples/apps/form_interview_pro/skills"
 YAML
 ```
 

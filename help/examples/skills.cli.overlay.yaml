@@ -21,4 +21,4 @@ skills:
       type: "filesystem"
       options:
         # 推荐用仓库内自带的最小示例目录，避免依赖本地产物（`.skills_runtime_sdk/`）。
-        root: "examples/skills"
+        root: "examples/apps/form_interview_pro/skills"
