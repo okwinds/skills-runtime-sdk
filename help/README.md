@@ -20,14 +20,18 @@
 2. `help/01-quickstart.md`: get a minimal end-to-end flow working
 3. `help/02-config-reference.md`: config precedence and safe defaults
 4. `help/04-cli-reference.md`: CLI commands and exit codes
-5. `help/07-studio-guide.md`: Studio MVP backend/frontend/API flow
-6. `help/09-troubleshooting.md`: symptom → root cause → fix
+5. `help/06-tools-and-safety.md`: tools, approvals, sandbox, exec sessions
+6. `help/14-safety-deep-dive.md`: gatekeeper vs fence (practical patterns + pitfalls)
+7. `help/07-studio-guide.md`: Studio MVP backend/frontend/API flow
+8. `help/09-troubleshooting.md`: symptom → root cause → fix
 
 Chinese counterparts:
 - `help/00-overview.cn.md`
 - `help/01-quickstart.cn.md`
 - `help/02-config-reference.cn.md`
 - `help/04-cli-reference.cn.md`
+- `help/06-tools-and-safety.cn.md`
+- `help/14-safety-deep-dive.cn.md`
 - `help/07-studio-guide.cn.md`
 - `help/09-troubleshooting.cn.md`
 
@@ -47,6 +51,7 @@ Chinese counterparts:
 - 11 FAQ: `help/11-faq.md` ｜ 中文：`help/11-faq.cn.md`
 - 12 Validation suites: `help/12-validation-suites.md` ｜ 中文：`help/12-validation-suites.cn.md`
 - 13 Namespace mentions: `help/13-namespace-mentions.md` ｜ 中文：`help/13-namespace-mentions.cn.md`
+- 14 Safety deep dive: `help/14-safety-deep-dive.md` ｜ 中文：`help/14-safety-deep-dive.cn.md`
 
 Supplemental topics (not numbered):
 - Sandbox best practices: `help/sandbox-best-practices.md` ｜ 中文：`help/sandbox-best-practices.cn.md`

@@ -20,14 +20,18 @@
 2. `help/01-quickstart.cn.md`：10~20 分钟跑通最小链路
 3. `help/02-config-reference.cn.md`：掌握配置优先级与安全默认值
 4. `help/04-cli-reference.cn.md`：命令行能力与返回码
-5. `help/07-studio-guide.cn.md`：Studio MVP 后端/前端/接口全流程
-6. `help/09-troubleshooting.cn.md`：常见故障快速定位与修复
+5. `help/06-tools-and-safety.cn.md`：工具、审批、沙箱、exec sessions
+6. `help/14-safety-deep-dive.cn.md`：门卫 vs 围栏（适度策略 + 无人值守模式 + 坑位）
+7. `help/07-studio-guide.cn.md`：Studio MVP 后端/前端/接口全流程
+8. `help/09-troubleshooting.cn.md`：常见故障快速定位与修复
 
 英文版对应入口：
 - `help/00-overview.md`
 - `help/01-quickstart.md`
 - `help/02-config-reference.md`
 - `help/04-cli-reference.md`
+- `help/06-tools-and-safety.md`
+- `help/14-safety-deep-dive.md`
 - `help/07-studio-guide.md`
 - `help/09-troubleshooting.md`
 
@@ -47,6 +51,7 @@
 - 11 FAQ：`help/11-faq.cn.md` ｜ English：`help/11-faq.md`
 - 12 验证用例集索引：`help/12-validation-suites.cn.md` ｜ English：`help/12-validation-suites.md`
 - 13 Namespace 多段 mention：`help/13-namespace-mentions.cn.md` ｜ English：`help/13-namespace-mentions.md`
+- 14 Safety 深度解读：`help/14-safety-deep-dive.cn.md` ｜ English：`help/14-safety-deep-dive.md`
 
 补充专题（不按编号顺序阅读）：
 - Sandbox 最佳实践：`help/sandbox-best-practices.cn.md` ｜ English：`help/sandbox-best-practices.md`

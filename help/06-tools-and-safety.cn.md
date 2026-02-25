@@ -61,7 +61,7 @@ provider = RuleBasedApprovalProvider(
         # 示例：仅放行 `shell_exec` 且 argv[0] 为 pytest 的情况（其它一律拒绝）
         ApprovalRule(
             tool="shell_exec",
-            condition=lambda req: (req.args.get("argv") or [None])[0] == "pytest",
+            condition=lambda req: (req.details.get("argv") or [None])[0] == "pytest",
             decision=ApprovalDecision.APPROVED,
         )
     ],

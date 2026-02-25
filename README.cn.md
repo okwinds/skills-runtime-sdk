@@ -20,6 +20,67 @@ _许可证：Apache License 2.0（见 `LICENSE`）_
 
 ---
 
+## 架构速览
+
+```text
+┌──────────────┐
+│ 启动阶段      │  workspace_root + .env + runtime.yaml overlays
+└──────┬───────┘
+       │ config loader（pydantic 校验 + sources map）
+       v
+┌──────────────┐     ┌────────────────┐
+│ Agent API     │────▶ PromptManager   │───（skills 注入 / history compaction）
+│ core/agent.py │     └────────────────┘
+└──────┬───────┘
+       │ stream chat events
+       v
+┌──────────────┐
+│ LLM backend   │  fake backend（离线）/ OpenAI-compatible backend
+└──────┬───────┘
+       │ tool_calls
+       v
+┌──────────────────────────────────────────────┐
+│ Tool orchestration                            │
+│ approvals gate  →  OS sandbox  →  exec session │
+└──────────────────────────────────────────────┘
+       │
+       v
+┌──────────────┐
+│ WAL events    │  `<workspace>/.skills_runtime_sdk/runs/<run_id>/events.jsonl`
+└──────────────┘
+```
+
+## 安全模型（门卫 vs 围栏）
+
+框架刻意把安全闭环拆成 **两层**（两者缺一不可）：
+
+- **门卫（Policy + Approvals）**：决定“要不要放行执行”。
+- **围栏（OS Sandbox）**：决定“放行后最多能执行到什么边界”（OS 级隔离）。
+
+```text
+ToolCall
+  │
+  ├─ Guard（风险识别）            → risk_level + reason（例如 sudo / rm -rf / mkfs）
+  │
+  ├─ Policy（确定性门卫）         → allow | ask | deny
+  │     - 命中 denylist  → deny（不进入 approvals）
+  │     - 命中 allowlist → allow（直通，减少打扰）
+  │     - require_escalated → ask（即使 mode=allow 也必须询问）
+  │
+  ├─ Approvals（人类/程序化审批）  → approved | approved_for_session | denied | abort
+  │     - 需要 ask 但无 ApprovalProvider → fail-fast（config_error）
+  │     - 同一 approval_key 重复 denied → 中止 run（loop guard）
+  │
+  └─ OS Sandbox（OS 级隔离围栏）   → none | restricted
+        - 要求 restricted 但无 adapter → sandbox_denied（不静默降级）
+        - macOS：seatbelt（sandbox-exec），Linux：bubblewrap（bwrap）
+```
+
+Approvals 的审计键遵循“可审计但不泄密”：
+- `approval_key = sha256(canonical_json(tool, sanitized_request))`
+- `shell_exec`：记录 `argv` + `env_keys`（不记录 env values）
+- `file_write` / `apply_patch`：记录 size + sha256 指纹（不落原文内容）
+
 ## 快速开始（5 分钟体验 Studio MVP）
 
 ### 0) 前置条件

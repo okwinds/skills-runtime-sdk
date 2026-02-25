@@ -20,6 +20,67 @@ Conceptual model:
 
 ---
 
+## Architecture at a glance
+
+```text
+┌──────────────┐
+│ Bootstrap     │  workspace_root + .env + runtime.yaml overlays
+└──────┬───────┘
+       │ config loader (pydantic validate + sources map)
+       v
+┌──────────────┐     ┌────────────────┐
+│ Agent API     │────▶ PromptManager   │───(skills injection / history compaction)
+│ core/agent.py │     └────────────────┘
+└──────┬───────┘
+       │ stream chat events
+       v
+┌──────────────┐
+│ LLM backend   │  fake backend (offline) / OpenAI-compatible backend
+└──────┬───────┘
+       │ tool_calls
+       v
+┌──────────────────────────────────────────────┐
+│ Tool orchestration                            │
+│ approvals gate  →  OS sandbox  →  exec session │
+└──────────────────────────────────────────────┘
+       │
+       v
+┌──────────────┐
+│ WAL events    │  `<workspace>/.skills_runtime_sdk/runs/<run_id>/events.jsonl`
+└──────────────┘
+```
+
+## Safety model (Gatekeeper vs Fence)
+
+The runtime enforces safety in **two distinct layers**:
+
+- **Gatekeeper (Policy + Approvals)** decides *whether* an action is allowed to run.
+- **Fence (OS Sandbox)** limits *what the allowed action can access/do* at the OS level.
+
+```text
+ToolCall
+  │
+  ├─ Guard (risk detection)           → risk_level + reason (e.g. sudo / rm -rf / mkfs)
+  │
+  ├─ Policy (deterministic gate)      → allow | ask | deny
+  │     - denylist hit  → deny (no approvals)
+  │     - allowlist hit → allow (no approvals)
+  │     - require_escalated → ask (even if mode=allow)
+  │
+  ├─ Approvals (human/programmatic)   → approved | approved_for_session | denied | abort
+  │     - ask but no ApprovalProvider → fail-fast (config_error)
+  │     - repeated denial of same approval_key → abort run (loop guard)
+  │
+  └─ OS Sandbox (execution isolation) → none | restricted
+        - restricted but no adapter → sandbox_denied (no silent fallback)
+        - macOS: seatbelt (sandbox-exec), Linux: bubblewrap (bwrap)
+```
+
+Approvals are auditable without leaking secrets:
+- `approval_key = sha256(canonical_json(tool, sanitized_request))`
+- `shell_exec`: records `argv` + `env_keys` (not env values)
+- `file_write` / `apply_patch`: record size + sha256 fingerprint (not raw content)
+
 ## Quickstart (Try Studio MVP in ~5 minutes)
 
 ### 0) Prerequisites
