@@ -50,12 +50,10 @@ def _integration_space_config() -> dict:
     """生成一份最小 skills_config（一个 space + 两个 sources）。"""
 
     return {
-        "mode": "explicit",
         "spaces": [
             {
                 "id": "space-acme-core",
-                "account": "acme",
-                "domain": "core",
+                "namespace": "acme:core",
                 "sources": ["src-redis", "src-pg"],
                 "enabled": True,
             }
@@ -115,8 +113,7 @@ def pg_conn() -> object:
 def seeded_sources(redis_client: object, pg_conn: object) -> dict[str, str]:
     """在 Redis/Postgres 中写入最小数据集，并返回用于断言的 skill_name。"""
 
-    account = "acme"
-    domain = "core"
+    namespace = "acme:core"
     prefix = "skills:"
 
     # Redis：一个正常 skill + 一个缺 body 的 skill（用于验证 scan metadata-only）
@@ -125,8 +122,8 @@ def seeded_sources(redis_client: object, pg_conn: object) -> dict[str, str]:
 
     # 清理可能存在的历史 key
     for name in (redis_skill_ok, redis_skill_missing_body):
-        meta_key = f"{prefix}meta:{account}:{domain}:{name}"
-        body_key = f"{prefix}body:{account}:{domain}:{name}"
+        meta_key = f"{prefix}meta:{namespace}:{name}"
+        body_key = f"{prefix}body:{namespace}:{name}"
         redis_client.delete(meta_key)  # type: ignore[attr-defined]
         redis_client.delete(body_key)  # type: ignore[attr-defined]
 
@@ -137,9 +134,9 @@ def seeded_sources(redis_client: object, pg_conn: object) -> dict[str, str]:
         "required_env_vars": json.dumps([]),
         "metadata": json.dumps({"kind": "integration"}),
     }
-    redis_client.hset(f"{prefix}meta:{account}:{domain}:{redis_skill_ok}", mapping=meta_ok)  # type: ignore[attr-defined]
+    redis_client.hset(f"{prefix}meta:{namespace}:{redis_skill_ok}", mapping=meta_ok)  # type: ignore[attr-defined]
     redis_client.set(  # type: ignore[attr-defined]
-        f"{prefix}body:{account}:{domain}:{redis_skill_ok}",
+        f"{prefix}body:{namespace}:{redis_skill_ok}",
         "# SKILL\n\nThis body is stored in redis.\n",
     )
 
@@ -151,7 +148,7 @@ def seeded_sources(redis_client: object, pg_conn: object) -> dict[str, str]:
         "metadata": json.dumps({"kind": "integration"}),
     }
     redis_client.hset(  # type: ignore[attr-defined]
-        f"{prefix}meta:{account}:{domain}:{redis_skill_missing_body}",
+        f"{prefix}meta:{namespace}:{redis_skill_missing_body}",
         mapping=meta_missing,
     )
     # 注意：故意不写 body key
@@ -167,20 +164,19 @@ def seeded_sources(redis_client: object, pg_conn: object) -> dict[str, str]:
     with pg_conn.cursor() as cur:  # type: ignore[attr-defined]
         # 幂等清理：删除本次测试用的两条 name
         cur.execute(
-            f'DELETE FROM "{schema}"."{table}" WHERE account=%s AND domain=%s AND skill_name IN (%s, %s)',
-            (account, domain, pg_skill_ok, pg_skill_disabled),
+            f'DELETE FROM "{schema}"."{table}" WHERE namespace=%s AND skill_name IN (%s, %s)',
+            (namespace, pg_skill_ok, pg_skill_disabled),
         )
         cur.execute(
             f"""
             INSERT INTO "{schema}"."{table}"
-              (account, domain, skill_name, description, body, enabled, body_size, created_at, metadata, scope)
+              (namespace, skill_name, description, body, enabled, body_size, created_at, metadata, scope)
             VALUES
-              (%s,%s,%s,%s,%s,TRUE,%s,%s,%s::jsonb,%s),
-              (%s,%s,%s,%s,%s,FALSE,%s,%s,%s::jsonb,%s)
+              (%s,%s,%s,%s,TRUE,%s,%s,%s::jsonb,%s),
+              (%s,%s,%s,%s,FALSE,%s,%s,%s::jsonb,%s)
             """,
             (
-                account,
-                domain,
+                namespace,
                 pg_skill_ok,
                 "pgsql integration ok",
                 "# SKILL\n\nThis body is stored in pgsql.\n",
@@ -188,8 +184,7 @@ def seeded_sources(redis_client: object, pg_conn: object) -> dict[str, str]:
                 TS,
                 pg_metadata_json,
                 "pgsql",
-                account,
-                domain,
+                namespace,
                 pg_skill_disabled,
                 "pgsql disabled",
                 "# SKILL\n\nThis body is disabled.\n",

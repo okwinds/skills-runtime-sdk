@@ -30,7 +30,7 @@ def _manager(tmp_path: Path, root: Path, *, scan: dict | None = None) -> SkillsM
     """创建一个仅包含 filesystem source 的 SkillsManager。"""
 
     cfg: dict = {
-        "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+        "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
         "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(root)}}],
     }
     if scan is not None:
@@ -97,4 +97,3 @@ def test_filesystem_scan_unterminated_frontmatter_reports_error(tmp_path: Path) 
     assert [e.code for e in report.errors] == ["SKILL_SCAN_METADATA_INVALID"]
     details = dict(report.errors[0].details)
     assert details.get("reason") == "frontmatter_unterminated"
-

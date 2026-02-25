@@ -3,17 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from skills_runtime.skills.manager import SkillsManager
 
 
-def _mk_manager(tmp_path: Path, *, account: str, domain: str, skills_root: Path) -> SkillsManager:
+def _mk_manager(tmp_path: Path, *, namespace: str, skills_root: Path) -> SkillsManager:
     """创建一个最小可 scan/preflight 的 SkillsManager（filesystem source）。"""
 
     return SkillsManager(
         workspace_root=tmp_path,
         skills_config={
-            "spaces": [{"id": "space-1", "account": account, "domain": domain, "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-1", "namespace": namespace, "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(skills_root)}}],
         },
     )
@@ -33,37 +34,45 @@ def _write_skill(dir_path: Path, *, name: str) -> Path:
 
 
 @pytest.mark.parametrize(
-    "field,value",
+    "namespace",
     [
-        ("account", "a"),  # too short (min=2)
-        ("account", "A1"),  # uppercase not allowed
-        ("account", "-aa"),  # leading dash
-        ("account", "aa-"),  # trailing dash
-        ("account", "aa_bb"),  # underscore not allowed
-        ("account", "aa:bb"),  # ':' not allowed
-        ("domain", "d"),  # too short (min=2)
-        ("domain", "D1"),  # uppercase not allowed
-        ("domain", "-dd"),  # leading dash
-        ("domain", "dd-"),  # trailing dash
-        ("domain", "dd_bb"),  # underscore not allowed
-        ("domain", "dd:bb"),  # ':' not allowed
+        "a",  # segment too short
+        "A1:b2",  # uppercase not allowed
+        "-aa:bb",  # leading dash
+        "aa-:bb",  # trailing dash
+        "aa_bb:cc",  # underscore not allowed in segment
+        "aa::bb",  # empty segment
+        "a0:b1:c2:d3:e4:f5:g6:h7",  # 8 segments (max=7)
     ],
 )
-def test_preflight_rejects_invalid_space_slug(field: str, value: str, tmp_path: Path) -> None:
-    """preflight 必须能静态拒绝非法的 skills.spaces[].account/domain（不依赖 scan I/O）。"""
+def test_config_rejects_invalid_namespace(namespace: str, tmp_path: Path) -> None:
+    """配置层必须 fail-fast 拒绝非法的 skills.spaces[].namespace。"""
 
     skills_root = tmp_path / "skills_root"
     _write_skill(skills_root / "ok", name="python_testing")
 
-    account = value if field == "account" else "alice"
-    domain = value if field == "domain" else "engineering"
-    mgr = _mk_manager(tmp_path, account=account, domain=domain, skills_root=skills_root)
-    issues = mgr.preflight()
+    with pytest.raises(ValidationError):
+        _mk_manager(tmp_path, namespace=namespace, skills_root=skills_root)
 
-    slug_issues = [it for it in issues if it.code == "SKILL_CONFIG_INVALID_SPACE_SLUG"]
-    assert slug_issues, issues
-    assert any(it.details.get("field") == field for it in slug_issues)
-    assert any(isinstance(it.details.get("actual"), str) and it.details.get("actual") for it in slug_issues)
+
+def test_config_rejects_legacy_space_fields(tmp_path: Path) -> None:
+    """配置出现 legacy 二段式空间键字段时必须 fail-fast。"""
+
+    with pytest.raises(ValidationError):
+        SkillsManager(
+            workspace_root=tmp_path,
+            skills_config={
+                "spaces": [
+                    {
+                        "id": "space-1",
+                        "account": "alice",
+                        "domain": "engineering",
+                        "sources": ["src-fs"],
+                    }
+                ],
+                "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(tmp_path / "skills_root")}}],
+            },
+        )
 
 
 @pytest.mark.parametrize(
@@ -87,7 +96,7 @@ def test_scan_rejects_invalid_filesystem_skill_name_slug(skill_name: str, tmp_pa
     skills_root = tmp_path / "skills_root"
     _write_skill(skills_root / "bad", name=skill_name)
 
-    mgr = _mk_manager(tmp_path, account="alice", domain="engineering", skills_root=skills_root)
+    mgr = _mk_manager(tmp_path, namespace="alice:engineering", skills_root=skills_root)
     report = mgr.scan()
 
     assert not report.skills
@@ -115,14 +124,13 @@ def test_scan_rejects_invalid_filesystem_skill_name_slug(skill_name: str, tmp_pa
 def test_scan_rejects_invalid_in_memory_skill_name_slug(skill_name: str, tmp_path: Path) -> None:
     """in-memory scan：skill_name 必须符合 slug 规则（与其他 sources 一致）。"""
 
-    # 备注：最后一条为了凑 10+ cases，这里显式避开“内部下划线合法”的情况，保证确实非法。
     if skill_name == "a__b":
         skill_name = "a_"
 
     mgr = SkillsManager(
         workspace_root=tmp_path,
         skills_config={
-            "spaces": [{"id": "space-1", "account": "alice", "domain": "engineering", "sources": ["src-mem"]}],
+            "spaces": [{"id": "space-1", "namespace": "alice:engineering", "sources": ["src-mem"]}],
             "sources": [{"id": "src-mem", "type": "in-memory", "options": {"namespace": "ns1"}}],
         },
         in_memory_registry={

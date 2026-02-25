@@ -25,8 +25,7 @@ from skills_runtime.skills.loader import SkillLoadError, load_skill_metadata_fro
 from skills_runtime.skills.mentions import (
     SkillMention,
     extract_skill_mentions,
-    is_valid_account_slug,
-    is_valid_domain_slug,
+    is_valid_namespace,
     is_valid_skill_name_slug,
 )
 from skills_runtime.skills.models import ScanReport, Skill
@@ -91,7 +90,7 @@ class SkillsManager:
         else:
             self._skills_config = skills_config
 
-        self._skills_by_key: Dict[Tuple[str, str, str], Skill] = {}
+        self._skills_by_key: Dict[Tuple[str, str], Skill] = {}
         self._skills_by_path: Dict[Path, Skill] = {}
         self._skills_by_name: Dict[str, List[Skill]] = {}
         self._scan_report: Optional[ScanReport] = None
@@ -156,7 +155,7 @@ class SkillsManager:
             details={"refresh_policy": refresh_policy, "reason": reason},
         )
 
-    def _perform_full_scan(self) -> tuple[ScanReport, Dict[Tuple[str, str, str], Skill], Dict[Path, Skill], Dict[str, List[Skill]], FrameworkError | None]:
+    def _perform_full_scan(self) -> tuple[ScanReport, Dict[Tuple[str, str], Skill], Dict[Path, Skill], Dict[str, List[Skill]], FrameworkError | None]:
         """
         执行一次完整 scan（不考虑 refresh_policy 缓存语义），并返回本次扫描快照。
 
@@ -205,7 +204,7 @@ class SkillsManager:
             report = self._make_scan_report(skills=[], errors=[exc.to_issue(), *errors], warnings=warnings)
             return report, {}, {}, {}, exc
 
-        skills_by_key = {(s.account, s.domain, s.skill_name): s for s in scanned}
+        skills_by_key = {(s.namespace, s.skill_name): s for s in scanned}
         skills_by_path = {s.path: s for s in scanned if s.path is not None}
         by_name: Dict[str, List[Skill]] = {}
         for s in scanned:
@@ -251,29 +250,16 @@ class SkillsManager:
                 )
 
         for space in self._skills_config.spaces:
-            if not is_valid_account_slug(space.account):
+            if not is_valid_namespace(space.namespace):
                 errors.append(
                     FrameworkIssue(
                         code="SKILL_SCAN_METADATA_INVALID",
                         message="Skill metadata is invalid.",
                         details={
-                            "field": "skills.spaces[].account",
+                            "field": "skills.spaces[].namespace",
                             "space_id": space.id,
-                            "actual": space.account,
-                            "reason": "invalid_account_slug",
-                        },
-                    )
-                )
-            if not is_valid_domain_slug(space.domain):
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={
-                            "field": "skills.spaces[].domain",
-                            "space_id": space.id,
-                            "actual": space.domain,
-                            "reason": "invalid_domain_slug",
+                            "actual": space.namespace,
+                            "reason": "invalid_namespace",
                         },
                     )
                 )
@@ -374,31 +360,17 @@ class SkillsManager:
                 seen_space_ids[space.id] = idx
 
         for idx, space in enumerate(spaces):
-            if not is_valid_account_slug(space.account):
+            if not is_valid_namespace(space.namespace):
                 issues.append(
                     _issue(
-                        code="SKILL_CONFIG_INVALID_SPACE_SLUG",
-                        message="Invalid skills space slug.",
-                        path=f"skills.spaces[{idx}].account",
+                        code="SKILL_CONFIG_INVALID_SPACE_NAMESPACE",
+                        message="Invalid skills space namespace.",
+                        path=f"skills.spaces[{idx}].namespace",
                         details={
                             "space_id": space.id,
-                            "field": "account",
-                            "actual": space.account,
-                            "expected": "lowercase slug 2~32: [a-z0-9-], must start/end with [a-z0-9]",
-                        },
-                    )
-                )
-            if not is_valid_domain_slug(space.domain):
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_INVALID_SPACE_SLUG",
-                        message="Invalid skills space slug.",
-                        path=f"skills.spaces[{idx}].domain",
-                        details={
-                            "space_id": space.id,
-                            "field": "domain",
-                            "actual": space.domain,
-                            "expected": "lowercase slug 2~64: [a-z0-9-], must start/end with [a-z0-9]",
+                            "field": "namespace",
+                            "actual": space.namespace,
+                            "expected": "namespace: 1..7 segments joined by ':'; each segment lowercase slug 2~64 ([a-z0-9-], start/end with [a-z0-9])",
                         },
                     )
                 )
@@ -653,8 +625,7 @@ class SkillsManager:
                     Skill(
                         space_id=space.id,
                         source_id=source.id,
-                        account=space.account,
-                        domain=space.domain,
+                        namespace=space.namespace,
                         skill_name=loaded.skill_name,
                         description=loaded.description,
                         locator=str(skill_md),
@@ -780,8 +751,7 @@ class SkillsManager:
                 Skill(
                     space_id=space.id,
                     source_id=source.id,
-                    account=space.account,
-                    domain=space.domain,
+                    namespace=space.namespace,
                     skill_name=skill_name,
                     description=desc,
                     locator=locator,
@@ -1035,7 +1005,7 @@ class SkillsManager:
             errors.append(exc.to_issue())
             return
 
-        pattern = f"{key_prefix}meta:{space.account}:{space.domain}:*"
+        pattern = f"{key_prefix}meta:{space.namespace}:*"
         try:
             keys_iter = client.scan_iter(match=pattern)
         except Exception as exc:
@@ -1188,7 +1158,7 @@ class SkillsManager:
 
                 body_key = normalized.get("body_key")
                 if body_key is None:
-                    body_key = f"{key_prefix}body:{space.account}:{space.domain}:{skill_name}"
+                    body_key = f"{key_prefix}body:{space.namespace}:{skill_name}"
                 if not isinstance(body_key, str) or not body_key:
                     raise FrameworkError(
                         code="SKILL_SCAN_METADATA_INVALID",
@@ -1247,8 +1217,7 @@ class SkillsManager:
                     Skill(
                         space_id=space.id,
                         source_id=source.id,
-                        account=space.account,
-                        domain=space.domain,
+                        namespace=space.namespace,
                         skill_name=skill_name,
                         description=description,
                         locator=locator,
@@ -1331,16 +1300,16 @@ class SkillsManager:
         except Exception:
             table_ref = f'"{schema}"."{table}"'
         sql = (
-            "SELECT id, account, domain, skill_name, description, body_size, body_etag, created_at, updated_at, "
+            "SELECT id, namespace, skill_name, description, body_size, body_etag, created_at, updated_at, "
             "required_env_vars, metadata, scope "
             f"FROM {table_ref} "
-            "WHERE enabled = TRUE AND account = %s AND domain = %s"
+            "WHERE enabled = TRUE AND namespace = %s"
         )
 
         try:
             with self._pgsql_client_context(source) as client:
                 with client.cursor() as cursor:
-                    cursor.execute(sql, (space.account, space.domain))
+                    cursor.execute(sql, (space.namespace,))
                     rows = self._fetchall_as_rows(cursor)
         except FrameworkError as exc:
             errors.append(exc.to_issue())
@@ -1456,8 +1425,7 @@ class SkillsManager:
                     schema_ref: str = schema,
                     table_ref_inner: str = table,
                     row_id_ref: Any = row_id,
-                    account_ref: str = space.account,
-                    domain_ref: str = space.domain,
+                    namespace_ref: str = space.namespace,
                 ) -> str:
                     """
                     从 PostgreSQL 读取 skill body（作为 `Skill.body_loader` 的延迟加载回调）。
@@ -1467,8 +1435,7 @@ class SkillsManager:
                     - schema_ref：schema 名称（已通过上层校验为安全标识符）。
                     - table_ref_inner：table 名称（已通过上层校验为安全标识符）。
                     - row_id_ref：记录主键/唯一标识（用于 `WHERE id = %s`）。
-                    - account_ref：account 过滤条件。
-                    - domain_ref：domain 过滤条件。
+                    - namespace_ref：namespace 过滤条件。
 
                     返回：
                     - body 文本内容（`str`）。
@@ -1480,11 +1447,11 @@ class SkillsManager:
                     """
                     sql_body = (
                         f'SELECT body FROM "{schema_ref}"."{table_ref_inner}" '
-                        "WHERE id = %s AND account = %s AND domain = %s"
+                        "WHERE id = %s AND namespace = %s"
                     )
                     with mgr_ref._pgsql_client_context(source_ref) as client:
                         with client.cursor() as body_cursor:
-                            body_cursor.execute(sql_body, (row_id_ref, account_ref, domain_ref))
+                            body_cursor.execute(sql_body, (row_id_ref, namespace_ref))
                             rec = body_cursor.fetchone()
                     if rec is None:
                         raise FileNotFoundError(f"missing body row: {schema_ref}.{table_ref_inner}#{row_id_ref}")
@@ -1502,8 +1469,7 @@ class SkillsManager:
                     Skill(
                         space_id=space.id,
                         source_id=source.id,
-                        account=space.account,
-                        domain=space.domain,
+                        namespace=space.namespace,
                         skill_name=skill_name,
                         description=description,
                         locator=locator,
@@ -1546,13 +1512,13 @@ class SkillsManager:
         )
 
     def _check_duplicates_or_raise(self, skills: Sequence[Skill]) -> None:
-        """全局 duplicate 检查（按 skill_name）。"""
+        """全局 duplicate 检查（按 namespace + skill_name）。"""
 
-        bucket: Dict[str, List[Skill]] = {}
+        bucket: Dict[Tuple[str, str], List[Skill]] = {}
         for skill in skills:
-            bucket.setdefault(skill.skill_name, []).append(skill)
+            bucket.setdefault((skill.namespace, skill.skill_name), []).append(skill)
 
-        for skill_name, members in bucket.items():
+        for (namespace, skill_name), members in bucket.items():
             if len(members) <= 1:
                 continue
             conflicts = [
@@ -1561,8 +1527,8 @@ class SkillsManager:
             ]
             raise FrameworkError(
                 code="SKILL_DUPLICATE_NAME",
-                message="Duplicate skill_name found across enabled spaces.",
-                details={"skill_name": skill_name, "conflicts": conflicts},
+                message="Duplicate skill found in namespace.",
+                details={"namespace": namespace, "skill_name": skill_name, "conflicts": conflicts},
             )
 
     def scan(self, *, force_refresh: bool = False) -> ScanReport:
@@ -1665,8 +1631,7 @@ class SkillsManager:
             message="Skill space is not configured or disabled.",
             details={
                 "mention": mention.mention_text,
-                "account": mention.account,
-                "domain": mention.domain,
+                "namespace": mention.namespace,
             },
         )
 
@@ -1692,13 +1657,13 @@ class SkillsManager:
 
         out: List[Tuple[Skill, SkillMention]] = []
         seen = set()
-        configured_spaces = {(s.account, s.domain) for s in spaces}
+        configured_spaces = {s.namespace for s in spaces}
         for mention in mentions:
-            space_key = (mention.account, mention.domain)
+            space_key = mention.namespace
             if space_key not in configured_spaces:
                 self._raise_space_not_configured(mention)
 
-            key = (mention.account, mention.domain, mention.skill_name)
+            key = (mention.namespace, mention.skill_name)
             skill = self._skills_by_key.get(key)
             if skill is None:
                 raise FrameworkError(
@@ -1708,7 +1673,7 @@ class SkillsManager:
                 )
             if skill.path is not None and skill.path in self._disabled_paths:
                 continue
-            uniq = (skill.account, skill.domain, skill.skill_name)
+            uniq = (skill.namespace, skill.skill_name)
             if uniq in seen:
                 continue
             seen.add(uniq)

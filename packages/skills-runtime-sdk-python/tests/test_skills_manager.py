@@ -28,7 +28,7 @@ def _manager(tmp_path: Path, root: Path) -> SkillsManager:
     return SkillsManager(
         workspace_root=tmp_path,
         skills_config={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(root)}}],
         },
     )
@@ -37,6 +37,42 @@ def _manager(tmp_path: Path, root: Path) -> SkillsManager:
 def test_extract_mentions_ignores_common_env_vars() -> None:
     mentions = extract_skill_mentions("use $PATH and $[alice:engineering].python_testing")
     assert any(m.skill_name == "python_testing" for m in mentions)
+
+
+@pytest.mark.parametrize(
+    "text,expected_namespaces",
+    [
+        ("use $[web].article_writer", ["web"]),  # 1 segment
+        (
+            "use $[a0:b1:c2:d3:e4:f5:g6].article_writer",
+            ["a0:b1:c2:d3:e4:f5:g6"],  # 7 segments
+        ),
+        ("use $[a0:b1:c2:d3:e4:f5:g6:h7].article_writer", []),  # 8 segments rejected
+        ("use $[a:bb].article_writer", []),  # segment min length=2
+    ],
+)
+def test_extract_mentions_namespace_segment_bounds(text: str, expected_namespaces: list[str]) -> None:
+    """mention 解析必须满足 namespace 段数/segment 最小长度约束。"""
+
+    mentions = extract_skill_mentions(text)
+    assert [m.namespace for m in mentions] == expected_namespaces
+
+
+def test_extract_mentions_namespace_is_order_sensitive() -> None:
+    """namespace 必须按顺序区分，不可交换等价。"""
+
+    mentions = extract_skill_mentions("use $[a0:b1].article_writer and $[b1:a0].article_writer")
+    assert [m.namespace for m in mentions] == ["a0:b1", "b1:a0"]
+
+
+def test_extract_mentions_ignores_trailing_bracket_typos() -> None:
+    """
+    自由文本提取必须容错：对形如 `$[a:b].x] ...` 的“粘贴括号错位”应忽略该 token，
+    避免误注入/误执行，并且不得抛出格式错误中断 run。
+    """
+
+    mentions = extract_skill_mentions("use $[a0:b1].python_testing] and $[a0:b1].redis_cache")
+    assert [m.mention_text for m in mentions] == ["$[a0:b1].redis_cache"]
 
 
 def test_load_skill_parses_openai_yaml_env_var_dependencies(tmp_path: Path) -> None:

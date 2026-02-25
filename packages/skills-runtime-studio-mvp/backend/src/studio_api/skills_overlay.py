@@ -11,7 +11,7 @@ def skills_config_from_filesystem_sources(*, filesystem_sources: List[str]) -> D
 
     约束：
     - filesystem_sources 每一项对应一个 filesystem source
-    - 所有 sources 聚合到一个固定 space：account=web, domain=mvp（对齐文档与 demo 约定）
+    - 所有 sources 聚合到一个固定 space：namespace=web:mvp（对齐文档与 demo 约定）
     """
 
     cleaned_roots: List[str] = []
@@ -32,8 +32,7 @@ def skills_config_from_filesystem_sources(*, filesystem_sources: List[str]) -> D
         spaces.append(
             {
                 "id": "space-web-mvp",
-                "account": "web",
-                "domain": "mvp",
+                "namespace": "web:mvp",
                 "sources": source_ids,
                 "enabled": True,
             }
@@ -71,8 +70,7 @@ def write_session_skills_overlay(*, session_dir: Path, filesystem_sources: List[
         lines.extend(
             [
                 f"    - id: \"{space['id']}\"",
-                f"      account: \"{space['account']}\"",
-                f"      domain: \"{space['domain']}\"",
+                f"      namespace: \"{space['namespace']}\"",
                 "      sources:",
                 *[f"        - \"{sid}\"" for sid in sources],
                 "      enabled: true",

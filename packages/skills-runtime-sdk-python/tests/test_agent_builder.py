@@ -21,8 +21,7 @@ def _write_skills_overlay(workspace_root: Path, *, skills_root: Path) -> Path:
                 "skills:",
                 "  spaces:",
                 "    - id: \"space-demo\"",
-                "      account: \"demo\"",
-                "      domain: \"local\"",
+                "      namespace: \"demo:local\"",
                 "      sources: [\"src-fs\"]",
                 "  sources:",
                 "    - id: \"src-fs\"",
@@ -127,4 +126,3 @@ def test_cloud_unattended_preset_fail_fast_env_var_missing(tmp_path: Path) -> No
     assert any(e.type == "env_var_required" for e in events)
     assert any(e.type == "run_failed" for e in events)
     assert not any(e.type == "human_request" for e in events)
-

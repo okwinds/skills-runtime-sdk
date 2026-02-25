@@ -216,7 +216,7 @@ def _redis_skills_config(source_options: dict[str, Any], *, include_fs: bool = F
         sources.append({"id": "src-mem", "type": "in-memory", "options": {"namespace": "ns-redis"}})
         space_sources.append("src-mem")
     return {
-        "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": space_sources}],
+        "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": space_sources}],
         "sources": sources,
         # 避免 resolve_mentions 触发额外 scan 影响“source 行为”断言（refresh_policy 的语义在专门用例中覆盖）。
         "scan": {"refresh_policy": "manual", "ttl_sec": 300},
@@ -235,7 +235,7 @@ def _pgsql_skills_config(source_options: dict[str, Any], *, include_fs: bool = F
         sources.append({"id": "src-mem", "type": "in-memory", "options": {"namespace": "ns-pg"}})
         space_sources.append("src-mem")
     return {
-        "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": space_sources}],
+        "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": space_sources}],
         "sources": sources,
         # 避免 resolve_mentions 触发额外 scan 影响“source 行为”断言（refresh_policy 的语义在专门用例中覆盖）。
         "scan": {"refresh_policy": "manual", "ttl_sec": 300},
@@ -588,8 +588,7 @@ def test_pgsql_source_scan_and_inject_success_dict_rows(tmp_path: Path) -> None:
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "python_testing",
                 "description": "pytest patterns",
                 "body_size": 11,
@@ -633,8 +632,7 @@ def test_pgsql_source_factory_is_used_and_released_for_body_load(tmp_path: Path)
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "python_testing",
                 "description": "pytest patterns",
                 "body_size": 11,
@@ -681,8 +679,7 @@ def test_pgsql_source_scan_and_inject_success_tuple_rows(tmp_path: Path) -> None
 
     columns = [
         ("id",),
-        ("account",),
-        ("domain",),
+        ("namespace",),
         ("skill_name",),
         ("description",),
         ("body_size",),
@@ -697,8 +694,7 @@ def test_pgsql_source_scan_and_inject_success_tuple_rows(tmp_path: Path) -> None
         rows=[
             (
                 2,
-                "alice",
-                "engineering",
+                "alice:engineering",
                 "python_testing",
                 "pytest patterns",
                 9,
@@ -734,8 +730,7 @@ def test_pgsql_source_missing_created_at_issue(tmp_path: Path) -> None:
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "python_testing",
                 "description": "pytest patterns",
                 "body_size": 11,
@@ -843,8 +838,7 @@ def test_pgsql_source_body_missing_failed(tmp_path: Path) -> None:
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "python_testing",
                 "description": "pytest patterns",
                 "body_size": 5,
@@ -880,8 +874,7 @@ def test_pgsql_source_invalid_required_env_vars_issue(tmp_path: Path) -> None:
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "python_testing",
                 "description": "pytest patterns",
                 "body_size": 10,
@@ -914,8 +907,7 @@ def test_pgsql_source_invalid_metadata_issue(tmp_path: Path) -> None:
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "python_testing",
                 "description": "pytest patterns",
                 "body_size": 10,
@@ -951,8 +943,7 @@ def test_pgsql_source_duplicate_with_filesystem(tmp_path: Path) -> None:
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "dup_name",
                 "description": "from pg",
                 "body_size": 10,
@@ -986,8 +977,7 @@ def test_pgsql_source_duplicate_with_in_memory(tmp_path: Path) -> None:
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "dup_name",
                 "description": "from pg",
                 "body_size": 10,
@@ -1253,8 +1243,7 @@ def test_pgsql_source_injected_client_ignores_env_missing(tmp_path: Path, monkey
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "python_testing",
                 "description": "pytest patterns",
                 "body_size": 0,
@@ -1301,8 +1290,7 @@ def test_pgsql_source_injected_client_ignores_dependency_missing(tmp_path: Path,
         rows=[
             {
                 "id": 1,
-                "account": "alice",
-                "domain": "engineering",
+                "namespace": "alice:engineering",
                 "skill_name": "python_testing",
                 "description": "pytest patterns",
                 "body_size": 0,

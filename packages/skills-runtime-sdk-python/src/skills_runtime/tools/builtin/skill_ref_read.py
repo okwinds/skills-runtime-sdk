@@ -28,7 +28,7 @@ SKILL_REF_READ_SPEC = ToolSpec(
         "properties": {
             "skill_mention": {
                 "type": "string",
-                "description": "目标 skill 的全称 mention：$[account:domain].skill_name",
+                "description": "目标 skill 的全称 mention：$[namespace].skill_name",
             },
             "ref_path": {
                 "type": "string",
@@ -76,7 +76,7 @@ def _parse_single_skill_mention(token: str) -> SkillMention:
     解析并严格校验 skill mention：必须是“一个且仅一个”完整 token。
 
     参数：
-    - token：形如 `$[account:domain].skill_name` 的字符串
+    - token：形如 `$[namespace].skill_name` 的字符串
 
     返回：
     - SkillMention
@@ -90,7 +90,7 @@ def _parse_single_skill_mention(token: str) -> SkillMention:
     if len(mentions) != 1 or mentions[0].mention_text != stripped:
         raise FrameworkError(
             code="SKILL_MENTION_FORMAT_INVALID",
-            message="Skill mention format is invalid. Use $[account:domain].skill_name.",
+            message="Skill mention format is invalid. Use $[namespace].skill_name.",
             details={"mention": stripped, "reason": "not_a_single_full_token"},
         )
     return mentions[0]

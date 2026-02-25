@@ -137,7 +137,7 @@ class PromptManager:
             "cwd": cwd,
             "tools": "\n".join(f"- {t.name}" for t in tools),
             "skills": "\n".join(
-                f"- $[{s.account}:{s.domain}].{s.skill_name}: {s.description}"
+                f"- $[{s.namespace}].{s.skill_name}: {s.description}"
                 for s in skills_manager.list_skills(enabled_only=True)
             ),
             "constraints": "",
@@ -156,9 +156,9 @@ class PromptManager:
         messages: List[Dict[str, Any]] = [system_msg]
 
         if self._include_skills_list:
-            skills_lines = ["Available skills (mention via $[account:domain].skill_name):"]
+            skills_lines = ["Available skills (mention via $[namespace].skill_name):"]
             for s in skills_manager.list_skills(enabled_only=True):
-                skills_lines.append(f"- $[{s.account}:{s.domain}].{s.skill_name}: {s.description}")
+                skills_lines.append(f"- $[{s.namespace}].{s.skill_name}: {s.description}")
             messages.append({"role": "user", "content": "\n".join(skills_lines)})
 
         for skill, source, mention_text in injected_skills:

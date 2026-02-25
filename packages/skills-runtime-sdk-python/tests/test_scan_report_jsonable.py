@@ -20,8 +20,7 @@ def _mk_skill(*, path: Path | None, metadata: dict, called: dict[str, int]) -> S
     return Skill(
         space_id="space-1",
         source_id="src-1",
-        account="alice",
-        domain="engineering",
+        namespace="alice:engineering",
         skill_name="python_testing",
         description="pytest patterns",
         locator="mem://python_testing",
@@ -91,8 +90,7 @@ def test_skill_to_metadata_dict_has_required_fields(tmp_path: Path) -> None:
     required = {
         "space_id",
         "source_id",
-        "account",
-        "domain",
+        "namespace",
         "skill_name",
         "description",
         "locator",
@@ -226,4 +224,3 @@ def test_json_dumps_allow_nan_false_does_not_raise(tmp_path: Path) -> None:
     report = _mk_report(skills=[_mk_skill(path=tmp_path / "SKILL.md", metadata={}, called=called)], errors=[issue], warnings=[])
     obj = report.to_jsonable()
     json.dumps(obj, allow_nan=False)
-

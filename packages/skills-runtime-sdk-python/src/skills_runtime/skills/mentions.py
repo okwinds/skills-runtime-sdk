@@ -9,16 +9,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from typing import Final
 from typing import List
 
+_SEGMENT_SLUG_PATTERN: Final[str] = r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])"
+_NAMESPACE_PATTERN: Final[str] = rf"{_SEGMENT_SLUG_PATTERN}(?::{_SEGMENT_SLUG_PATTERN}){{0,6}}"
+
 _SKILL_MENTION_RE = re.compile(
-    r"\$\[(?P<account>[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])):"
-    r"(?P<domain>[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9]))\]\."
+    rf"\$\[(?P<namespace>{_NAMESPACE_PATTERN})\]\."
     r"(?P<skill_name>[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9]))"
 )
 
-_ACCOUNT_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$")
-_DOMAIN_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
+_SEGMENT_SLUG_RE = re.compile(rf"^{_SEGMENT_SLUG_PATTERN}$")
+_NAMESPACE_RE = re.compile(rf"^{_NAMESPACE_PATTERN}$")
 _SKILL_NAME_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]$")
 
 
@@ -26,8 +29,8 @@ _SKILL_NAME_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]$")
 class SkillMention:
     """一次合法 mention。"""
 
-    account: str
-    domain: str
+    namespace: str
+    segments: tuple[str, ...]
     skill_name: str
     mention_text: str
 
@@ -56,8 +59,8 @@ def extract_skill_mentions(text: str) -> List[SkillMention]:
 
         mentions.append(
             SkillMention(
-                account=m.group("account"),
-                domain=m.group("domain"),
+                namespace=m.group("namespace"),
+                segments=tuple(m.group("namespace").split(":")),
                 skill_name=m.group("skill_name"),
                 mention_text=m.group(0),
             )
@@ -66,7 +69,7 @@ def extract_skill_mentions(text: str) -> List[SkillMention]:
     ordered: List[SkillMention] = []
     seen = set()
     for it in mentions:
-        key = (it.account, it.domain, it.skill_name)
+        key = (it.namespace, it.skill_name)
         if key in seen:
             continue
         seen.add(key)
@@ -74,24 +77,30 @@ def extract_skill_mentions(text: str) -> List[SkillMention]:
     return ordered
 
 
-def is_valid_account_slug(value: str) -> bool:
+def is_valid_segment_slug(value: str) -> bool:
     """
-    校验 account slug（用于 skills.spaces[].account 与 mention 解析结果）。
+    校验 namespace segment slug（用于 mention/config 校验）。
 
-    约束对齐：`docs/specs/skills-runtime-sdk/docs/skills.md` §3.2
-    """
-
-    return isinstance(value, str) and bool(_ACCOUNT_SLUG_RE.match(value))
-
-
-def is_valid_domain_slug(value: str) -> bool:
-    """
-    校验 domain slug（用于 skills.spaces[].domain 与 mention 解析结果）。
-
-    约束对齐：`docs/specs/skills-runtime-sdk/docs/skills.md` §3.2
+    约束：
+    - 仅允许小写字母/数字/中划线；
+    - 长度 2..64；
+    - 必须字母/数字开头与结尾。
     """
 
-    return isinstance(value, str) and bool(_DOMAIN_SLUG_RE.match(value))
+    return isinstance(value, str) and bool(_SEGMENT_SLUG_RE.match(value))
+
+
+def is_valid_namespace(value: str) -> bool:
+    """
+    校验 namespace（1..7 个有序 segments，使用 `:` 分隔）。
+
+    约束：
+    - 每段满足 segment slug（2..64，`[a-z0-9-]`，首尾字母/数字）；
+    - 段数 1..7；
+    - 顺序敏感（本函数仅校验格式，不做重排）。
+    """
+
+    return isinstance(value, str) and bool(_NAMESPACE_RE.match(value))
 
 
 def is_valid_skill_name_slug(value: str) -> bool:

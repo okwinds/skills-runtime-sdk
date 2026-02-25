@@ -62,7 +62,7 @@ def _mk_manager(tmp_path: Path, redis_client: CountingRedisClient, *, scan: dict
     """构造带 redis source 的 SkillsManager（注入 fake client，避免 DSN/依赖）。"""
 
     cfg: dict[str, Any] = {
-        "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-redis"]}],
+        "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-redis"]}],
         "sources": [{"id": "src-redis", "type": "redis", "options": {"key_prefix": "skills:"}}],
         "scan": dict(scan),
     }
@@ -285,7 +285,7 @@ def _mk_fs_manager(tmp_path: Path, skills_root: Path, *, scan: dict[str, Any]) -
     """构造 filesystem source 的 SkillsManager（用于验证 resolve 前刷新语义）。"""
 
     cfg: dict[str, Any] = {
-        "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+        "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
         "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(skills_root)}}],
         "scan": dict(scan),
     }
@@ -323,4 +323,3 @@ def test_resolve_mentions_manual_does_not_auto_refresh_until_refresh_called(tmp_
 
     mgr.refresh()
     mgr.resolve_mentions("$[alice:engineering].s2")
-

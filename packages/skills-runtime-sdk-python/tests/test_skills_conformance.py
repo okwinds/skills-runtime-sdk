@@ -26,7 +26,7 @@ def _manager(tmp_path: Path, skills_root: Path) -> SkillsManager:
     return SkillsManager(
         workspace_root=tmp_path,
         skills_config={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(skills_root)}}],
         },
     )
@@ -37,36 +37,36 @@ def _manager(tmp_path: Path, skills_root: Path) -> SkillsManager:
     [
         ("", []),
         ("no mentions here", []),
-        ("use $[alice:engineering].python_testing", [("alice", "engineering", "python_testing")]),
-        ("$[alice:engineering].python_testing then do something", [("alice", "engineering", "python_testing")]),
-        ("$[alice:engineering].python_testing: write something", [("alice", "engineering", "python_testing")]),
-        ("text $[alice:engineering].redis_cache text", [("alice", "engineering", "redis_cache")]),
-        ("请按 $[alice:engineering].python_testing 写一篇文章", [("alice", "engineering", "python_testing")]),
+        ("use $[alice:engineering].python_testing", [("alice:engineering", "python_testing")]),
+        ("$[alice:engineering].python_testing then do something", [("alice:engineering", "python_testing")]),
+        ("$[alice:engineering].python_testing: write something", [("alice:engineering", "python_testing")]),
+        ("text $[alice:engineering].redis_cache text", [("alice:engineering", "redis_cache")]),
+        ("请按 $[alice:engineering].python_testing 写一篇文章", [("alice:engineering", "python_testing")]),
         ("ps -p $PPID -o command=", []),
         ("literal \\$python_testing is not a mention", []),
         ("$python_testing", []),
         ("$[a:engineering].python_testing", []),
         ("$[alice:e].python_testing", []),
         ("$[alice:engineering].a", []),
-        ("$[alice].python_testing", []),
+        ("$[alice].python_testing", [("alice", "python_testing")]),
         ("$[alice:engineering]python_testing", []),
-        ("$[alice:engineering].python testing", [("alice", "engineering", "python")]),
-        ("$[alice:engineering].python:testing", [("alice", "engineering", "python")]),
+        ("$[alice:engineering].python testing", [("alice:engineering", "python")]),
+        ("$[alice:engineering].python:testing", [("alice:engineering", "python")]),
         ("$[AlicE:engineering].python_testing", []),
         (
             "$[alice:engineering].python_testing,$[alice:engineering].redis_cache",
-            [("alice", "engineering", "python_testing"), ("alice", "engineering", "redis_cache")],
+            [("alice:engineering", "python_testing"), ("alice:engineering", "redis_cache")],
         ),
     ],
 )
 def test_extract_skill_mentions_cases(
     text: str,
-    expected: list[tuple[str, str, str]],
+    expected: list[tuple[str, str]],
 ) -> None:
     """mention 解析回归。"""
 
     mentions = extract_skill_mentions(text)
-    got = [(m.account, m.domain, m.skill_name) for m in mentions]
+    got = [(m.namespace, m.skill_name) for m in mentions]
     assert got == expected
 
 
@@ -109,7 +109,7 @@ def test_scan_options_depth_dot_entries_and_limit(tmp_path: Path) -> None:
     mgr_depth = SkillsManager(
         workspace_root=tmp_path,
         skills_config={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(root)}}],
             "scan": {"max_depth": 1, "ignore_dot_entries": True, "max_dirs_per_root": 100},
         },
@@ -121,7 +121,7 @@ def test_scan_options_depth_dot_entries_and_limit(tmp_path: Path) -> None:
     mgr_limit = SkillsManager(
         workspace_root=tmp_path,
         skills_config={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(root)}}],
             "scan": {"max_depth": 10, "ignore_dot_entries": False, "max_dirs_per_root": 1},
         },

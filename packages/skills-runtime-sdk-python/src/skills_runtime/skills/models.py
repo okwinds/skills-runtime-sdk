@@ -23,7 +23,7 @@ class Skill:
 
     字段：
     - name/description：来自 frontmatter（必填）
-    - space_id/source_id/account/domain：来源空间与命名信息（spaces/sources）
+    - space_id/source_id/namespace：来源空间与命名信息（spaces/sources）
     - path：SKILL.md 的 canonical 路径（可选，非 filesystem 时可为空）
     - locator：跨 source 的稳定定位符（path/key/row id）
     - body_size：正文字节数（metadata-only 阶段可用，未知可为 None）
@@ -34,8 +34,7 @@ class Skill:
 
     space_id: str
     source_id: str
-    account: str
-    domain: str
+    namespace: str
     skill_name: str
     description: str
     locator: str
@@ -68,8 +67,7 @@ class Skill:
         return {
             "space_id": _json_sanitize(self.space_id),
             "source_id": _json_sanitize(self.source_id),
-            "account": _json_sanitize(self.account),
-            "domain": _json_sanitize(self.domain),
+            "namespace": _json_sanitize(self.namespace),
             "skill_name": _json_sanitize(self.skill_name),
             "description": _json_sanitize(self.description),
             "locator": _json_sanitize(self.locator),

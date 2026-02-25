@@ -37,8 +37,8 @@ echo "[integration] postgres: describe table (agent.skills_catalog)"
 docker compose -f "$COMPOSE_FILE" exec -T postgres psql -U skills -d skills -c "\\d+ agent.skills_catalog" || true
 
 echo ""
-echo "[integration] postgres: sample rows (account/domain/skill_name/enabled/created_at/updated_at)"
-docker compose -f "$COMPOSE_FILE" exec -T postgres psql -U skills -d skills -c 'SELECT account, domain, skill_name, enabled, created_at, updated_at FROM agent.skills_catalog ORDER BY skill_name;' || true
+echo "[integration] postgres: sample rows (namespace/skill_name/enabled/created_at/updated_at)"
+docker compose -f "$COMPOSE_FILE" exec -T postgres psql -U skills -d skills -c 'SELECT namespace, skill_name, enabled, created_at, updated_at FROM agent.skills_catalog ORDER BY skill_name;' || true
 
 echo ""
 echo "[integration] redis: keys (pattern skills:*)"

@@ -10,8 +10,7 @@ CREATE SCHEMA IF NOT EXISTS "agent";
 CREATE TABLE IF NOT EXISTS "agent"."skills_catalog" (
   id BIGSERIAL PRIMARY KEY,
 
-  account TEXT NOT NULL,
-  domain TEXT NOT NULL,
+  namespace TEXT NOT NULL,
   skill_name TEXT NOT NULL,
   description TEXT NOT NULL,
 
@@ -29,12 +28,12 @@ CREATE TABLE IF NOT EXISTS "agent"."skills_catalog" (
   scope TEXT NULL
 );
 
--- 全局唯一：同一 (account, domain) 内 skill_name 唯一
-CREATE UNIQUE INDEX IF NOT EXISTS "skills_catalog_account_domain_name_uk"
-  ON "agent"."skills_catalog" (account, domain, skill_name);
+-- 全局唯一：同一 namespace 内 skill_name 唯一
+CREATE UNIQUE INDEX IF NOT EXISTS "skills_catalog_namespace_name_uk"
+  ON "agent"."skills_catalog" (namespace, skill_name);
 
--- 供 scan 查询过滤 enabled/account/domain
-CREATE INDEX IF NOT EXISTS "skills_catalog_account_domain_enabled_idx"
-  ON "agent"."skills_catalog" (account, domain, enabled);
+-- 供 scan 查询过滤 enabled/namespace
+CREATE INDEX IF NOT EXISTS "skills_catalog_namespace_enabled_idx"
+  ON "agent"."skills_catalog" (namespace, enabled);
 
 COMMIT;

@@ -73,7 +73,7 @@ def test_preflight_valid_config_returns_empty_list(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
         },
     )
@@ -87,7 +87,7 @@ def test_preflight_legacy_skills_roots_is_error(tmp_path: Path) -> None:
         _build_skills_config(
             {
                 "roots": ["./skills"],
-                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
             }
         )
@@ -100,7 +100,7 @@ def test_preflight_legacy_skills_mode_is_error(tmp_path: Path) -> None:
         _build_skills_config(
             {
                 "mode": "auto",
-                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
             }
         )
@@ -113,7 +113,7 @@ def test_preflight_unknown_top_level_key_is_error(tmp_path: Path) -> None:
         _build_skills_config(
             {
                 "soruces": [],  # typo
-                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
             }
         )
@@ -128,8 +128,7 @@ def test_preflight_unknown_space_key_is_error(tmp_path: Path) -> None:
                 "spaces": [
                     {
                         "id": "space-eng",
-                        "account": "alice",
-                        "domain": "engineering",
+                        "namespace": "alice:engineering",
                         "sources": ["src-fs"],
                         "accout": "typo",  # extra
                     }
@@ -145,7 +144,7 @@ def test_preflight_space_references_unknown_source_id(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["not-exists"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["not-exists"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
         },
     )
@@ -160,8 +159,8 @@ def test_preflight_duplicate_space_id(tmp_path: Path) -> None:
         tmp_path,
         skills={
             "spaces": [
-                {"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]},
-                {"id": "space-eng", "account": "bob", "domain": "engineering", "sources": ["src-fs"]},
+                {"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]},
+                {"id": "space-eng", "namespace": "bob:engineering", "sources": ["src-fs"]},
             ],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
         },
@@ -176,7 +175,7 @@ def test_preflight_duplicate_source_id(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [
                 {"id": "src-fs", "type": "filesystem", "options": {"root": "skills-a"}},
                 {"id": "src-fs", "type": "filesystem", "options": {"root": "skills-b"}},
@@ -193,7 +192,7 @@ def test_preflight_unknown_source_type(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-x"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-x"]}],
             "sources": [{"id": "src-x", "type": "s3", "options": {"bucket": "b"}}],
         },
     )
@@ -207,7 +206,7 @@ def test_preflight_filesystem_missing_root(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {}}],
         },
     )
@@ -221,7 +220,7 @@ def test_preflight_redis_invalid_dsn_env_name(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-redis"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-redis"]}],
             "sources": [
                 {
                     "id": "src-redis",
@@ -241,7 +240,7 @@ def test_preflight_pgsql_missing_schema_and_table(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-db"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-db"]}],
             "sources": [{"id": "src-db", "type": "pgsql", "options": {"dsn_env": "PG_DSN"}}],
         },
     )
@@ -257,7 +256,7 @@ def test_preflight_guard_scan_semantics_unchanged(tmp_path: Path) -> None:
         _build_skills_config(
             {
                 "soruces": [],  # typo
-                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
             }
         )
@@ -271,7 +270,7 @@ def test_preflight_versioning_and_strictness_unknown_keys_are_warnings(tmp_path:
             {
                 "versioning": {"enabled": False, "strategy": "TODO", "rollout": {"pct": 10}},
                 "strictness": {"unknown_mention": "error", "extra_flag": True},
-                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
             }
         )
@@ -283,7 +282,7 @@ def test_preflight_in_memory_missing_namespace(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-mem"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-mem"]}],
             "sources": [{"id": "src-mem", "type": "in-memory", "options": {}}],
         },
     )
@@ -316,7 +315,7 @@ def test_skills_scan_config_invalid_fails_fast(tmp_path: Path, scan_value: Any) 
         _build_skills_config(
             {
                 "scan": scan_value,
-                "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+                "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
             }
         )
@@ -336,7 +335,7 @@ def test_skills_scan_config_valid_is_applied_to_manager(tmp_path: Path) -> None:
                 "refresh_policy": "ttl",
                 "ttl_sec": 10,
             },
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
         },
     )

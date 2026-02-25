@@ -32,7 +32,7 @@ def _mk_manager(*, workspace_root: Path, skills_root: Path, skills_config_extra:
     """创建一个仅包含 filesystem source 的 SkillsManager（便于 actions/ref-read 单测）。"""
 
     cfg: dict = {
-        "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+        "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
         "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(skills_root)}}],
     }
     if skills_config_extra:
@@ -87,6 +87,16 @@ def _assert_framework_error_payload(result, *, code: str) -> None:  # type: igno
     assert isinstance(err.get("details"), dict)
 
 
+def _error_message(result) -> str:  # type: ignore[no-untyped-def]
+    """提取 ToolResult 中结构化 error.message。"""
+
+    data = ((result.details or {}).get("data") or {}) if isinstance(result.details, dict) else {}
+    err = data.get("error") if isinstance(data, dict) else {}
+    if isinstance(err, dict) and isinstance(err.get("message"), str):
+        return err["message"]
+    return ""
+
+
 def test_skill_ref_read_disabled_returns_permission(tmp_path: Path) -> None:
     """references 默认关闭：必须直接失败（permission），不读取任何文件。"""
 
@@ -125,6 +135,36 @@ def test_skill_ref_read_invalid_mention_returns_validation(tmp_path: Path) -> No
     assert result.ok is False
     assert result.error_kind == "validation"
     _assert_framework_error_payload(result, code="SKILL_MENTION_FORMAT_INVALID")
+    assert "$[namespace].skill_name" in _error_message(result)
+
+
+def test_skill_ref_read_embedded_token_in_arg_is_rejected(tmp_path: Path) -> None:
+    """
+    tool 参数（skill_mention）必须是“一个且仅一个完整 token”：
+    只要包含额外文本，即使里面有合法 mention，也必须 fail-fast。
+    """
+
+    skills_root = tmp_path / "skills_root"
+    _write_skill_bundle(skills_root / "python_testing")
+    mgr = _mk_manager(
+        workspace_root=tmp_path,
+        skills_root=skills_root,
+        skills_config_extra={"references": {"enabled": True}},
+    )
+    ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
+
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
+
+    call = ToolCall(
+        call_id="c1",
+        name="skill_ref_read",
+        args={"skill_mention": "请用 $[alice:engineering].python_testing 读取文件", "ref_path": "references/a.txt"},
+    )
+    result = skill_ref_read(call, ctx)
+    assert result.ok is False
+    assert result.error_kind == "validation"
+    _assert_framework_error_payload(result, code="SKILL_MENTION_FORMAT_INVALID")
+    assert "$[namespace].skill_name" in _error_message(result)
 
 
 def test_skill_ref_read_unknown_skill_returns_not_found(tmp_path: Path) -> None:
@@ -183,7 +223,7 @@ def test_skill_ref_read_source_unsupported_for_in_memory(tmp_path: Path) -> None
     mgr = SkillsManager(
         workspace_root=tmp_path,
         skills_config={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-mem"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-mem"]}],
             "sources": [{"id": "src-mem", "type": "in-memory", "options": {"namespace": "ns"}}],
             "references": {"enabled": True},
         },

@@ -159,7 +159,7 @@ def test_cli_preflight_error_exit_10(tmp_path: Path, capsys, monkeypatch) -> Non
         overlay,
         {
             "skills": {
-                "spaces": [{"id": "s", "account": "aa", "domain": "dd", "sources": ["src-fs"]}],
+                "spaces": [{"id": "s", "namespace": "aa:dd", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {}}],
             }
         },
@@ -184,7 +184,7 @@ def test_cli_preflight_overlay_order_is_stable(tmp_path: Path, capsys, monkeypat
         bad,
         {
             "skills": {
-                "spaces": [{"id": "s", "account": "aa", "domain": "dd", "sources": ["src-fs"]}],
+                "spaces": [{"id": "s", "namespace": "aa:dd", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {}}],
             }
         },
@@ -193,7 +193,7 @@ def test_cli_preflight_overlay_order_is_stable(tmp_path: Path, capsys, monkeypat
         good,
         {
             "skills": {
-                "spaces": [{"id": "s", "account": "aa", "domain": "dd", "sources": ["src-fs"]}],
+                "spaces": [{"id": "s", "namespace": "aa:dd", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills"}}],
             }
         },
@@ -284,7 +284,7 @@ def test_cli_scan_filesystem_skill_has_no_body_markdown(tmp_path: Path, capsys, 
         overlay,
         {
             "skills": {
-                "spaces": [{"id": "s", "account": "aa", "domain": "dd", "sources": ["src-fs"]}],
+                "spaces": [{"id": "s", "namespace": "aa:dd", "sources": ["src-fs"]}],
                 "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": "skills_root"}}],
             }
         },
@@ -316,7 +316,7 @@ def test_cli_scan_redis_env_present_false_without_dotenv(tmp_path: Path, capsys,
         overlay,
         {
             "skills": {
-                "spaces": [{"id": "s", "account": "aa", "domain": "dd", "sources": ["src-redis"]}],
+                "spaces": [{"id": "s", "namespace": "aa:dd", "sources": ["src-redis"]}],
                 "sources": [{"id": "src-redis", "type": "redis", "options": {"dsn_env": "REDIS_URL", "key_prefix": "skills:"}}],
             }
         },
@@ -342,7 +342,7 @@ def test_cli_scan_redis_env_present_true_with_dotenv(tmp_path: Path, capsys, mon
         overlay,
         {
             "skills": {
-                "spaces": [{"id": "s", "account": "aa", "domain": "dd", "sources": ["src-redis"]}],
+                "spaces": [{"id": "s", "namespace": "aa:dd", "sources": ["src-redis"]}],
                 "sources": [{"id": "src-redis", "type": "redis", "options": {"dsn_env": "REDIS_URL", "key_prefix": "skills:"}}],
             }
         },
@@ -368,7 +368,7 @@ def test_cli_scan_duplicate_skill_name_still_outputs_report(tmp_path: Path, caps
         overlay,
         {
             "skills": {
-                "spaces": [{"id": "s", "account": "aa", "domain": "dd", "sources": ["src-a", "src-b"]}],
+                "spaces": [{"id": "s", "namespace": "aa:dd", "sources": ["src-a", "src-b"]}],
                 "sources": [
                     {"id": "src-a", "type": "filesystem", "options": {"root": "a"}},
                     {"id": "src-b", "type": "filesystem", "options": {"root": "b"}},
@@ -416,7 +416,7 @@ def test_cli_scan_redis_env_present_false_with_dotenv_but_disabled(tmp_path: Pat
         overlay,
         {
             "skills": {
-                "spaces": [{"id": "s", "account": "aa", "domain": "dd", "sources": ["src-redis"]}],
+                "spaces": [{"id": "s", "namespace": "aa:dd", "sources": ["src-redis"]}],
                 "sources": [{"id": "src-redis", "type": "redis", "options": {"dsn_env": "REDIS_URL", "key_prefix": "skills:"}}],
             }
         },

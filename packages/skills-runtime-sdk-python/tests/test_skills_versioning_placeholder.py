@@ -55,8 +55,7 @@ def _scan_signature(report) -> dict[str, Any]:
                 (
                     s.space_id,
                     s.source_id,
-                    s.account,
-                    s.domain,
+                    s.namespace,
                     s.skill_name,
                     s.description,
                     s.locator,
@@ -154,7 +153,7 @@ def test_skills_manager_scan_is_unchanged_with_versioning(tmp_path: Path) -> Non
     _write_fs_skill(fs_root, name="python_testing", description="pytest patterns")
 
     base_skills_cfg: Dict[str, Any] = {
-        "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+        "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
         "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
     }
 
@@ -186,7 +185,7 @@ def test_versioning_can_be_enabled_without_affecting_scan(tmp_path: Path) -> Non
     _write_fs_skill(fs_root, name="python_testing", description="pytest patterns")
 
     skills_cfg = {
-        "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+        "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
         "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
         "versioning": {"enabled": True, "strategy": "TODO"},
     }

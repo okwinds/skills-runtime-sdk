@@ -16,10 +16,24 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import re
 from typing import Any, Dict, Iterable, List, Literal, Mapping, MutableMapping, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
+
+_SEGMENT_SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])$")
+_NAMESPACE_RE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])(?::[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])){0,6}$"
+)
+
+
+def _is_valid_namespace(value: str) -> bool:
+    """校验 namespace（1..7 个有序 segments，每段长度 2..64）。"""
+
+    if not isinstance(value, str) or not _NAMESPACE_RE.match(value):
+        return False
+    return all(_SEGMENT_SLUG_RE.match(segment) for segment in value.split(":"))
 
 
 def _deep_merge(base: MutableMapping[str, Any], overlay: Mapping[str, Any]) -> MutableMapping[str, Any]:
@@ -218,10 +232,32 @@ class AgentSdkSkillsConfig(BaseModel):
         model_config = ConfigDict(extra="forbid")
 
         id: str
-        account: str
-        domain: str
+        namespace: str
         sources: List[str] = Field(default_factory=list)
         enabled: bool = True
+
+        @model_validator(mode="before")
+        @classmethod
+        def _reject_legacy_fields(cls, data: Any) -> Any:
+            """显式拒绝历史二段式空间键字段（不提供兼容层）。"""
+
+            if isinstance(data, Mapping):
+                legacy = [k for k in ("account", "domain") if k in data]
+                if legacy:
+                    fields = ",".join(legacy)
+                    raise ValueError(
+                        f"skills.spaces[] only accepts namespace; legacy fields are forbidden: {fields}"
+                    )
+            return data
+
+        @field_validator("namespace")
+        @classmethod
+        def _validate_namespace(cls, value: str) -> str:
+            """校验 namespace（1..7 segments，segment slug 2..64）。"""
+
+            if not _is_valid_namespace(value):
+                raise ValueError("skills.spaces[].namespace is invalid")
+            return value
 
     class Source(BaseModel):
         """Skills source 配置。"""

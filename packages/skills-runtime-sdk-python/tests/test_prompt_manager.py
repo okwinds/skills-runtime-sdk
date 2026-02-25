@@ -40,7 +40,7 @@ def test_prompt_manager_message_order_includes_skills_list_and_injections(tmp_pa
     sm = SkillsManager(
         workspace_root=tmp_path,
         skills_config={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(skills_root)}}],
         },
     )
@@ -81,6 +81,9 @@ def test_prompt_manager_message_order_includes_skills_list_and_injections(tmp_pa
     assert roles[2] == "user"  # injected skill
     assert roles[3] == "assistant"  # history
     assert roles[-1] == "user"  # task
+
+    assert "Available skills (mention via $[namespace].skill_name):" in messages[1]["content"]
+    assert "$[alice:engineering].python_testing" in messages[1]["content"]
 
     assert debug["templates"][0]["name"] == "t"
     assert debug["skills_count"] == 1

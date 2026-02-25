@@ -76,26 +76,26 @@ def _mk_manager(
 @pytest.mark.parametrize(
     "text,expected",
     [
-        ("$[alice:engineering].python_testing", [("alice", "engineering", "python_testing")]),
-        ("$[agentops:platform].redis_cache", [("agentops", "platform", "redis_cache")]),
-        ("$[alice:engineering].python_testing then do something", [("alice", "engineering", "python_testing")]),
+        ("$[alice:engineering].python_testing", [("alice:engineering", "python_testing")]),
+        ("$[agentops:platform].redis_cache", [("agentops:platform", "redis_cache")]),
+        ("$[alice:engineering].python_testing then do something", [("alice:engineering", "python_testing")]),
         ("ps -p $PPID -o command=", []),
         ("literal \\$python_testing is not a mention", []),
         ("$python_testing", []),
         ("$[a:engineering].python_testing", []),
         ("$[alice:e].python_testing", []),
         ("$[alice:engineering].a", []),
-        ("$[alice].python_testing", []),
+        ("$[alice].python_testing", [("alice", "python_testing")]),
         ("$[alice:engineering]python_testing", []),
-        ("$[alice:engineering].python testing", [("alice", "engineering", "python")]),
-        ("$[alice:engine:core].python_testing", []),
+        ("$[alice:engineering].python testing", [("alice:engineering", "python")]),
+        ("$[alice:engine:core].python_testing", [("alice:engine:core", "python_testing")]),
         ("$[alice:engineering].python]testing", []),
-        ("$[alice:engineering].python:testing", [("alice", "engineering", "python")]),
+        ("$[alice:engineering].python:testing", [("alice:engineering", "python")]),
         ("$[AlicE:engineering].python_testing", []),
-        ("text $[alice:engineering].python_testing text", [("alice", "engineering", "python_testing")]),
+        ("text $[alice:engineering].python_testing text", [("alice:engineering", "python_testing")]),
         (
             "$[alice:engineering].python_testing,$[alice:engineering].redis_cache",
-            [("alice", "engineering", "python_testing"), ("alice", "engineering", "redis_cache")],
+            [("alice:engineering", "python_testing"), ("alice:engineering", "redis_cache")],
         ),
         ("env $PATH should be ignored", []),
         ("link [$python_testing](./skills/python_testing)", []),
@@ -103,12 +103,12 @@ def _mk_manager(
 )
 def test_skills_mention_conformance(
     text: str,
-    expected: list[tuple[str, str, str]],
+    expected: list[tuple[str, str]],
 ) -> None:
-    """mention 契约：自由文本中仅提取合法 `$[account:domain].skill_name`。"""
+    """mention 契约：自由文本中仅提取合法 `$[namespace].skill_name`。"""
 
     mentions = extract_skill_mentions(text)
-    got = [(m.account, m.domain, m.skill_name) for m in mentions]
+    got = [(m.namespace, m.skill_name) for m in mentions]
     assert got == expected
 
 
@@ -122,8 +122,8 @@ def test_skills_mention_conformance(
         "K-005",  # mixed mentions, one unknown
         "K-006",  # all unknown
         "K-007",  # skills config missing
-        "K-008",  # domain mismatch
-        "K-009",  # account mismatch
+        "K-008",  # namespace mismatch
+        "K-009",  # namespace mismatch
         "K-010",  # unknown structure
     ],
 )
@@ -140,14 +140,14 @@ def test_skills_unknown_and_space_errors(case_id: str, tmp_path: Path) -> None:
     if case_id == "K-001":
         mention = "$[alice:engineering].not_exists"
         skills_cfg = {
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
         }
     elif case_id == "K-002":
         mention = "$[alice:ops].python_testing"
         expected_code = "SKILL_SPACE_NOT_CONFIGURED"
         skills_cfg = {
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
         }
     elif case_id == "K-003":
@@ -157,8 +157,7 @@ def test_skills_unknown_and_space_errors(case_id: str, tmp_path: Path) -> None:
             "spaces": [
                 {
                     "id": "space-eng",
-                    "account": "alice",
-                    "domain": "engineering",
+                    "namespace": "alice:engineering",
                     "sources": ["src-fs"],
                     "enabled": False,
                 }
@@ -169,19 +168,19 @@ def test_skills_unknown_and_space_errors(case_id: str, tmp_path: Path) -> None:
         mention = "$[alice:engineering].python_testing"
         expected_code = "SKILL_SCAN_SOURCE_UNAVAILABLE"
         skills_cfg = {
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-redis"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-redis"]}],
             "sources": [{"id": "src-redis", "type": "redis", "options": {"dsn_env": "REDIS_URL", "key_prefix": "skills:"}}],
         }
     elif case_id == "K-005":
         mention = "$[alice:engineering].python_testing,$[alice:engineering].unknown_one"
         skills_cfg = {
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
         }
     elif case_id == "K-006":
         mention = "$[alice:engineering].unknown_a,$[alice:engineering].unknown_b"
         skills_cfg = {
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
         }
     elif case_id == "K-007":
@@ -192,20 +191,20 @@ def test_skills_unknown_and_space_errors(case_id: str, tmp_path: Path) -> None:
         mention = "$[alice:platform].python_testing"
         expected_code = "SKILL_SPACE_NOT_CONFIGURED"
         skills_cfg = {
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
         }
     elif case_id == "K-009":
         mention = "$[bob:engineering].python_testing"
         expected_code = "SKILL_SPACE_NOT_CONFIGURED"
         skills_cfg = {
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
         }
     else:
         mention = "$[alice:engineering].still_unknown"
         skills_cfg = {
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
             "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
         }
 
@@ -232,10 +231,6 @@ def test_skills_unknown_and_space_errors(case_id: str, tmp_path: Path) -> None:
             ("space-a", "src-fs-a", "filesystem", {"root": str(root / "fs-a")}, ["dup_name"]),
             ("space-a", "src-fs-b", "filesystem", {"root": str(root / "fs-b")}, ["dup_name"]),
         ]),
-        ("U-003", lambda root: [
-            ("space-a", "src-fs-a", "filesystem", {"root": str(root / "fs-a")}, ["dup_name"]),
-            ("space-b", "src-fs-b", "filesystem", {"root": str(root / "fs-b")}, ["dup_name"]),
-        ]),
         ("U-004", lambda root: [
             ("space-a", "src-fs", "filesystem", {"root": str(root / "fs-a")}, ["dup_name"]),
             ("space-a", "src-mem", "in-memory", {"namespace": "ns-u4"}, ["dup_name"]),
@@ -244,26 +239,10 @@ def test_skills_unknown_and_space_errors(case_id: str, tmp_path: Path) -> None:
             ("space-a", "src-mem-a", "in-memory", {"namespace": "ns-u5a"}, ["dup_name"]),
             ("space-a", "src-mem-b", "in-memory", {"namespace": "ns-u5b"}, ["dup_name"]),
         ]),
-        ("U-006", lambda root: [
-            ("space-a", "src-fs", "filesystem", {"root": str(root / "fs-a")}, ["dup_name"]),
-            ("space-b", "src-mem", "in-memory", {"namespace": "ns-u6"}, ["dup_name"]),
-        ]),
         ("U-007", lambda root: [
             ("space-a", "src-fs", "filesystem", {"root": str(root / "fs-a")}, ["dup_name"]),
             ("space-a", "src-mem-a", "in-memory", {"namespace": "ns-u7a"}, ["dup_name"]),
             ("space-b", "src-mem-b", "in-memory", {"namespace": "ns-u7b"}, ["dup_name"]),
-        ]),
-        ("U-008", lambda root: [
-            ("space-a", "src-fs", "filesystem", {"root": str(root / "fs-a")}, ["dup_name::desc_a"]),
-            ("space-b", "src-fs-b", "filesystem", {"root": str(root / "fs-b")}, ["dup_name::desc_b"]),
-        ]),
-        ("U-009", lambda root: [
-            ("space-a", "src-fs", "filesystem", {"root": str(root / "fs-a")}, ["dup_name::body_a"]),
-            ("space-b", "src-fs-b", "filesystem", {"root": str(root / "fs-b")}, ["dup_name::body_b"]),
-        ]),
-        ("U-010", lambda root: [
-            ("space-a", "src-fs-a", "filesystem", {"root": str(root / "fs-a")}, ["dup_name"]),
-            ("space-b", "src-mem", "in-memory", {"namespace": "ns-u10"}, ["dup_name"]),
         ]),
     ],
 )
@@ -272,7 +251,7 @@ def test_skills_duplicate_name_early_fail(
     payload_builder: Callable[[Path], list[tuple[str, str, str, dict[str, Any], list[str]]]],
     tmp_path: Path,
 ) -> None:
-    """重复 skill_name 必须在 scan 阶段早失败并返回 conflicts 明细。"""
+    """重复 (namespace, skill_name) 必须在 scan 阶段早失败并返回 conflicts 明细。"""
 
     data_root = tmp_path / "dup"
     rows = payload_builder(data_root)
@@ -284,11 +263,10 @@ def test_skills_duplicate_name_early_fail(
     for space_id, source_id, source_type, options, names in rows:
         sources.append({"id": source_id, "type": source_type, "options": options})
         if space_id not in spaces:
-            account = "alice" if space_id.endswith("a") else "bob"
+            prefix = "alice" if space_id.endswith("a") else "bob"
             spaces[space_id] = {
                 "id": space_id,
-                "account": account,
-                "domain": "engineering",
+                "namespace": f"{prefix}:engineering",
                 "sources": [],
             }
         spaces[space_id]["sources"].append(source_id)
@@ -388,7 +366,7 @@ def test_skills_lazy_load_and_max_bytes(
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-mem"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-mem"]}],
             "sources": [{"id": "src-mem", "type": "in-memory", "options": {"namespace": "ns-lazy"}}],
             "injection": {"max_bytes": max_bytes},
         },
@@ -436,7 +414,7 @@ def test_skills_body_read_failed(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-mem"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-mem"]}],
             "sources": [{"id": "src-mem", "type": "in-memory", "options": {"namespace": "ns-read-fail"}}],
         },
         in_memory_registry={
@@ -467,7 +445,7 @@ def test_skills_scan_report_shape_and_types(tmp_path: Path) -> None:
     mgr = _mk_manager(
         tmp_path,
         skills={
-            "spaces": [{"id": "space-eng", "account": "alice", "domain": "engineering", "sources": ["src-fs", "src-redis"]}],
+            "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs", "src-redis"]}],
             "sources": [
                 {"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}},
                 {"id": "src-redis", "type": "redis", "options": {"dsn_env": "REDIS_URL", "key_prefix": "skills:"}},

@@ -296,8 +296,7 @@ def load_skill_from_path(path: Path, *, scope: str | None = None) -> Skill:
     return Skill(
         space_id="",
         source_id="",
-        account="",
-        domain="",
+        namespace="",
         skill_name=name,
         description=desc,
         locator=str(p),
