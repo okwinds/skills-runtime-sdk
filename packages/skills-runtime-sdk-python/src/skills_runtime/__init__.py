@@ -24,4 +24,4 @@ from skills_runtime.core.coordinator import ChildResult, Coordinator
 
 __all__ = ["Agent", "AgentBuilder", "ChildResult", "Coordinator", "RunResult", "__version__"]
 
-__version__ = "0.1.4.post2"
+__version__ = "0.1.5.post1"
