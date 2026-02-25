@@ -8,7 +8,7 @@
 4. **Report**：写出 `report.md`（写操作，走 approvals）
 
 关键约束：**所有 agent 能力都必须基于 Skills（`SKILL.md`）最小单元构建**。  
-本示例中，每个角色对应一个 skill，并通过 mention（`$[account:domain].skill_name`）触发注入与 `skill_injected` 证据事件。
+本示例中，每个角色对应一个 skill，并通过 mention（`$[namespace].skill_name`）触发注入与 `skill_injected` 证据事件。
 
 ## 目录结构
 

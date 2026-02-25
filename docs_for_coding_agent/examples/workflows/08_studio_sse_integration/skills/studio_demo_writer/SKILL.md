@@ -16,8 +16,7 @@ metadata:
 ## 注意（namespace）
 
 Studio MVP 当前会把 session skills roots 映射到固定 space：
-- `account=web`
-- `domain=mvp`
+- `namespace=web:mvp`
 
 因此在 Studio 的 message 里应使用：
 
@@ -32,4 +31,3 @@ $[web:mvp].studio_demo_writer
 ## 输出要求
 
 - 写入 `studio_demo_output.txt`，内容包含稳定标记：`STUDIO_DEMO_OK`
-

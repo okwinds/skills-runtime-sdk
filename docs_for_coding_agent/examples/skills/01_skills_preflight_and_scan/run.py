@@ -40,8 +40,7 @@ def main() -> int:
             "spaces": [
                 {
                     "id": "local-space",
-                    "account": "local",
-                    "domain": "demo",
+                    "namespace": "local:demo",
                     "sources": ["fs1"],
                     "enabled": True,
                 }
