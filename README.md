@@ -77,8 +77,10 @@ You can type a normal task in the UI. Studio MVP also installs two built-in exam
 If you need an explicit skill call (system-to-system), use a valid mention:
 
 ```text
-$[account:domain].skill_name
+$[namespace].skill_name
 ```
+
+See `help/13-namespace-mentions.md` for the contract and examples.
 
 Note: only **valid** mentions are extracted; invalid “mention-like” fragments are treated as plain text and will not interrupt the run.
 

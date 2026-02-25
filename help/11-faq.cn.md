@@ -8,7 +8,7 @@
 
 ## Q1：为什么我写了 `$skill_name` 不生效？
 
-A：当前合法语法是 `$[account:domain].skill_name`。`$skill_name` 属于 legacy 形态，自由文本里会被忽略。
+A：当前合法语法是 `$[namespace].skill_name`（见 `help/13-namespace-mentions.cn.md`）。`$skill_name` 属于 legacy 形态，自由文本里会被忽略。
 
 ## Q2：为什么不合法 mention 不报错？
 

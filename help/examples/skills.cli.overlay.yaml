@@ -11,8 +11,7 @@ skills:
   # 示例：filesystem source（metadata-only scan）
   spaces:
     - id: "local"
-      account: "web"
-      domain: "mvp"
+      namespace: "web:mvp"
       sources: ["fs_local"]
       enabled: true
 

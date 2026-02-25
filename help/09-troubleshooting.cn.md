@@ -121,7 +121,7 @@ bash scripts/integration/os_sandbox_bubblewrap_probe_docker.sh
 - 文本里写了 mention 但未注入
 
 定位：
-- 检查语法是否是合法 mention：`$[account:domain].skill_name`
+- 检查语法是否是合法 mention：`$[namespace].skill_name`（见 `help/13-namespace-mentions.cn.md`）
 - 检查 session filesystem_sources 与 skills scan 输出
 
 修复：

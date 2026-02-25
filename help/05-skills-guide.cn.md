@@ -9,7 +9,7 @@
 ## 5.1 唯一合法 mention 语法
 
 ```text
-$[account:domain].skill_name
+$[namespace].skill_name
 ```
 
 示例：

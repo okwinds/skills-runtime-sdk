@@ -49,7 +49,7 @@
 
 ## 0.4 关键术语速查
 
-- **Skill mention**：合法格式为 `$[account:domain].skill_name`
+- **Skill mention**：合法格式为 `$[namespace].skill_name`（见 `help/13-namespace-mentions.cn.md`）
 - **自由文本提取**：只提取合法 mention；不合法片段按普通文本处理
 - **Tool 参数严格校验**：当参数要求 `skill_mention` 时仍必须是完整 token
 - **Agent**：运行引擎实例（执行一次 run 并产出 WAL 事件）

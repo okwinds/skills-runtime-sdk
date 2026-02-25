@@ -9,7 +9,7 @@
 ## 5.1 The only valid mention format
 
 ```text
-$[account:domain].skill_name
+$[namespace].skill_name
 ```
 
 Example:

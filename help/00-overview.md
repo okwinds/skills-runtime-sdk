@@ -50,7 +50,7 @@ Note on naming:
 
 ## 0.4 Terminology quick reference
 
-- **Skill mention**: valid format is `$[account:domain].skill_name`
+- **Skill mention**: valid format is `$[namespace].skill_name` (see `help/13-namespace-mentions.md`)
 - **Free-text extraction**: only extracts valid mentions; invalid fragments become plain text
 - **Strict tool validation**: if a tool arg requires `skill_mention`, it must be a full token
 - **Agent**: the run engine instance (executes a run and emits WAL events)

@@ -82,6 +82,8 @@ Studio MVP 启动时会默认安装两份内置示例技能（用于开箱体验
 $[web:mvp].skill_name
 ```
 
+更多契约与多段 namespace 的说明见：`help/13-namespace-mentions.cn.md`。
+
 说明：框架只提取**合法** mention，其它类似片段一律当普通文本处理（不会打断 run）。
 
 ---

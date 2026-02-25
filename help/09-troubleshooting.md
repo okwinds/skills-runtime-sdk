@@ -127,7 +127,7 @@ Symptom:
 - You wrote a mention, but the skill body was not injected
 
 Diagnosis:
-- Ensure mention syntax: `$[account:domain].skill_name`
+- Ensure mention syntax: `$[namespace].skill_name` (see `help/13-namespace-mentions.md`)
 - Ensure session filesystem sources are correct, and skill scan finds the skill
 
 Fix:

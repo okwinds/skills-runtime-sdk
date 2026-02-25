@@ -126,8 +126,7 @@ cat > /tmp/skills-runtime-sdk-skills-cli-demo.yaml <<'YAML'
 skills:
   spaces:
     - id: "fixtures"
-      account: "demo"
-      domain: "local"
+      namespace: "demo:local"
       sources: ["examples-fs"]
   sources:
     - id: "examples-fs"
