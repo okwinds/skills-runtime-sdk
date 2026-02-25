@@ -92,13 +92,13 @@
 
 - 能力：结构化计划同步（plan_updated）；结构化人机输入（human_request/human_response）；无 provider 必须 fail-closed
 - 入口（契约/使用）：`help/04-cli-reference.cn.md`
-- 入口（示例）：`examples/step_by_step/08_plan_and_user_input/`
+- 入口（示例）：`docs_for_coding_agent/examples/step_by_step/08_plan_and_user_input/`
 
 ### CAP-SDK-015：Web/Image Tools（web_search / view_image）
 
 - 能力：`web_search` 默认关闭（需显式注入 provider）；`view_image` 受 workspace 边界约束（仅演示型）
 - 入口（契约/使用）：`help/06-tools-and-safety.cn.md`
-- 入口（示例）：`examples/tools/02_web_search_disabled_and_fake_provider/`、`examples/workflows/19_view_image_offline/`
+- 入口（示例）：`docs_for_coding_agent/examples/tools/02_web_search_disabled_and_fake_provider/`、`docs_for_coding_agent/examples/workflows/19_view_image_offline/`
 
 ---
 

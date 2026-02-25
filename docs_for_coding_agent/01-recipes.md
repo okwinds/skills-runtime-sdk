@@ -18,9 +18,9 @@
 - State/WAL：出问题能 replay/fork 复盘
 
 对应示例：
-- `examples/step_by_step/02_offline_tool_call_read_file/`
-- `examples/tools/01_standard_library_read_file/`
-- `examples/state/01_wal_replay_and_fork/`
+- `docs_for_coding_agent/examples/step_by_step/02_offline_tool_call_read_file/`
+- `docs_for_coding_agent/examples/tools/01_standard_library_read_file/`
+- `docs_for_coding_agent/examples/state/01_wal_replay_and_fork/`
 
 验收建议：
 - 离线门禁：`bash scripts/pytest.sh`
@@ -40,8 +40,8 @@
 - evidence：`data.sandbox.*`
 
 对应示例：
-- `examples/step_by_step/03_approvals_and_safety/`
-- `examples/step_by_step/04_sandbox_evidence_and_verification/`
+- `docs_for_coding_agent/examples/step_by_step/03_approvals_and_safety/`
+- `docs_for_coding_agent/examples/step_by_step/04_sandbox_evidence_and_verification/`
 
 验收建议：
 - 离线：能稳定产出 `data.sandbox` meta；restricted 且无 adapter 时必须 fail-closed（sandbox_denied）
@@ -61,8 +61,8 @@
 - 跨进程可复用（runtime server 生命周期内）
 
 对应示例：
-- `examples/step_by_step/05_exec_sessions_across_processes/`
-- `examples/step_by_step/06_collab_across_processes/`
+- `docs_for_coding_agent/examples/step_by_step/05_exec_sessions_across_processes/`
+- `docs_for_coding_agent/examples/step_by_step/06_collab_across_processes/`
 
 验收建议：
 - 多次 CLI 调用复用同一 `session_id` / `child id`
@@ -83,9 +83,9 @@
 - `skill_exec`（走 `shell_exec` 等价的 approvals/sandbox gate）
 
 对应示例：
-- `examples/skills/01_skills_preflight_and_scan/`
-- `examples/step_by_step/07_skills_references_and_actions/`
-- `examples/workflows/20_policy_compliance_patch/`（policy 合规补丁：references/policy.md → apply_patch → artifacts）
+- `docs_for_coding_agent/examples/skills/01_skills_preflight_and_scan/`
+- `docs_for_coding_agent/examples/step_by_step/07_skills_references_and_actions/`
+- `docs_for_coding_agent/examples/workflows/20_policy_compliance_patch/`（policy 合规补丁：references/policy.md → apply_patch → artifacts）
 
 验收建议：
 - references/actions 默认禁用（permission）
@@ -103,8 +103,8 @@
 - `request_user_input`：结构化提问（无 human_io 时必须 fail-closed）
 
 对应示例：
-- `examples/step_by_step/08_plan_and_user_input/`
-- `examples/workflows/22_chatops_incident_triage/`（ChatOps 排障：澄清→计划→runbook/report）
+- `docs_for_coding_agent/examples/step_by_step/08_plan_and_user_input/`
+- `docs_for_coding_agent/examples/workflows/22_chatops_incident_triage/`（ChatOps 排障：澄清→计划→runbook/report）
 
 验收建议：
 - 离线：通过 tools CLI 的 `--answers-json` 可注入答案，避免示例阻塞
@@ -125,7 +125,7 @@
 - provider 注入：产品侧显式注入 `ctx.web_search_provider`
 
 对应示例：
-- `examples/tools/02_web_search_disabled_and_fake_provider/`
+- `docs_for_coding_agent/examples/tools/02_web_search_disabled_and_fake_provider/`
 
 验收建议：
 - 默认关闭时：返回 `error_kind=validation` 且 `data.disabled=true`
@@ -152,11 +152,11 @@
 - State/WAL：每个 agent 都落 `events.jsonl`，可用于回放与排障
 
 对应示例：
-- `examples/workflows/01_multi_agent_repo_change_pipeline/`
-- `examples/workflows/03_multi_agent_reference_driven_pipeline/`（references 驱动：skill_ref_read 读取 policy）
-- `examples/workflows/18_fastapi_sse_gateway_minimal/`（本地 FastAPI + SSE + approvals decide：网关骨架）
-- `examples/workflows/20_policy_compliance_patch/`（policy 合规补丁：references → patch → artifacts）
-- `examples/workflows/22_chatops_incident_triage/`（ChatOps 排障：human I/O → plan → runbook/report）
+- `docs_for_coding_agent/examples/workflows/01_multi_agent_repo_change_pipeline/`
+- `docs_for_coding_agent/examples/workflows/03_multi_agent_reference_driven_pipeline/`（references 驱动：skill_ref_read 读取 policy）
+- `docs_for_coding_agent/examples/workflows/18_fastapi_sse_gateway_minimal/`（本地 FastAPI + SSE + approvals decide：网关骨架）
+- `docs_for_coding_agent/examples/workflows/20_policy_compliance_patch/`（policy 合规补丁：references → patch → artifacts）
+- `docs_for_coding_agent/examples/workflows/22_chatops_incident_triage/`（ChatOps 排障：human I/O → plan → runbook/report）
 
 验收建议：
 1. 离线门禁：
@@ -183,7 +183,7 @@
 - Skills-First：访谈/校验/落盘能力来自 Skills（mentions 触发 `skill_injected`）
 
 对应示例：
-- `examples/workflows/02_single_agent_form_interview/`
+- `docs_for_coding_agent/examples/workflows/02_single_agent_form_interview/`
 
 验收建议：
 - 离线门禁：`pytest -q packages/skills-runtime-sdk-python/tests/test_examples_smoke.py`
@@ -205,7 +205,7 @@
 - Skills-First：Planner/Subagent/Aggregator 全部通过 mentions 注入并产生 `skill_injected` 证据事件
 
 对应示例：
-- `examples/workflows/04_map_reduce_parallel_subagents/`
+- `docs_for_coding_agent/examples/workflows/04_map_reduce_parallel_subagents/`
 
 验收建议：
 - 子任务产物互不覆盖（路径隔离）
@@ -225,7 +225,7 @@
 - Reporter：`file_write` 输出报告（approvals）
 
 对应示例：
-- `examples/workflows/05_multi_agent_code_review_fix_qa_report/`
+- `docs_for_coding_agent/examples/workflows/05_multi_agent_code_review_fix_qa_report/`
 
 ---
 
@@ -241,7 +241,7 @@
 - replay resume：`run.resume_strategy=replay`，尽量恢复 tool outputs 与 approvals cache
 
 对应示例：
-- `examples/workflows/06_wal_fork_and_resume_pipeline/`
+- `docs_for_coding_agent/examples/workflows/06_wal_fork_and_resume_pipeline/`
 
 验收建议：
 - 第二次 run 的 `run_started.payload.resume.enabled == true` 且 `strategy == replay`
@@ -260,7 +260,7 @@
 - `skill_exec`：受控执行 action（仍走 approvals/sandbox gate）
 
 对应示例：
-- `examples/workflows/07_skill_exec_actions_module/`
+- `docs_for_coding_agent/examples/workflows/07_skill_exec_actions_module/`
 
 ---
 
@@ -276,7 +276,7 @@
 - Approvals：监听 `approval_requested` 并调用 decide API
 
 对应示例（集成，需显式 opt-in）：
-- `examples/workflows/08_studio_sse_integration/`
+- `docs_for_coding_agent/examples/workflows/08_studio_sse_integration/`
 
 ---
 
@@ -292,7 +292,7 @@
 - Reporter：`file_write(report.md)` 汇总（包含 `wal_locator` 指针）
 
 对应示例：
-- `examples/workflows/09_branching_router_workflow/`
+- `docs_for_coding_agent/examples/workflows/09_branching_router_workflow/`
 
 验收建议：
 - `route.json` 存在且结构稳定（后续可被别的工具/流程消费）
@@ -313,7 +313,7 @@
 - Reporter：`file_write(report.md)`（汇总每次 attempt 的 exit_code + wal_locator）
 
 对应示例：
-- `examples/workflows/10_retry_degrade_workflow/`
+- `docs_for_coding_agent/examples/workflows/10_retry_degrade_workflow/`
 
 验收建议：
 - attempt 的 `tool_call_finished.ok == false` 也必须存在（失败仍可审计）
@@ -333,7 +333,7 @@
 - aggregator：汇总输出（例如 `report.md`）
 
 对应示例：
-- `examples/workflows/11_collab_parallel_subagents_workflow/`
+- `docs_for_coding_agent/examples/workflows/11_collab_parallel_subagents_workflow/`
 
 验收建议：
 - master 的 WAL 中应出现 `tool_call_finished`（spawn_agent/send_input/wait）
@@ -353,7 +353,7 @@
 - Reporter：只记录关键标记是否出现，避免 PTY 输出细节导致回归不稳定
 
 对应示例：
-- `examples/workflows/12_exec_sessions_engineering_workflow/`
+- `docs_for_coding_agent/examples/workflows/12_exec_sessions_engineering_workflow/`
 
 验收建议：
 - WAL 中应出现 `exec_command/write_stdin` 的 `tool_call_finished`
@@ -374,7 +374,7 @@
 - 输出 `eval_score.json` + `eval_report.md`
 
 对应示例：
-- `examples/workflows/15_workflow_eval_harness/`
+- `docs_for_coding_agent/examples/workflows/15_workflow_eval_harness/`
 
 验收建议：
 - `eval_score.json` 可被 CI 消费（结构化）
@@ -386,11 +386,11 @@
 
 这些示例更偏“项目形态”，通常同时覆盖：skills-first（mention → `skill_injected`）、approvals、WAL 证据链与产物落盘。
 
-- 规则驱动的结构化解析器：`examples/workflows/16_rules_based_parser/`
+- 规则驱动的结构化解析器：`docs_for_coding_agent/examples/workflows/16_rules_based_parser/`
   - 自然语言规则 → `plan.json` → 确定性执行 `result.json` → `report.md`
-- 最小 RAG（离线 stub）：`examples/workflows/17_minimal_rag_stub/`
+- 最小 RAG（离线 stub）：`docs_for_coding_agent/examples/workflows/17_minimal_rag_stub/`
   - 自定义 `kb_search`（关键词检索）→ `retrieval.json` → `report.md`
-- 离线 view_image：`examples/workflows/19_view_image_offline/`
+- 离线 view_image：`docs_for_coding_agent/examples/workflows/19_view_image_offline/`
   - 生成 PNG → `view_image` → `image_meta.json` / `report.md`
-- 数据导入校验与修复：`examples/workflows/21_data_import_validate_and_fix/`
+- 数据导入校验与修复：`docs_for_coding_agent/examples/workflows/21_data_import_validate_and_fix/`
   - `read_file(input.csv)` → `file_write(fixed.csv/report)` → `shell_exec(QA_OK)` → `report.md`

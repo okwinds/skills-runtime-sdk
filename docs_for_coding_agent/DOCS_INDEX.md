@@ -33,3 +33,14 @@
 - `docs_for_coding_agent/task-contract.md`：任务契约（交付口径：Spec/TDD/Worklog/Task Summary/Index）。
 - `docs_for_coding_agent/testing-strategy.md`：测试策略（离线门禁 vs 可选集成；fake backend 的使用方式）。
 - `docs_for_coding_agent/common-pitfalls.md`：常见坑与排障（含 Docker/沙箱可用性、忽略规则等）。
+
+---
+
+## Examples（Coding Agent）
+
+> 本节仅索引“面向编码智能体”的能力覆盖示例代码（默认离线可回归）。
+
+- `docs_for_coding_agent/examples/step_by_step/`：按学习路径组织的最小闭环示例（tool_calls/approvals/sandbox/WAL…）。
+- `docs_for_coding_agent/examples/tools/`：ToolRegistry 与工具协议示例（尽量不依赖 LLM）。
+- `docs_for_coding_agent/examples/skills/`：skills preflight/scan/mentions 示例。
+- `docs_for_coding_agent/examples/state/`：WAL replay/fork 示例。

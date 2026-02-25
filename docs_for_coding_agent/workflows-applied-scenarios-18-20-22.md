@@ -8,9 +8,9 @@
 - **可复刻的最小骨架**（README + run.py + skills/*/SKILL.md）
 
 本页覆盖的 workflows：
-- WF18：`examples/workflows/18_fastapi_sse_gateway_minimal/`（FastAPI + SSE 网关最小形态）
-- WF20：`examples/workflows/20_policy_compliance_patch/`（policy 合规补丁：references → patch → artifacts）
-- WF22：`examples/workflows/22_chatops_incident_triage/`（ChatOps 排障：human I/O 澄清 → plan → runbook/report）
+- WF18：`docs_for_coding_agent/examples/workflows/18_fastapi_sse_gateway_minimal/`（FastAPI + SSE 网关最小形态）
+- WF20：`docs_for_coding_agent/examples/workflows/20_policy_compliance_patch/`（policy 合规补丁：references → patch → artifacts）
+- WF22：`docs_for_coding_agent/examples/workflows/22_chatops_incident_triage/`（ChatOps 排障：human I/O 澄清 → plan → runbook/report）
 
 ---
 
@@ -59,23 +59,23 @@ WF22（WAL 断言）：
 ## Acceptance Criteria
 
 1) 目录与文件存在：
-- `examples/workflows/18_fastapi_sse_gateway_minimal/README.md`
-- `examples/workflows/18_fastapi_sse_gateway_minimal/run.py`
-- `examples/workflows/18_fastapi_sse_gateway_minimal/skills/*/SKILL.md`
-- `examples/workflows/20_policy_compliance_patch/README.md`
-- `examples/workflows/20_policy_compliance_patch/run.py`
-- `examples/workflows/20_policy_compliance_patch/skills/*/SKILL.md`
-- `examples/workflows/20_policy_compliance_patch/skills/*/references/policy.md`
-- `examples/workflows/22_chatops_incident_triage/README.md`
-- `examples/workflows/22_chatops_incident_triage/run.py`
-- `examples/workflows/22_chatops_incident_triage/skills/*/SKILL.md`
+- `docs_for_coding_agent/examples/workflows/18_fastapi_sse_gateway_minimal/README.md`
+- `docs_for_coding_agent/examples/workflows/18_fastapi_sse_gateway_minimal/run.py`
+- `docs_for_coding_agent/examples/workflows/18_fastapi_sse_gateway_minimal/skills/*/SKILL.md`
+- `docs_for_coding_agent/examples/workflows/20_policy_compliance_patch/README.md`
+- `docs_for_coding_agent/examples/workflows/20_policy_compliance_patch/run.py`
+- `docs_for_coding_agent/examples/workflows/20_policy_compliance_patch/skills/*/SKILL.md`
+- `docs_for_coding_agent/examples/workflows/20_policy_compliance_patch/skills/*/references/policy.md`
+- `docs_for_coding_agent/examples/workflows/22_chatops_incident_triage/README.md`
+- `docs_for_coding_agent/examples/workflows/22_chatops_incident_triage/run.py`
+- `docs_for_coding_agent/examples/workflows/22_chatops_incident_triage/skills/*/SKILL.md`
 
 2) 离线门禁覆盖：
 - `packages/skills-runtime-sdk-python/tests/test_examples_smoke.py` 将 18/20/22 加入 smoke 列表；
 - 跑 `python -m pytest -q packages/skills-runtime-sdk-python/tests/test_examples_smoke.py` 通过。
 
 3) 文档对齐：
-- `examples/workflows/README.md`、`docs_for_coding_agent/01-recipes.md`、`docs_for_coding_agent/03-workflows-guide.md`、
+- `docs_for_coding_agent/examples/workflows/README.md`、`docs_for_coding_agent/01-recipes.md`、`docs_for_coding_agent/03-workflows-guide.md`、
   `docs_for_coding_agent/capability-coverage-map.md` 增补 18/20/22 入口。
 
 ---
@@ -92,6 +92,5 @@ WF22（WAL 断言）：
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-  ./.venv/bin/python examples/workflows/20_policy_compliance_patch/run.py --workspace-root /tmp/srsdk-wf20
+  ./.venv/bin/python docs_for_coding_agent/examples/workflows/20_policy_compliance_patch/run.py --workspace-root /tmp/srsdk-wf20
 ```
-

@@ -2,7 +2,7 @@
 
 目标：在 **不需要真实模型/外网** 的情况下，跑通 SDK 的核心链路，并且知道“证据与产物”在哪里。
 
-> 说明：本 quickstart 以 `examples/step_by_step/*` 为准；Help 的真模型示例属于可选集成验证。
+> 说明：本 quickstart 以 `docs_for_coding_agent/examples/step_by_step/*` 为准；Help 的真模型示例属于可选集成验证。
 
 重要前置：
 - Python 版本要求：SDK 代码默认使用 `str | None` 等 typing 语法，要求 **Python >= 3.10**。
@@ -33,20 +33,20 @@ pytest -q packages/skills-runtime-sdk-python/tests/test_examples_smoke.py
 ## 3) 逐个跑 step_by_step（理解核心闭环）
 
 建议按顺序：
-- `examples/step_by_step/01_offline_minimal_run/`：离线最小 run（FakeChatBackend）+ wal_locator
-- `examples/step_by_step/02_offline_tool_call_read_file/`：tool_calls → 工具执行 → 回注 → 完成
-- `examples/step_by_step/03_approvals_and_safety/`：审批 ask/deny + approved_for_session 缓存
-- `examples/step_by_step/04_sandbox_evidence_and_verification/`：`data.sandbox` 证据字段 + 真实沙箱验证入口
-- `examples/step_by_step/05_exec_sessions_across_processes/`：exec sessions 跨进程复用（tools CLI）
-- `examples/step_by_step/06_collab_across_processes/`：collab primitives 跨进程复用（tools CLI）
-- `examples/step_by_step/07_skills_references_and_actions/`：skills ref_read + actions（skill_exec + 审批）
-- `examples/step_by_step/08_plan_and_user_input/`：计划与结构化人机输入（update_plan + request_user_input）
+- `docs_for_coding_agent/examples/step_by_step/01_offline_minimal_run/`：离线最小 run（FakeChatBackend）+ wal_locator
+- `docs_for_coding_agent/examples/step_by_step/02_offline_tool_call_read_file/`：tool_calls → 工具执行 → 回注 → 完成
+- `docs_for_coding_agent/examples/step_by_step/03_approvals_and_safety/`：审批 ask/deny + approved_for_session 缓存
+- `docs_for_coding_agent/examples/step_by_step/04_sandbox_evidence_and_verification/`：`data.sandbox` 证据字段 + 真实沙箱验证入口
+- `docs_for_coding_agent/examples/step_by_step/05_exec_sessions_across_processes/`：exec sessions 跨进程复用（tools CLI）
+- `docs_for_coding_agent/examples/step_by_step/06_collab_across_processes/`：collab primitives 跨进程复用（tools CLI）
+- `docs_for_coding_agent/examples/step_by_step/07_skills_references_and_actions/`：skills ref_read + actions（skill_exec + 审批）
+- `docs_for_coding_agent/examples/step_by_step/08_plan_and_user_input/`：计划与结构化人机输入（update_plan + request_user_input）
 
 运行方式（示例）：
 
 ```bash
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
-  python3 examples/step_by_step/03_approvals_and_safety/run.py --workspace-root /tmp/srsdk-demo
+  python3 docs_for_coding_agent/examples/step_by_step/03_approvals_and_safety/run.py --workspace-root /tmp/srsdk-demo
 ```
 
 ---
