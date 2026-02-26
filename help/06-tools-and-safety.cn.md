@@ -48,6 +48,12 @@ safety:
 
 ### 6.3.1 程序化规则审批（云端无人值守推荐）
 
+“无人值守”不是“不要审批”，而是：
+
+- 运行过程中不依赖人类点击
+- 审批决策由 **代码** 自动给出（可回归的规则），并且默认 **fail-closed**
+- 仍然可审计（事件/WAL），但不会把 secrets 明文写进日志或 UI
+
 当你没有“人类点击确认”的交互入口时，推荐注入规则审批 Provider（默认 fail-closed：未命中规则一律拒绝）：
 
 ```python
@@ -78,6 +84,138 @@ agent = Agent(
 说明：
 - ApprovalRequest 由 SDK 生成并已做最小脱敏（不包含 env values、file_write content 明文等）。
 - `condition` 抛异常时会被视为“不命中”（fail-closed）。
+
+#### 6.3.1.1 框架到底做了什么（原理 + 流程 + 事件）
+
+把 approvals 想成“危险执行路径前的硬门卫”，并且是可审计的：
+
+```text
+LLM tool_call
+  │
+  ├─ sanitize request（WAL/UI 不落 secrets 明文）
+  │
+  ├─ approval_key = sha256(canonical_json(tool, sanitized_request))
+  │
+  ├─ policy gate（denylist / allowlist / safety.mode）
+  │
+  ├─ ApprovalProvider.request_approval(...)（UI 点击 或 规则自动决策）
+  │
+  ├─ cache?（approved_for_session）
+  │
+  └─ dispatch tool -> tool_call_finished
+```
+
+WAL/SSE 时间线上会出现稳定的序列：
+
+```text
+tool_call_requested
+approval_requested
+approval_decided（approved/denied/approved_for_session/abort）
+tool_call_started      （只有 approved 才会出现）
+tool_call_finished
+```
+
+这套结构同时给你：
+- **安全性**：任何危险路径都不能绕过门卫
+- **体验价值**：allowlist + 缓存减少打扰，但仍有清晰审计链
+
+更深入的“脱敏契约 / approval_key / 示例事件序列”，见：
+- `help/14-safety-deep-dive.cn.md`
+
+#### 6.3.1.2 `approved_for_session`：不削弱安全的 UX 放大器
+
+有些操作在交互场景会很“吵”（例如 `exec_command` 打开一个交互式 session 后，需要多次 `write_stdin`）。
+
+当决策是 `approved_for_session` 时，SDK 会把该 `approval_key` 缓存在当前 run/session 内：
+后续相同动作可以跳过反复弹审批，但工具事件仍以“脱敏形态”进入 WAL。
+
+```text
+第一次： approval_requested -> approved_for_session -> 工具执行
+后续：  approval_key 命中缓存 -> 跳过 approval_requested -> 工具执行
+```
+
+典型受益场景：
+- PTY/exec sessions（`exec_command` + `write_stdin`）
+- 轮询型 workflow（反复读状态/输出）
+
+#### 6.3.1.3 既安全又好用的规则设计
+
+原则：
+- 优先用 **argv 形态** 的工具（`shell_exec`/`shell`），尽量避免直接放行 shell string（`shell_command`/`exec_command`）。
+  - shell string 可能包含管道/重定向/`&&` 等；在 `safety.mode=ask` 下，“复杂 shell”会被视为需要 approvals，即便 allowlist 命中也不应静默放行。
+- 只放行窄而明确的低风险操作，其它全部拒绝（fail-closed）。
+- allowlist 保持短、可审阅；“上下文相关”的放行用规则表达。
+
+示例：只允许跑测试（`pytest`/`python`），并对交互式 `write_stdin` 用 session 级缓存降低噪音：
+
+```python
+from skills_runtime.safety import ApprovalRule, RuleBasedApprovalProvider
+from skills_runtime.safety.approvals import ApprovalDecision
+
+def _argv0(req):
+    return (req.details.get("argv") or [None])[0]
+
+provider = RuleBasedApprovalProvider(
+    rules=[
+        ApprovalRule(
+            tool="shell_exec",
+            condition=lambda req: _argv0(req) in ("pytest", "python"),
+            decision=ApprovalDecision.APPROVED,
+        ),
+        ApprovalRule(
+            tool="write_stdin",
+            condition=lambda req: True,
+            decision=ApprovalDecision.APPROVED_FOR_SESSION,
+        ),
+    ],
+    default=ApprovalDecision.DENIED,
+)
+```
+
+### 6.3.2 面向生产的无人值守配置配方
+
+无人值守自动化的目标通常是：
+- 不把人类放在关键路径上
+- 遇到不安全/不确定动作时“快速、可解释地失败”
+- 既减少噪音，也保留足够审计证据
+
+#### 配方 A：CI 里“默认安全”的运行基线
+
+```yaml
+config_version: 1
+
+safety:
+  mode: "ask"
+  # 保持短：高频且低风险。
+  allowlist: ["pwd", "ls", "cat", "rg", "pytest"]
+  # 先把明显的脚枪堵死。
+  denylist: ["sudo", "rm -rf", "mkfs", "dd", "shutdown", "reboot"]
+  # 如果 ApprovalProvider 是远端实现（HTTP/队列），建议把等待时间收敛到可控范围。
+  approval_timeout_ms: 5000
+
+# 可选但推荐：用 OS sandbox 做围栏（降低事故半径）。
+sandbox:
+  default_policy: "restricted"
+  os:
+    mode: "auto"
+
+run:
+  # 若存在任何人类输入通道，也应把等待时间限定住。
+  human_timeout_ms: 3000
+```
+
+#### 配方 B：严格“无人工介入”的流水线
+
+如果一个 job 绝对不能等人类：依然建议使用 `safety.mode=ask`，但把 ApprovalProvider 设计成确定性的、fail-closed 的规则决策。
+这样“未覆盖的动作”会变成干净的拒绝（并带解释），而不是 run 卡住。
+
+### 6.3.3 这如何带来用户体验价值
+
+对开发者/用户来说，“好的安全治理”不仅是拦截，更是可预测性：
+
+- 少打扰：allowlist + `approved_for_session` 缓存
+- 好解释：policy 拒绝 / approvals 拒绝 / sandbox 拒绝在事件流里口径清晰
+- 可审计但不泄密：脱敏 request 小而稳定，适合生产日志与审计
 
 ## 6.4 Sandbox 策略（围栏）
 
