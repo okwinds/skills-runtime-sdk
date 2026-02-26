@@ -204,7 +204,7 @@ def _read_text_truncated(path: Path, *, max_bytes: int) -> tuple[str, bool]:
 
 def skill_ref_read(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     """
-    读取 skill bundle 的引用材料（filesystem-only）。
+    读取 skill bundle 的引用材料（filesystem + Redis bundle-backed）。
 
     参数：
     - call：ToolCall（args 必须包含 skill_mention/ref_path；可选 max_bytes）
@@ -270,16 +270,26 @@ def skill_ref_read(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             details={"mention": mention.mention_text},
         )
     skill, _ = resolved[0]
-    if skill.path is None:
-        return _framework_error_result(
-            error_kind="validation",
-            code="SKILL_REF_SOURCE_UNSUPPORTED",
-            message="Skill references are only supported for filesystem sources in current version.",
-            details={"source_id": skill.source_id, "locator": skill.locator},
-        )
+    try:
+        bundle_root, bundle_sha256 = ctx.skills_manager.get_bundle_root_for_tool(skill=skill, purpose="references")  # type: ignore[union-attr]
+    except FrameworkError as e:
+        # 兼容：非支持 source 的语义仍对外暴露为 SKILL_REF_SOURCE_UNSUPPORTED
+        if e.code == "SKILL_BUNDLE_SOURCE_UNSUPPORTED":
+            e = FrameworkError(
+                code="SKILL_REF_SOURCE_UNSUPPORTED",
+                message="Skill references are only supported for filesystem and redis bundle-backed sources in current version.",
+                details=dict(e.details or {}),
+            )
+        # 默认 validation；按更具体的错误码覆盖为 not_found/permission
+        kind = "validation"
+        if e.code == "SKILL_BUNDLE_NOT_FOUND":
+            kind = "not_found"
+        if e.code == "SKILL_BUNDLE_TOO_LARGE":
+            kind = "permission"
+        return _framework_error_result(error_kind=kind, code=e.code, message=e.message, details=e.details)
 
-    bundle_root = Path(skill.path).parent
-    allow_assets = _references_allow_assets(ctx)
+    # 本 change 的 Redis bundles 不支持 assets/（即使 config 开启也不放开）
+    allow_assets = False if bundle_sha256 else _references_allow_assets(ctx)
     try:
         root_name, rel = _validate_ref_path(ref_path=ref_path, allow_assets=allow_assets)
     except FrameworkError as e:

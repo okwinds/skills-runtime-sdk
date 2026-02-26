@@ -29,6 +29,7 @@ from skills_runtime.skills.mentions import (
     is_valid_skill_name_slug,
 )
 from skills_runtime.skills.models import ScanReport, Skill
+from skills_runtime.skills.bundles import ExtractedBundle, ensure_extracted_bundle
 
 
 def _utc_now_rfc3339() -> str:
@@ -100,6 +101,158 @@ class SkillsManager:
         self._scan_last_ok_report: Optional[ScanReport] = None
         self._disabled_paths: set[Path] = set()
         self._scan_options = _scan_options_from_config(self._skills_config)
+        bundles_cfg = getattr(self._skills_config, "bundles", None)
+        self._bundle_max_bytes = int(getattr(bundles_cfg, "max_bytes", 1 * 1024 * 1024) or 1 * 1024 * 1024)
+        self._bundle_cache_dir_raw = str(getattr(bundles_cfg, "cache_dir", ".skills_runtime_sdk/bundles") or ".skills_runtime_sdk/bundles")
+
+    def _resolve_under_workspace(self, raw: str) -> Path:
+        """将相对路径解析到 workspace_root 下并 resolve，确保语义稳定。"""
+
+        p = Path(raw)
+        if p.is_absolute():
+            return p.resolve()
+        return (self._workspace_root / p).resolve()
+
+    def _bundle_cache_root(self) -> Path:
+        """bundle 解压缓存根目录（runtime-owned，可删可重建）。"""
+
+        return self._resolve_under_workspace(self._bundle_cache_dir_raw)
+
+    @staticmethod
+    def _is_sha256_hex(value: Any) -> bool:
+        """判断 value 是否为 64 位 sha256 hex 字符串。"""
+
+        if not isinstance(value, str) or len(value) != 64:
+            return False
+        try:
+            int(value, 16)
+        except Exception:
+            return False
+        return True
+
+    def _find_source_by_id(self, source_id: str) -> AgentSdkSkillsConfig.Source:
+        """按 source_id 查找 source 配置，找不到则 fail-fast。"""
+
+        for s in self._skills_config.sources:
+            if s.id == source_id:
+                return s
+        raise FrameworkError(
+            code="SKILL_SCAN_METADATA_INVALID",
+            message="Skill source is not configured.",
+            details={"source_id": source_id},
+        )
+
+    def _ensure_redis_bundle_extracted(self, *, skill: Skill) -> ExtractedBundle:
+        """
+        为 Redis skill 获取并解压 bundle（lazy；仅工具路径调用）。
+
+        约束：
+        - scan 阶段不得调用；
+        - 缓存按 `bundle_sha256` content-addressed 复用；
+        - 缺失/无效契约必须 fail-closed（结构化 FrameworkError）。
+        """
+
+        source = self._find_source_by_id(skill.source_id)
+        if str(source.type or "").strip().lower() != "redis":
+            raise FrameworkError(
+                code="SKILL_BUNDLE_SOURCE_UNSUPPORTED",
+                message="Skill bundle is not supported for this source type in current version.",
+                details={"source_id": skill.source_id, "source_type": source.type, "locator": skill.locator},
+            )
+
+        key_prefix = source.options.get("key_prefix")
+        if not isinstance(key_prefix, str) or not key_prefix:
+            raise FrameworkError(
+                code="SKILL_BUNDLE_CONTRACT_INVALID",
+                message="Skill bundle contract is invalid.",
+                details={"source_id": source.id, "field": "key_prefix"},
+            )
+
+        meta = skill.metadata or {}
+        bundle_sha256 = meta.get("bundle_sha256")
+        if not isinstance(bundle_sha256, str) or not bundle_sha256:
+            raise FrameworkError(
+                code="SKILL_BUNDLE_FINGERPRINT_MISSING",
+                message="Skill bundle fingerprint is missing in metadata.",
+                details={"source_id": source.id, "locator": skill.locator, "field": "bundle_sha256"},
+            )
+        if not self._is_sha256_hex(bundle_sha256):
+            raise FrameworkError(
+                code="SKILL_BUNDLE_CONTRACT_INVALID",
+                message="Skill bundle contract is invalid.",
+                details={"source_id": source.id, "locator": skill.locator, "field": "bundle_sha256"},
+            )
+
+        bundle_format = meta.get("bundle_format", "zip")
+        if bundle_format is not None:
+            if not isinstance(bundle_format, str) or str(bundle_format).strip().lower() != "zip":
+                raise FrameworkError(
+                    code="SKILL_BUNDLE_CONTRACT_INVALID",
+                    message="Skill bundle contract is invalid.",
+                    details={"source_id": source.id, "locator": skill.locator, "field": "bundle_format"},
+                )
+
+        bundle_key = meta.get("bundle_key")
+        if bundle_key is None:
+            bundle_key = f"{key_prefix}bundle:{skill.namespace}:{skill.skill_name}"
+        if not isinstance(bundle_key, str) or not bundle_key:
+            raise FrameworkError(
+                code="SKILL_BUNDLE_CONTRACT_INVALID",
+                message="Skill bundle contract is invalid.",
+                details={"source_id": source.id, "locator": skill.locator, "field": "bundle_key"},
+            )
+
+        # fast path：若 cache 已存在，直接复用（避免重复读 Redis）
+        cache_root = self._bundle_cache_root()
+        final_dir = (cache_root / bundle_sha256).resolve()
+        if final_dir.exists() and final_dir.is_dir():
+            return ExtractedBundle(bundle_sha256=bundle_sha256, bundle_root=final_dir)
+
+        client = self._get_redis_client(source)
+        bundle_raw = client.get(bundle_key)
+        if bundle_raw is None:
+            raise FrameworkError(
+                code="SKILL_BUNDLE_NOT_FOUND",
+                message="Skill bundle is not found in source store.",
+                details={"source_id": source.id, "locator": skill.locator, "bundle_key": bundle_key},
+            )
+        if isinstance(bundle_raw, bytes):
+            bundle_bytes = bundle_raw
+        elif isinstance(bundle_raw, bytearray):
+            bundle_bytes = bytes(bundle_raw)
+        else:
+            raise FrameworkError(
+                code="SKILL_BUNDLE_INVALID",
+                message="Skill bundle bytes are invalid.",
+                details={"source_id": source.id, "locator": skill.locator, "bundle_key": bundle_key, "actual_type": type(bundle_raw).__name__},
+            )
+
+        # 缓存写入：ensure_extracted_bundle 内部会做 budget 与 sha 校验
+        return ensure_extracted_bundle(
+            cache_root=cache_root,
+            bundle_sha256=bundle_sha256,
+            bundle_bytes=bundle_bytes,
+            max_bytes=self._bundle_max_bytes,
+        )
+
+    def get_bundle_root_for_tool(self, *, skill: Skill, purpose: str) -> tuple[Path, Optional[str]]:
+        """
+        为 Phase 3 工具返回 bundle_root。
+
+        参数：
+        - skill：已 resolve 的 Skill
+        - purpose：用途字符串（actions/references；仅用于 details 辅助）
+
+        返回：
+        - (bundle_root, bundle_sha256)
+        """
+
+        _ = purpose
+        if skill.path is not None:
+            return Path(skill.path).parent.resolve(), None
+
+        extracted = self._ensure_redis_bundle_extracted(skill=skill)
+        return extracted.bundle_root.resolve(), extracted.bundle_sha256
 
     @staticmethod
     def _now_monotonic() -> float:
@@ -1188,6 +1341,37 @@ class SkillsManager:
                         details={"source_id": source.id, "locator": locator, "field": "scope"},
                     )
 
+                # Phase 3 bundles (optional metadata-only contract; actual bytes are fetched lazily by tools)
+                bundle_sha256 = normalized.get("bundle_sha256")
+                if bundle_sha256 is not None:
+                    if not isinstance(bundle_sha256, str) or not self._is_sha256_hex(bundle_sha256):
+                        raise FrameworkError(
+                            code="SKILL_SCAN_METADATA_INVALID",
+                            message="Skill metadata is invalid.",
+                            details={"source_id": source.id, "locator": locator, "field": "bundle_sha256"},
+                        )
+
+                bundle_key = normalized.get("bundle_key")
+                if bundle_key is not None and (not isinstance(bundle_key, str) or not bundle_key):
+                    raise FrameworkError(
+                        code="SKILL_SCAN_METADATA_INVALID",
+                        message="Skill metadata is invalid.",
+                        details={"source_id": source.id, "locator": locator, "field": "bundle_key"},
+                    )
+
+                bundle_size = normalized.get("bundle_size")
+                if bundle_size is not None:
+                    bundle_size = self._normalize_optional_int(bundle_size, field="bundle_size", source_id=source.id, locator=locator)
+
+                bundle_format = normalized.get("bundle_format")
+                if bundle_format is not None:
+                    if not isinstance(bundle_format, str) or str(bundle_format).strip().lower() != "zip":
+                        raise FrameworkError(
+                            code="SKILL_SCAN_METADATA_INVALID",
+                            message="Skill metadata is invalid.",
+                            details={"source_id": source.id, "locator": locator, "field": "bundle_format"},
+                        )
+
                 def _load_body(client_ref: Any = client, body_key_ref: str = body_key) -> str:
                     """
                     从 Redis 读取 skill body（作为 `Skill.body_loader` 的延迟加载回调）。
@@ -1231,6 +1415,10 @@ class SkillsManager:
                             "created_at": created_at,
                             "updated_at": updated_at,
                             "body_key": body_key,
+                            "bundle_sha256": bundle_sha256,
+                            "bundle_key": bundle_key,
+                            "bundle_size": bundle_size,
+                            "bundle_format": bundle_format,
                         },
                         scope=scope,
                     )

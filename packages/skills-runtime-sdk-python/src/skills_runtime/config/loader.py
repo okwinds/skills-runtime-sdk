@@ -203,6 +203,21 @@ class AgentSdkSkillsConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    class Bundles(BaseModel):
+        """
+        Skills bundles（Phase 3 资产：actions/references）的运行时预算与缓存策略。
+
+        说明：
+        - 仅影响 bundle-backed 的 Phase 3 工具路径（例如 Redis bundles）；
+        - 默认值应偏保守（fail-closed），避免大对象导致的内存/磁盘/延迟风险；
+        - cache_dir 为 runtime-owned 目录（可安全删除并重建）。
+        """
+
+        model_config = ConfigDict(extra="forbid")
+
+        max_bytes: StrictInt = Field(default=1 * 1024 * 1024, ge=1)
+        cache_dir: str = Field(default=".skills_runtime_sdk/bundles")
+
     class Versioning(BaseModel):
         """
         Skills 版本控制配置（占位）。
@@ -312,6 +327,7 @@ class AgentSdkSkillsConfig(BaseModel):
     sources: List[Source] = Field(default_factory=list)
     scan: Scan = Field(default_factory=Scan)
     injection: Injection = Field(default_factory=Injection)
+    bundles: Bundles = Field(default_factory=Bundles)
     actions: Actions = Field(default_factory=Actions)
     references: References = Field(default_factory=References)
 

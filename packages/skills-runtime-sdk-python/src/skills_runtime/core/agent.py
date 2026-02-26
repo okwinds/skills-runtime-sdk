@@ -52,6 +52,7 @@ from skills_runtime.prompts.compaction import (
 )
 from skills_runtime.llm.protocol import ChatRequest
 from skills_runtime.skills.manager import SkillsManager
+from skills_runtime.skills.mentions import extract_skill_mentions
 from skills_runtime.skills.models import Skill
 from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest, compute_approval_key
 from skills_runtime.safety.guard import CommandRisk, evaluate_command_risk
@@ -391,15 +392,27 @@ def _sanitize_approval_request(
         timeout_ms: Optional[int] = None
         env_keys: list[str] = []
         bundle_root: Optional[str] = None
+        bundle_sha256: Optional[str] = None
         resolve_error: Optional[str] = None
 
         if skills_manager is not None and mention_str and action_str:
             try:
+                # 严格：approval/audit 口径尽量与工具参数校验一致，避免对无效 token 做“误解析”。
+                stripped = mention_str.strip()
+                mentions = extract_skill_mentions(stripped)
+                if len(mentions) != 1 or mentions[0].mention_text != stripped:
+                    raise ValueError("not_a_single_full_token")
+
                 resolved = skills_manager.resolve_mentions(mention_str)
                 if resolved:
                     skill, _m = resolved[0]
                     if skill.path is not None:
                         bundle_root = str(Path(skill.path).parent.resolve())
+                    else:
+                        # Redis bundle-backed skills：在 approval/audit 阶段允许 lazy fetch + extract
+                        br, sha = skills_manager.get_bundle_root_for_tool(skill=skill, purpose="actions")
+                        bundle_root = str(Path(br).resolve())
+                        bundle_sha256 = str(sha) if sha else None
                     actions = (skill.metadata or {}).get("actions")
                     if isinstance(actions, dict):
                         adef = actions.get(action_str)
@@ -407,6 +420,33 @@ def _sanitize_approval_request(
                             argv_raw = adef.get("argv")
                             if isinstance(argv_raw, list) and all(isinstance(x, str) for x in argv_raw):
                                 argv = list(argv_raw)
+                                # 尽量 materialize argv（与 tool 行为对齐），便于审批可视化与 TOCTOU 绑定。
+                                # 注意：materialize 失败不应让 argv/env_keys 丢失（否则会导致 policy/approval 误判为“无命令”）。
+                                if bundle_root:
+                                    try:
+                                        actions_dir = (Path(bundle_root) / "actions").resolve()
+                                        out = list(argv)
+                                        for i in range(1, len(out)):
+                                            raw = out[i]
+                                            if not raw:
+                                                continue
+                                            looks_like_path = ("/" in raw) or raw.startswith(".")
+                                            if not looks_like_path:
+                                                continue
+                                            if raw.startswith("/") or not raw.startswith("actions/"):
+                                                raise ValueError("argv_path_escape")
+                                            p = Path(raw)
+                                            if any(part == ".." for part in p.parts):
+                                                raise ValueError("argv_path_escape")
+                                            resolved_p = (Path(bundle_root) / p).resolve()
+                                            if not resolved_p.is_relative_to(actions_dir):
+                                                raise ValueError("argv_path_escape")
+                                            if not resolved_p.exists() or not resolved_p.is_file():
+                                                raise ValueError("argv_path_invalid")
+                                            out[i] = str(resolved_p)
+                                        argv = out
+                                    except Exception as exc:
+                                        resolve_error = str(exc)
                             tm = adef.get("timeout_ms")
                             if tm is not None:
                                 try:
@@ -423,6 +463,7 @@ def _sanitize_approval_request(
         req3.update(
             {
                 "bundle_root": bundle_root,
+                "bundle_sha256": bundle_sha256,
                 "argv": argv,
                 "timeout_ms": timeout_ms,
                 "env_keys": env_keys,
@@ -439,6 +480,7 @@ def _sanitize_approval_request(
                 "skill_mention": mention_str,
                 "action_id": action_str,
                 "bundle_root": bundle_root,
+                "bundle_sha256": bundle_sha256,
                 "argv": argv,
                 "timeout_ms": timeout_ms,
                 "env_keys": env_keys,

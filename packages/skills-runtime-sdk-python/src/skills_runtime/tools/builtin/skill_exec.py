@@ -7,7 +7,7 @@
 
 说明：
 - skill_exec 不是“动态生成工具”，而是固定 builtin tool，通过 `action_id` 选择要执行的动作。
-- 当前实现仅支持 filesystem source（因为需要稳定的 bundle_root 边界做路径校验）。
+- 支持 filesystem skills（本地 bundle_root）与 Redis bundle-backed skills（解压到 runtime-owned cache 后执行）。
 """
 
 from __future__ import annotations
@@ -95,23 +95,24 @@ def _parse_single_skill_mention(token: str) -> SkillMention:
 
 
 @dataclass(frozen=True)
-class _FilesystemBundle:
-    """filesystem skill bundle 的最小运行时投影。"""
+class _ResolvedBundle:
+    """skill bundle 的最小运行时投影（filesystem 或 redis bundle-backed）。"""
 
     mention_text: str
     action_id: str
     bundle_root: Path
     action_def: Dict[str, Any]
+    bundle_sha256: Optional[str] = None
 
 
-def _resolve_filesystem_bundle(
+def _resolve_bundle(
     *,
     ctx: ToolExecutionContext,
     skill_mention: str,
     action_id: str,
-) -> _FilesystemBundle:
+) -> _ResolvedBundle:
     """
-    从 mention/action_id 定位到 filesystem bundle_root，并读取 action 定义（metadata-only）。
+    从 mention/action_id 定位到 bundle_root，并读取 action 定义（metadata-only）。
 
     参数：
     - ctx：ToolExecutionContext（必须注入 skills_manager）
@@ -119,7 +120,7 @@ def _resolve_filesystem_bundle(
     - action_id：frontmatter.actions 下的 key
 
     返回：
-    - _FilesystemBundle（bundle_root + action_def）
+    - _ResolvedBundle（bundle_root + action_def + bundle_sha256）
     """
 
     if ctx.skills_manager is None:
@@ -138,14 +139,11 @@ def _resolve_filesystem_bundle(
             details={"mention": mention.mention_text},
         )
     skill, _ = resolved[0]
-    if skill.path is None:
-        raise FrameworkError(
-            code="SKILL_ACTION_SOURCE_UNSUPPORTED",
-            message="Skill actions are only supported for filesystem sources in current version.",
-            details={"source_id": skill.source_id, "locator": skill.locator},
-        )
-    skill_md = Path(skill.path)
-    bundle_root = skill_md.parent
+    bundle_sha256: Optional[str] = None
+    if skill.path is not None:
+        bundle_root = Path(skill.path).parent
+    else:
+        bundle_root, bundle_sha256 = ctx.skills_manager.get_bundle_root_for_tool(skill=skill, purpose="actions")  # type: ignore[union-attr]
 
     actions = (skill.metadata or {}).get("actions")
     if not isinstance(actions, dict):
@@ -163,11 +161,12 @@ def _resolve_filesystem_bundle(
             message="Skill action definition is invalid. Expected an object.",
             details={"mention": mention.mention_text, "action_id": action_id},
         )
-    return _FilesystemBundle(
+    return _ResolvedBundle(
         mention_text=mention.mention_text,
         action_id=action_id,
         bundle_root=bundle_root,
         action_def=dict(action_def),
+        bundle_sha256=bundle_sha256,
     )
 
 
@@ -254,7 +253,7 @@ def _validate_and_materialize_shell_argv(*, bundle_root: Path, argv: Any) -> lis
 
 def skill_exec(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     """
-    执行一个 skill action（Phase 3：filesystem-only）。
+    执行一个 skill action（Phase 3：filesystem + Redis bundle-backed）。
 
     参数：
     - call：ToolCall（args 必须包含 skill_mention/action_id）
@@ -292,18 +291,22 @@ def skill_exec(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
         )
 
     try:
-        bundle = _resolve_filesystem_bundle(ctx=ctx, skill_mention=skill_mention, action_id=action_id.strip())
+        bundle = _resolve_bundle(ctx=ctx, skill_mention=skill_mention, action_id=action_id.strip())
     except FrameworkError as e:
         # mention/source/action 定位类错误：映射到 tool error_kind
+        # 兼容：非支持 source 的语义仍对外暴露为 SKILL_ACTION_SOURCE_UNSUPPORTED
+        if e.code == "SKILL_BUNDLE_SOURCE_UNSUPPORTED":
+            e = FrameworkError(
+                code="SKILL_ACTION_SOURCE_UNSUPPORTED",
+                message="Skill actions are only supported for filesystem and redis bundle-backed sources in current version.",
+                details=dict(e.details or {}),
+            )
+        # 默认 validation；按更具体的错误码覆盖为 not_found/permission
         kind = "validation"
-        if e.code in {"SKILL_UNKNOWN", "SKILL_ACTION_NOT_FOUND"}:
+        if e.code in {"SKILL_UNKNOWN", "SKILL_ACTION_NOT_FOUND", "SKILL_BUNDLE_NOT_FOUND"}:
             kind = "not_found"
-        if e.code in {"SKILL_MENTION_FORMAT_INVALID"}:
-            kind = "validation"
-        if e.code in {"SKILL_ACTIONS_DISABLED", "SKILL_ACTION_ARGV_PATH_ESCAPE"}:
+        if e.code in {"SKILL_ACTIONS_DISABLED", "SKILL_ACTION_ARGV_PATH_ESCAPE", "SKILL_BUNDLE_TOO_LARGE"}:
             kind = "permission"
-        if e.code in {"SKILL_ACTION_SOURCE_UNSUPPORTED"}:
-            kind = "validation"
         return _framework_error_result(error_kind=kind, code=e.code, message=e.message, details=e.details)
 
     # action definition（metadata-only）
@@ -350,6 +353,8 @@ def skill_exec(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
         "SKILLS_RUNTIME_SDK_SKILL_MENTION": bundle.mention_text,
         "SKILLS_RUNTIME_SDK_SKILL_ACTION_ID": bundle.action_id,
     }
+    if bundle.bundle_sha256:
+        stable_env["SKILLS_RUNTIME_SDK_SKILL_BUNDLE_SHA256"] = str(bundle.bundle_sha256)
     env.update(stable_env)  # stable keys win
 
     timeout: Optional[int] = None

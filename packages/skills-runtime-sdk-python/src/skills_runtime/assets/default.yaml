@@ -60,6 +60,9 @@ skills:
     ttl_sec: 300
   injection:
     max_bytes: null
+  bundles:
+    max_bytes: 1048576 # 1 MiB (fail-closed default for bundle-backed Phase 3 tools)
+    cache_dir: ".skills_runtime_sdk/bundles"
   actions:
     enabled: false
   references:
