@@ -40,6 +40,31 @@ Key property:
 - **Scan is metadata-only** (fast, cheap).
 - **Injection loads bodies** (controlled by `skills.injection.max_bytes`).
 
+### 15.1.1 `resolve_mentions` end-to-end flow (discovery vs injection vs tools)
+
+This diagram makes the boundaries explicit between config-driven discovery (spaces/sources), body injection, and Phase 3 assets (actions/references):
+
+```text
+user_task_text
+  │
+  ├─ SkillsManager.resolve_mentions(text)
+  │    ├─ extract_skill_mentions()                         # parse $[namespace].skill_name tokens
+  │    ├─ scan()                                           # refresh per skills.scan.refresh_policy
+  │    │    ├─ filesystem / redis / pgsql / in-memory          # metadata-only (no body, no bundle)
+  │    │    └─ build index: (namespace, skill_name) → Skill
+  │    └─ map mentions → Skill objects
+  │
+  ├─ Prompt injection (Agent loop)
+  │    └─ SkillsManager.render_injected_skill(skill)
+  │         └─ skill.body_loader()                         # lazy body load (budgeted by skills.injection.max_bytes)
+  │
+  └─ Phase 3 tools (only when invoked)
+       ├─ skill_exec / skill_ref_read
+       │    └─ (Redis) lazy fetch + safe extract bundle        # tools only; scan/inject never read bundles
+       └─ shell_exec / restricted file reads ...
+            └─ approvals gate + OS sandbox fence
+```
+
 ## 15.2 A) Filesystem storage (workspace-friendly)
 
 ### 15.2.1 Where Studio stores skills by default
@@ -196,6 +221,29 @@ body_size         int      (optional)
 etag             string   (optional)
 updated_at        string   (optional)
 scope            string   (optional)
+```
+
+#### Redis bundles (Phase 3: minimal asset protocol for actions / references)
+
+If you want Redis skills to support Phase 3 tools (`skill_exec` / `skill_ref_read`), you need an additional **zip bundle**. The minimal format only allows `actions/` + `references/`.
+
+Important constraints:
+- `scan()` stays metadata-only: it MUST NOT read bundle bytes during scanning.
+- Bundle bytes are fetched only on the tool execution path (`skill_exec` / `skill_ref_read`); missing/invalid bundles MUST fail closed (no command execution, no reference reads).
+
+Additional metadata fields (stored in the meta hash):
+
+```text
+bundle_sha256   string   (strongly recommended; cache/audit/TOCTOU safety)
+bundle_key      string   (optional; override the default key)
+bundle_size     int      (optional; budgets/observability)
+bundle_format   string   (must be "zip"; other values are invalid)
+```
+
+Default bundle bytes key (when `bundle_key` is missing):
+
+```text
+{key_prefix}bundle:{namespace}:{skill_name}
 ```
 
 If `body_key` is not present, it defaults to:

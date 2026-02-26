@@ -92,8 +92,16 @@ SDK 运行时有效配置可来自四层（高到低）：
 - `env_var_missing_policy`：skill 依赖 env var 缺失策略：`ask_human|fail_fast|skip_skill`（默认 `ask_human`）
 - `scan.*`：扫描策略
 - `injection.max_bytes`：注入上限
+- `bundles.*`：bundle 预算与缓存（Phase 3：actions/references；例如 Redis bundles）
 - `actions.enabled`：Skills actions 开关
 - `references.enabled`：受限引用开关
+
+#### `skills.bundles`（Phase 3 bundles：actions / references）
+
+用于 bundle-backed 的 Phase 3 工具路径（例如 Redis bundles）的预算与缓存策略：
+
+- `skills.bundles.max_bytes`：bundle bytes 最大值（默认 `1048576`，即 1 MiB；超限 fail-closed）
+- `skills.bundles.cache_dir`：bundle 解压缓存目录（默认 `.skills_runtime_sdk/bundles`；runtime-owned，可安全删除并重建）
 
 ### `prompt`
 

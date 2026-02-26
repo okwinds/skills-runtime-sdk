@@ -92,8 +92,16 @@ Notes:
 - `env_var_missing_policy`: missing env var policy for skill dependencies: `ask_human|fail_fast|skip_skill` (default `ask_human`)
 - `scan.*`: scan policy
 - `injection.max_bytes`: injection budget
+- `bundles.*`: bundle budgets and cache (Phase 3 actions/references; e.g. Redis bundles)
 - `actions.enabled`: skills actions toggle
 - `references.enabled`: restricted references toggle
+
+#### `skills.bundles` (Phase 3 bundles: actions / references)
+
+Budgets and cache behavior for bundle-backed Phase 3 tool paths (e.g. Redis bundles):
+
+- `skills.bundles.max_bytes`: maximum bundle bytes (default `1048576` = 1 MiB; fail-closed on overflow)
+- `skills.bundles.cache_dir`: extracted bundle cache directory (default `.skills_runtime_sdk/bundles`; runtime-owned, safe to delete/rebuild)
 
 ### `prompt`
 

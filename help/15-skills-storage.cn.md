@@ -40,6 +40,31 @@ resolve(namespace, skill_name)
 - **scan 只读元信息**（快、便宜）
 - **inject 才读正文**（受 `skills.injection.max_bytes` 约束）
 
+### 15.1.1 `resolve_mentions` 端到端链路图（发现/注入/工具执行边界）
+
+下面的图把“配置驱动的发现（spaces/sources）”与“正文注入（inject）”以及“Phase 3 资产（actions/references）”的边界画清楚：
+
+```text
+user_task_text
+  │
+  ├─ SkillsManager.resolve_mentions(text)
+  │    ├─ extract_skill_mentions()                 # 解析 $[namespace].skill_name token
+  │    ├─ scan()                                   # 按 skills.scan.refresh_policy 决定是否刷新
+  │    │    ├─ filesystem / redis / pgsql / in-memory  # metadata-only（不读正文/不读 bundle）
+  │    │    └─ build index: (namespace, skill_name) → Skill
+  │    └─ map mentions → Skill objects
+  │
+  ├─ Prompt injection（Agent loop）
+  │    └─ SkillsManager.render_injected_skill(skill)
+  │         └─ skill.body_loader()                 # 懒加载正文（受 skills.injection.max_bytes 约束）
+  │
+  └─ Phase 3 tools（仅在被调用时发生）
+       ├─ skill_exec / skill_ref_read
+       │    └─ （Redis）lazy fetch + safe extract bundle  # 仅工具路径需要；scan/inject 不读取 bundle
+       └─ shell_exec / 受限文件读取 ...
+            └─ approvals gate + OS sandbox fence
+```
+
 ## 15.2 A）Filesystem 存储（workspace 友好）
 
 ### 15.2.1 Studio 默认落盘位置
@@ -196,6 +221,29 @@ body_size         int      （可选）
 etag             string   （可选）
 updated_at        string   （可选）
 scope            string   （可选）
+```
+
+#### Redis bundles（Phase 3：actions / references 的最小资产协议）
+
+当你希望 Redis skills 支持 Phase 3 的 `skill_exec` / `skill_ref_read` 时，需要额外提供一个 **zip bundle**（最小版只允许 `actions/` + `references/`）。
+
+约束（重要）：
+- `scan()` 仍然是 metadata-only：**不得**因为有 bundle 而在 scan 期读取 bundle key。
+- bundle **仅在工具调用路径**（`skill_exec` / `skill_ref_read`）中按需读取；读取失败/校验失败必须 **fail-closed**（不执行命令、不读引用）。
+
+新增/扩展的 metadata fields（位于 meta hash 内）：
+
+```text
+bundle_sha256   string   （建议必填；用于缓存/审计/避免 TOCTOU）
+bundle_key      string   （可选；缺失时使用默认 key）
+bundle_size     int      （可选；用于预算与可观测性）
+bundle_format   string   （固定为 "zip"；不允许其它值）
+```
+
+bundle bytes 的默认 key（当 `bundle_key` 缺失时）：
+
+```text
+{key_prefix}bundle:{namespace}:{skill_name}
 ```
 
 如果缺少 `body_key`，默认值为：
