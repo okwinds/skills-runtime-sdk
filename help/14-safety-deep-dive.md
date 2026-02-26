@@ -226,6 +226,22 @@ Example (missing `ApprovalProvider` → fail-fast):
 {"type":"run_failed","timestamp":"2026-02-26T00:00:00Z","run_id":"run_123","payload":{"error_kind":"config_error","message":"ApprovalProvider is required for tool 'shell_command' but none is configured.","retryable":false,"wal_locator":"<path>","details":{"tool":"shell_command","approval_key":"sha256(...)","reason":"no_provider"}}}
 ```
 
+Example (success with `APPROVED_FOR_SESSION` + exec session):
+
+Notes:
+- `exec_command` starts a PTY-backed session and returns a `session_id` in the tool result `data`.
+- After the session is approved/started, subsequent `write_stdin(session_id=...)` calls can skip repeated approvals (noise reduction).
+- `write_stdin` approvals requests never record plaintext `chars`; even when approvals are skipped, `tool_call_requested.arguments` stays sanitized.
+
+```jsonl
+{"type":"tool_call_requested","timestamp":"2026-02-26T00:00:01Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_1","payload":{"call_id":"c1","name":"exec_command","arguments":{"cmd":"python -i","workdir":"/repo","yield_time_ms":1000,"max_output_tokens":2000,"tty":true,"sandbox":"restricted","sandbox_permissions":null,"intent":{"argv":["python","-i"],"is_complex":false,"reason":"parsed"},"risk":{"risk_level":"low","reason":"no risky patterns detected"}}}}
+{"type":"approval_requested","timestamp":"2026-02-26T00:00:01Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_1","payload":{"approval_key":"sha256(...)", "tool":"exec_command","summary":"(human-readable summary)","request":{"cmd":"python -i","workdir":"/repo","yield_time_ms":1000,"max_output_tokens":2000,"tty":true,"sandbox":"restricted","sandbox_permissions":null,"intent":{"argv":["python","-i"],"is_complex":false,"reason":"parsed"},"risk":{"risk_level":"low","reason":"no risky patterns detected"}}}}
+{"type":"approval_decided","timestamp":"2026-02-26T00:00:01Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_1","payload":{"approval_key":"sha256(...)","decision":"approved_for_session","reason":"provider"}}
+{"type":"tool_call_finished","timestamp":"2026-02-26T00:00:02Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_1","payload":{"call_id":"c1","tool":"exec_command","result":{"ok":true,"stdout":"","stderr":"","exit_code":0,"duration_ms":120,"truncated":false,"data":{"session_id":123,"running":true},"retryable":false}}}
+{"type":"tool_call_requested","timestamp":"2026-02-26T00:00:02Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_2","payload":{"call_id":"c2","name":"write_stdin","arguments":{"session_id":123,"yield_time_ms":1000,"max_output_tokens":2000,"bytes":9,"chars_sha256":"sha256(...)","is_poll":false}}}
+{"type":"tool_call_finished","timestamp":"2026-02-26T00:00:02Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_2","payload":{"call_id":"c2","tool":"write_stdin","result":{"ok":true,"stdout":"Python 3.x ...\\n>>> ","stderr":"","exit_code":0,"duration_ms":80,"truncated":false,"data":{"session_id":123,"running":true},"retryable":false}}}
+```
+
 ## 14.3 Which tools use Gatekeeper? Which tools use Fence?
 
 ### Fence (OS sandbox)

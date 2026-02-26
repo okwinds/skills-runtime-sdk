@@ -226,6 +226,22 @@ tool_call_requested
 {"type":"run_failed","timestamp":"2026-02-26T00:00:00Z","run_id":"run_123","payload":{"error_kind":"config_error","message":"ApprovalProvider is required for tool 'shell_command' but none is configured.","retryable":false,"wal_locator":"<path>","details":{"tool":"shell_command","approval_key":"sha256(...)","reason":"no_provider"}}}
 ```
 
+示例（`APPROVED_FOR_SESSION` 成功链路 + exec session）：
+
+说明：
+- `exec_command` 启动 PTY 会话，并在 tool result 的 `data` 中返回 `session_id`。
+- 一旦该 session 在本 run 内被批准/启动，后续 `write_stdin(session_id=...)` 可免重复 ask（降噪）。
+- `write_stdin` 的 approvals request 永远不记录明文 `chars`；即便跳过 approvals，`tool_call_requested.arguments` 仍是脱敏形态。
+
+```jsonl
+{"type":"tool_call_requested","timestamp":"2026-02-26T00:00:01Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_1","payload":{"call_id":"c1","name":"exec_command","arguments":{"cmd":"python -i","workdir":"/repo","yield_time_ms":1000,"max_output_tokens":2000,"tty":true,"sandbox":"restricted","sandbox_permissions":null,"intent":{"argv":["python","-i"],"is_complex":false,"reason":"parsed"},"risk":{"risk_level":"low","reason":"no risky patterns detected"}}}}
+{"type":"approval_requested","timestamp":"2026-02-26T00:00:01Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_1","payload":{"approval_key":"sha256(...)", "tool":"exec_command","summary":"(human-readable summary)","request":{"cmd":"python -i","workdir":"/repo","yield_time_ms":1000,"max_output_tokens":2000,"tty":true,"sandbox":"restricted","sandbox_permissions":null,"intent":{"argv":["python","-i"],"is_complex":false,"reason":"parsed"},"risk":{"risk_level":"low","reason":"no risky patterns detected"}}}}
+{"type":"approval_decided","timestamp":"2026-02-26T00:00:01Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_1","payload":{"approval_key":"sha256(...)","decision":"approved_for_session","reason":"provider"}}
+{"type":"tool_call_finished","timestamp":"2026-02-26T00:00:02Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_1","payload":{"call_id":"c1","tool":"exec_command","result":{"ok":true,"stdout":"","stderr":"","exit_code":0,"duration_ms":120,"truncated":false,"data":{"session_id":123,"running":true},"retryable":false}}}
+{"type":"tool_call_requested","timestamp":"2026-02-26T00:00:02Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_2","payload":{"call_id":"c2","name":"write_stdin","arguments":{"session_id":123,"yield_time_ms":1000,"max_output_tokens":2000,"bytes":9,"chars_sha256":"sha256(...)","is_poll":false}}}
+{"type":"tool_call_finished","timestamp":"2026-02-26T00:00:02Z","run_id":"run_456","turn_id":"turn_1","step_id":"step_2","payload":{"call_id":"c2","tool":"write_stdin","result":{"ok":true,"stdout":"Python 3.x ...\\n>>> ","stderr":"","exit_code":0,"duration_ms":80,"truncated":false,"data":{"session_id":123,"running":true},"retryable":false}}}
+```
+
 ## 14.3 哪些工具走“门卫”？哪些工具走“围栏”？
 
 ### 围栏（OS sandbox）
