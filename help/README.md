@@ -52,6 +52,7 @@ Chinese counterparts:
 - 12 Validation suites: `help/12-validation-suites.md` ｜ 中文：`help/12-validation-suites.cn.md`
 - 13 Namespace mentions: `help/13-namespace-mentions.md` ｜ 中文：`help/13-namespace-mentions.cn.md`
 - 14 Safety deep dive: `help/14-safety-deep-dive.md` ｜ 中文：`help/14-safety-deep-dive.cn.md`
+- 15 Skills storage: `help/15-skills-storage.md` ｜ 中文：`help/15-skills-storage.cn.md`
 
 Supplemental topics (not numbered):
 - Sandbox best practices: `help/sandbox-best-practices.md` ｜ 中文：`help/sandbox-best-practices.cn.md`

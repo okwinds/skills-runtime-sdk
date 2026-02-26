@@ -52,6 +52,7 @@
 - 12 验证用例集索引：`help/12-validation-suites.cn.md` ｜ English：`help/12-validation-suites.md`
 - 13 Namespace 多段 mention：`help/13-namespace-mentions.cn.md` ｜ English：`help/13-namespace-mentions.md`
 - 14 Safety 深度解读：`help/14-safety-deep-dive.cn.md` ｜ English：`help/14-safety-deep-dive.md`
+- 15 Skills 存储与来源：`help/15-skills-storage.cn.md` ｜ English：`help/15-skills-storage.md`
 
 补充专题（不按编号顺序阅读）：
 - Sandbox 最佳实践：`help/sandbox-best-practices.cn.md` ｜ English：`help/sandbox-best-practices.md`
