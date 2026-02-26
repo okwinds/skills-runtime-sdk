@@ -121,6 +121,111 @@ Operational rule of thumb:
 - **Never put secrets in argv.** If you run `curl -H "Authorization: Bearer ..."` the token becomes auditable plaintext.
 - Prefer env injection (`env` / `.env`) + placeholder expansion inside the shell.
 
+### 14.2.3 Sanitized request examples (JSON)
+
+The following examples are **illustrative**. They show the *shape* of the sanitized request, not exact timestamps or hashes.
+
+Important:
+- `env` values are never recorded; only `env_keys`.
+- stdin/patch/file content is never recorded as plaintext; use `bytes` + `sha256` fingerprints.
+
+`shell_exec` (argv form):
+
+```json
+{
+  "argv": ["pytest", "-q"],
+  "cwd": "/repo",
+  "timeout_ms": 600000,
+  "tty": false,
+  "env_keys": ["OPENAI_API_KEY"],
+  "sandbox": "restricted",
+  "sandbox_permissions": null,
+  "risk": { "risk_level": "low", "reason": "no risky patterns detected" }
+}
+```
+
+`shell_command` (shell string wrapper + intent):
+
+```json
+{
+  "command": "pytest -q",
+  "workdir": "/repo",
+  "timeout_ms": 600000,
+  "env_keys": [],
+  "sandbox": "restricted",
+  "sandbox_permissions": null,
+  "intent": { "argv": ["pytest", "-q"], "is_complex": false, "reason": "parsed" },
+  "risk": { "risk_level": "low", "reason": "no risky patterns detected" }
+}
+```
+
+`exec_command` (PTY-backed; still sanitized):
+
+```json
+{
+  "cmd": "python -i",
+  "workdir": "/repo",
+  "yield_time_ms": 1000,
+  "max_output_tokens": 2000,
+  "tty": true,
+  "sandbox": "restricted",
+  "sandbox_permissions": null,
+  "intent": { "argv": ["python", "-i"], "is_complex": false, "reason": "parsed" },
+  "risk": { "risk_level": "low", "reason": "no risky patterns detected" }
+}
+```
+
+`write_stdin` (never stores plaintext `chars`):
+
+```json
+{
+  "session_id": 123,
+  "yield_time_ms": 1000,
+  "max_output_tokens": 2000,
+  "bytes": 11,
+  "chars_sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+  "is_poll": false
+}
+```
+
+`skill_exec` (resolves to an underlying action; includes an action fingerprint):
+
+```json
+{
+  "skill_mention": "$[alice:engineering].python_testing",
+  "action_id": "run_tests",
+  "bundle_root": "/repo/skills/python_testing",
+  "argv": ["bash", "actions/run_tests.sh"],
+  "timeout_ms": 600000,
+  "env_keys": ["OPENAI_API_KEY"],
+  "resolve_error": null,
+  "risk": { "risk_level": "low", "reason": "no risky patterns detected" },
+  "action_sha256": "sha256-of-action-fingerprint"
+}
+```
+
+### 14.2.4 End-to-end WAL event flow (JSONL example)
+
+Below is a simplified JSONL timeline for a tool call that **requires approvals** in `safety.mode=ask`.
+
+```text
+tool_call_requested
+  → approval_requested
+  → approval_decided
+  → tool_call_finished
+  (→ run_failed if fail-fast config_error / loop guard triggers)
+```
+
+Example (missing `ApprovalProvider` → fail-fast):
+
+```jsonl
+{"type":"tool_call_requested","timestamp":"2026-02-26T00:00:00Z","run_id":"run_123","turn_id":"turn_1","step_id":"step_1","payload":{"call_id":"c1","name":"shell_command","arguments":{"command":"pytest -q","workdir":"/repo","timeout_ms":600000,"env_keys":[],"sandbox":"restricted","sandbox_permissions":null,"intent":{"argv":["pytest","-q"],"is_complex":false,"reason":"parsed"},"risk":{"risk_level":"low","reason":"no risky patterns detected"}}}}
+{"type":"approval_requested","timestamp":"2026-02-26T00:00:00Z","run_id":"run_123","turn_id":"turn_1","step_id":"step_1","payload":{"approval_key":"sha256(...)", "tool":"shell_command","summary":"(human-readable summary)","request":{"command":"pytest -q","workdir":"/repo","timeout_ms":600000,"env_keys":[],"sandbox":"restricted","sandbox_permissions":null,"intent":{"argv":["pytest","-q"],"is_complex":false,"reason":"parsed"},"risk":{"risk_level":"low","reason":"no risky patterns detected"}}}}
+{"type":"approval_decided","timestamp":"2026-02-26T00:00:00Z","run_id":"run_123","turn_id":"turn_1","step_id":"step_1","payload":{"approval_key":"sha256(...)","decision":"denied","reason":"no_provider"}}
+{"type":"tool_call_finished","timestamp":"2026-02-26T00:00:00Z","run_id":"run_123","turn_id":"turn_1","step_id":"step_1","payload":{"call_id":"c1","tool":"shell_command","result":{"ok":false,"stdout":"","stderr":"approval denied","duration_ms":0,"truncated":false,"data":{"tool":"shell_command"},"error_kind":"permission","retryable":false}}}
+{"type":"run_failed","timestamp":"2026-02-26T00:00:00Z","run_id":"run_123","payload":{"error_kind":"config_error","message":"ApprovalProvider is required for tool 'shell_command' but none is configured.","retryable":false,"wal_locator":"<path>","details":{"tool":"shell_command","approval_key":"sha256(...)","reason":"no_provider"}}}
+```
+
 ## 14.3 Which tools use Gatekeeper? Which tools use Fence?
 
 ### Fence (OS sandbox)
