@@ -1814,18 +1814,25 @@ class Agent:
                     if not ok_to_inject:
                         continue
                     injected.append((skill, "mention", mention.mention_text))
+                    payload = {
+                        "skill_name": skill.skill_name,
+                        "skill_path": str(skill.path or skill.locator),
+                        "namespace": str(mention.namespace),
+                        "skill_locator": str(skill.locator),
+                        "source": "mention",
+                        "mention_text": mention.mention_text,
+                    }
+                    if getattr(skill, "space_id", ""):
+                        payload["space_id"] = str(skill.space_id)
+                    if getattr(skill, "source_id", ""):
+                        payload["source_id"] = str(skill.source_id)
                     _emit_event(
                         AgentEvent(
                             type="skill_injected",
                             timestamp=_now_rfc3339(),
                             run_id=run_id,
                             turn_id=turn_id,
-                            payload={
-                                "skill_name": skill.skill_name,
-                                "skill_path": str(skill.path or skill.locator),
-                                "source": "mention",
-                                "mention_text": mention.mention_text,
-                            },
+                            payload=payload,
                         )
                     )
 
