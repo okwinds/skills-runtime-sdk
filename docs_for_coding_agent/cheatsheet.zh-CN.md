@@ -17,13 +17,13 @@
 
 ## 1.1) 内部架构（M2 已完成）
 
-对外入口是 `Agent`（薄门面，`core/agent.py`）。内部组件边界：
+对外入口是 `Agent`（薄门面；安装包路径：`skills_runtime/agent.py`；仓库路径：`packages/skills-runtime-sdk-python/src/skills_runtime/agent.py`）。内部组件边界：
 
-- `AgentLoop`（`core/agent_loop.py`）：turn 循环、LLM 调用、工具分发。
-- `SafetyGate`（`safety/gate.py`）：统一安全门禁，替代原 if/elif 分发链。
-- `ToolSafetyDescriptor`（`tools/protocol.py`）：工具自描述安全属性的 Protocol。
+- `AgentLoop`（安装包路径：`skills_runtime/core/agent_loop.py`；仓库路径：`packages/skills-runtime-sdk-python/src/skills_runtime/core/agent_loop.py`）：turn 循环、LLM 调用、工具分发。
+- `SafetyGate`（安装包路径：`skills_runtime/safety/gate.py`；仓库路径：`packages/skills-runtime-sdk-python/src/skills_runtime/safety/gate.py`）：统一安全门禁，替代原 if/elif 分发链。
+- `ToolSafetyDescriptor`（安装包路径：`skills_runtime/tools/protocol.py`；仓库路径：`packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`）：工具自描述安全属性的 Protocol。
 
-示例与外部集成只使用公开 API（`Agent`、`tools/protocol.py`、`safety/approvals.py`、`llm/`），不直接导入 `core/agent_loop.py` 或 `safety/gate.py`。
+示例与外部集成只使用公开 API（`Agent`、`skills_runtime/tools/protocol.py`、`skills_runtime/safety/approvals.py`、`skills_runtime/llm/`），不直接导入 `skills_runtime/core/agent_loop.py` 或 `skills_runtime/safety/gate.py`。
 
 ## 2) 最短跑通（离线）
 

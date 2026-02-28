@@ -17,13 +17,13 @@ Purpose: give a coding agent a runnable “happy path” + key entrypoints.
 
 ## Architecture (internal components, M2 complete)
 
-The public API entry point is `Agent` (thin facade, `core/agent.py`). Internal structure:
+The public API entry point is `Agent` (thin facade; package path: `skills_runtime/agent.py`; repo path: `packages/skills-runtime-sdk-python/src/skills_runtime/agent.py`). Internal structure:
 
-- `AgentLoop` (`core/agent_loop.py`): turn loop, LLM calls, tool dispatch.
-- `SafetyGate` (`safety/gate.py`): unified policy/approval gate, replaces if/elif dispatch chain.
-- `ToolSafetyDescriptor` (`tools/protocol.py`): Protocol for tool self-description of safety attributes.
+- `AgentLoop` (package path: `skills_runtime/core/agent_loop.py`; repo path: `packages/skills-runtime-sdk-python/src/skills_runtime/core/agent_loop.py`): turn loop, LLM calls, tool dispatch.
+- `SafetyGate` (package path: `skills_runtime/safety/gate.py`; repo path: `packages/skills-runtime-sdk-python/src/skills_runtime/safety/gate.py`): unified policy/approval gate, replaces if/elif dispatch chain.
+- `ToolSafetyDescriptor` (package path: `skills_runtime/tools/protocol.py`; repo path: `packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`): Protocol for tool self-description of safety attributes.
 
-Examples and external integrations only use the public API (`Agent`, `tools/protocol.py`, `safety/approvals.py`, `llm/`). Do not import from `core/agent_loop.py` or `safety/gate.py` directly.
+Examples and external integrations only use the public API (`Agent`, `skills_runtime/tools/protocol.py`, `skills_runtime/safety/approvals.py`, `skills_runtime/llm/`). Do not import from `skills_runtime/core/agent_loop.py` or `skills_runtime/safety/gate.py` directly.
 
 ## Offline verification
 

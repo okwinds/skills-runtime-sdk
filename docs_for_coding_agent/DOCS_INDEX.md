@@ -18,6 +18,7 @@
 - `docs_for_coding_agent/workflows-applied-scenarios-18-20-22.md`：Applied Scenarios workflows（18/20/22）的目标/约束/验收与离线回归口径。
 - `docs_for_coding_agent/cheatsheet.zh-CN.md`：中文速查表（最常用命令、入口与排障）。
 - `docs_for_coding_agent/cheatsheet.en.md`：英文速查表（便于英文指令场景快速定位）。
+- `docs_for_coding_agent/local-strict-mode.md`：Local/Strict Mode 桥接说明（当仓库存在门禁或启用 `REQUIRE_LOCAL_DOCS=1` 时，以本地 policies 为准）。
 
 ---
 

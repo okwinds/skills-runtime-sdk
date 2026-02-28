@@ -9,6 +9,9 @@
 - 本仓库的 OSS 形态可能**不包含**内部协作文档（例如 worklog/backlog/协作宪法文件），以避免暴露内部生产信息。
 - 因此本契约不要求你向仓库提交这类文件；但仍要求你在 PR/issue 或你们内部系统里保留“命令 + 结果 + 决策”的证据链。
 
+补充（Local / Strict Mode）：
+- 当仓库存在本地门禁（例如 `AGENTS.md`、`docs/policies/*`）或 CI 显式启用 `REQUIRE_LOCAL_DOCS=1` 时，必须以本地门禁为准（见 `docs_for_coding_agent/local-strict-mode.md`）。
+
 ---
 
 ## 1) 变更分级（必须先判断）
@@ -28,6 +31,10 @@
    - 更新 `help/` 或 `docs_for_coding_agent/`（确保新增能力有“怎么用”的入口）
 4. Evidence（可追溯）：
    - 在 PR/issue 或内部工单中记录：关键命令、关键输出、关键决策与理由
+5. Task Summary + Index（本地门禁仓库必需）：
+   - 产出独立任务总结（例如 `docs/task-summaries/YYYY-MM-DD-...md`）
+   - 更新 `DOCS_INDEX.md`（新增/删除/重命名文档时必须登记：路径 + 一句话说明）
+   - 记录工作流证据（例如 `docs/worklog.md` 的命令与完整结果）
 
 ## 3) Done 的定义（不要“最小化完成”）
 
@@ -37,3 +44,6 @@
   - 离线回归覆盖（happy path + 关键错误路径）
   - 可观测字段齐全
   - 文档与示例可复用
+
+补充约束（避免踩门禁）：
+- `.gitignore` 与 `AGENTS.md` 通常为受保护文件；如需修改必须先获得明确授权。
