@@ -57,9 +57,9 @@ python3 help/examples/run_agent_minimal.py --workspace-root . --config /tmp/sdk.
 ```
 
 预期输出（示例）：
-- 打印 `run_id`
-- 持续输出事件类型（`run_started`、`tool_call_*`、`run_completed`）
-- 最后输出 `final_output`
+- 打印 `run_id`（来自 `run_started` 事件）
+- 持续输出事件类型（至少 `run_started`、`run_completed`；可能包含 `tool_call_*`）
+- 最后输出 `final_output` 与 `wal_locator`
 
 ## 1.4 Skills CLI 最小验证
 

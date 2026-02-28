@@ -15,6 +15,13 @@ SDK 运行时有效配置可来自四层（高到低）：
 3. overlay YAML（`config/runtime.yaml` + `--config`）
 4. embedded default（SDK 内置默认配置：`skills_runtime/assets/default.yaml`）
 
+重要说明（当前行为）：
+- `session_settings` 是**白名单覆盖**，不是任意字段的动态注入。
+- 目前仅覆盖：
+  - `models.planner` / `models.executor`
+  - `llm.base_url` / `llm.api_key_env`
+- 其它字段请通过环境变量或 YAML overlays 配置。
+
 ## 2.2 默认配置（关键字段）
 
 参考：
@@ -124,7 +131,7 @@ safety:
 
 sandbox:
   profile: "balanced" # dev/balanced/prod
-  # profile 展开后会覆盖 default_policy/os.*；如需精细化请用 overlay 覆盖 seatbelt/bwrap 参数
+  # profile 提供基线默认值；显式字段可覆盖（用于精细化 seatbelt/bwrap 参数）
   default_policy: "restricted"
   os:
     mode: "auto"

@@ -8,7 +8,8 @@ llm:
   base_url: "https://api.openai.com/v1"
   api_key_env: "OPENAI_API_KEY"
   timeout_sec: 60
-  max_retries: 3
+  retry:
+    max_retries: 3
 
 models:
   planner: "gpt-4"
@@ -45,7 +46,6 @@ sandbox:
     #   unshare_net: true
 
 skills:
-  mode: "explicit"
   scan:
     refresh_policy: "always"
     max_depth: 6

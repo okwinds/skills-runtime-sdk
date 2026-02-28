@@ -37,7 +37,7 @@ def test_sandbox_profile_prod_has_visible_seatbelt_deny_baseline() -> None:
     assert "/etc" in cfg.sandbox.os.seatbelt.profile
 
 
-def test_sandbox_profile_is_macro_and_overrides_lower_fields() -> None:
+def test_sandbox_profile_is_baseline_and_does_not_override_explicit_fields() -> None:
     cfg = load_config_dicts(
         [
             _base_cfg()
@@ -50,8 +50,8 @@ def test_sandbox_profile_is_macro_and_overrides_lower_fields() -> None:
             }
         ]
     )
-    assert cfg.sandbox.default_policy == "restricted"
-    assert cfg.sandbox.os.bubblewrap.unshare_net is True
+    assert cfg.sandbox.default_policy == "none"
+    assert cfg.sandbox.os.bubblewrap.unshare_net is False
 
 
 def test_sandbox_unknown_profile_fails_fast() -> None:

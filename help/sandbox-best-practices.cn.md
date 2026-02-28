@@ -35,6 +35,7 @@
 
 说明：
 - `sandbox.profile` 是高层宏，loader 会在 load 阶段将其展开为 `sandbox.default_policy` + `sandbox.os.*`；
+- `sandbox.profile` 只提供“基线默认值”：显式写入的 `sandbox.default_policy` / `sandbox.os.*` 会覆盖 preset（显式 > preset）。
 - 一旦进入误拦截排障，**可通过配置回滚**（例如 `prod -> balanced`），无需改代码。
 
 最小回归（离线、可审计输出）：

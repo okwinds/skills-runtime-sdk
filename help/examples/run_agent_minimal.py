@@ -88,6 +88,8 @@ def main() -> int:
     print(f"[demo] workspace_root={workspace_root}")
     for event in agent.run_stream(args.message):
         print(f"[event] {event.type}")
+        if event.type == "run_started":
+            print(f"[demo] run_id={event.run_id}")
         if event.type == "run_completed":
             final_output = str(event.payload.get("final_output") or "")
             wal_locator = str(event.payload.get("wal_locator") or "")

@@ -308,7 +308,7 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
     for label, d in entries:
         _deep_merge_with_sources(merged, d, sources=yaml_sources, label=label)
 
-    cfg: AgentSdkConfig = load_config_dicts([merged])
+    cfg: AgentSdkConfig = load_config_dicts([d for _, d in entries])
 
     models = (session_settings.get("models") or {}) if isinstance(session_settings, dict) else {}
     llm = (session_settings.get("llm") or {}) if isinstance(session_settings, dict) else {}

@@ -15,6 +15,13 @@ An effective SDK runtime config can come from four layers (highest → lowest):
 3. YAML overlays (`config/runtime.yaml` + `--config`)
 4. Embedded defaults (SDK built-in defaults: `skills_runtime/assets/default.yaml`)
 
+Important note (current behavior):
+- `session_settings` is a **whitelist override**, not a free-form config injection.
+- Today it only overrides:
+  - `models.planner` / `models.executor`
+  - `llm.base_url` / `llm.api_key_env`
+- All other fields must be set via env vars or YAML overlays.
+
 Where to find defaults:
 - In this repo: `packages/skills-runtime-sdk-python/src/skills_runtime/assets/default.yaml`
 - In an installed package: `skills_runtime/assets/default.yaml`
@@ -124,7 +131,7 @@ safety:
 
 sandbox:
   profile: "balanced" # dev/balanced/prod
-  # profile expansion overrides default_policy/os.*; use overlays to fine-tune seatbelt/bwrap params
+  # profile provides baseline defaults; explicit fields override it (for fine-tuning seatbelt/bwrap params)
   default_policy: "restricted"
   os:
     mode: "auto"

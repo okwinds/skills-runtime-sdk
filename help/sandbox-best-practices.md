@@ -35,6 +35,7 @@ For staged hardening, prefer `sandbox.profile` as a macro:
 
 Notes:
 - `sandbox.profile` is expanded by the config loader into `sandbox.default_policy` + `sandbox.os.*`.
+- `sandbox.profile` is a baseline preset: explicit `sandbox.default_policy` / `sandbox.os.*` fields override the preset (explicit > preset).
 - Rollback is config-only (for example `prod -> balanced`), no code changes required.
 
 Minimal offline regression with auditable output:

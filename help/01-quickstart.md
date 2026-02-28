@@ -57,9 +57,9 @@ python3 help/examples/run_agent_minimal.py --workspace-root . --config /tmp/sdk.
 ```
 
 Expected output (example):
-- prints a `run_id`
-- streams event types (`run_started`, `tool_call_*`, `run_completed`)
-- prints `final_output` at the end
+- prints a `run_id` (from `run_started`)
+- streams event types (at least `run_started`, `run_completed`; may include `tool_call_*`)
+- prints `final_output` and `wal_locator` at the end
 
 ## 1.4 Minimal Skills CLI validation
 

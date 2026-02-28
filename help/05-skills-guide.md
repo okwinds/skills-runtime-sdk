@@ -34,7 +34,14 @@ If a tool argument is typed as `skill_mention`:
 
 ## 5.3 Slug rules (simplified)
 
-- Lowercase letters, digits, and hyphens only
+Namespace (segments):
+- Lowercase letters, digits, and hyphens only (`[a-z0-9-]`)
+
+Skill name (`skill_name`):
+- Lowercase letters, digits, hyphens, and underscores (`[a-z0-9_-]`)
+
+Notes:
+- This is a simplified description, not the full formal regex
 - Avoid spaces, special chars, and non-ASCII punctuation
 
 ## 5.4 Skill discovery and sources

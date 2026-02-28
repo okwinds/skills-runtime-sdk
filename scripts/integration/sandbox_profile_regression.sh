@@ -76,6 +76,23 @@ cfg = load_config_dicts([
     }
 ])
 
+cfg_explicit = load_config_dicts([
+    {
+        "config_version": 1,
+        "run": {},
+        "llm": {"base_url": "http://example.invalid/v1", "api_key_env": "X"},
+        "models": {"planner": "p", "executor": "e"},
+        "sandbox": {"profile": profile},
+    },
+    {
+        "config_version": 1,
+        "sandbox": {
+            "default_policy": "none",
+            "os": {"seatbelt": {"profile": "(version 1) (deny file-read* (subpath \"/etc\"))"}},
+        },
+    },
+])
+
 adapter = create_default_os_sandbox_adapter(
     mode=str(cfg.sandbox.os.mode),
     seatbelt_profile=str(cfg.sandbox.os.seatbelt.profile),
@@ -90,6 +107,13 @@ evidence = {
     "os_mode": str(cfg.sandbox.os.mode),
     "bubblewrap_unshare_net": bool(cfg.sandbox.os.bubblewrap.unshare_net),
     "adapter": type(adapter).__name__ if adapter is not None else None,
+    "explicit_override_evidence": {
+        "explicit_default_policy": str(cfg_explicit.sandbox.default_policy),
+        "explicit_seatbelt_profile": str(cfg_explicit.sandbox.os.seatbelt.profile),
+        "explicit_wins_default_policy": str(cfg_explicit.sandbox.default_policy) == "none",
+        "explicit_wins_seatbelt_profile": str(cfg_explicit.sandbox.os.seatbelt.profile)
+        == "(version 1) (deny file-read* (subpath \"/etc\"))",
+    },
 }
 
 def run_shell(argv: list[str]) -> dict:
@@ -166,4 +190,3 @@ if sys.platform.startswith("linux"):
 
 print_json({"kind": "sandbox_profile_check", "check": "unsupported_platform", "skipped": True, "platform": sys.platform})
 PY
-

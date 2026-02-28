@@ -58,6 +58,43 @@ def _deep_merge(base: MutableMapping[str, Any], overlay: Mapping[str, Any]) -> M
     return base
 
 
+def _deep_fill_missing(
+    base: MutableMapping[str, Any],
+    fill: Mapping[str, Any],
+    *,
+    explicit: Mapping[str, Any],
+) -> MutableMapping[str, Any]:
+    """
+    递归“填缺省”合并：将 `fill` 作为 baseline defaults 合入 `base`，但不覆盖显式配置。
+
+    语义（用于 `sandbox.profile` preset 展开）：
+    - 显式配置（explicit）优先：explicit 中出现的 key（包含显式 `null`）不得被覆盖
+    - 对未显式设置的 key：允许 preset 覆盖 embedded defaults（profile preset > embedded defaults）
+    - dict + dict：递归；未被显式保护的子字段按 preset 覆盖合入
+    - 其它类型：直接覆盖写入
+    """
+
+    for key, fill_value in fill.items():
+        if key in explicit:
+            explicit_value = explicit.get(key)
+            if (
+                isinstance(explicit_value, Mapping)
+                and key in base
+                and isinstance(base[key], dict)
+                and isinstance(fill_value, Mapping)
+            ):
+                _deep_fill_missing(base[key], fill_value, explicit=explicit_value)  # type: ignore[arg-type]
+            continue
+
+        if key in base and isinstance(base[key], dict) and isinstance(fill_value, Mapping):
+            _deep_merge(base[key], fill_value)  # type: ignore[arg-type]
+            continue
+
+        base[key] = deepcopy(fill_value)
+
+    return base
+
+
 class AgentSdkLlmConfig(BaseModel):
     """LLM 连接配置（最小集合）。"""
 
@@ -397,17 +434,30 @@ def load_config_dicts(config_dicts: list[Dict[str, Any]]) -> AgentSdkConfig:
         if not overlay:
             continue
         _deep_merge(merged, overlay)
-    _apply_sandbox_profile_overrides(merged)
+
+    explicit_sandbox: Dict[str, Any] = {}
+    explicit_layers = config_dicts[1:] if len(config_dicts) > 1 else config_dicts
+    for overlay in explicit_layers:
+        sandbox = overlay.get("sandbox")
+        if not isinstance(sandbox, Mapping):
+            continue
+        _deep_merge(explicit_sandbox, sandbox)
+
+    _apply_sandbox_profile_overrides(merged, explicit_sandbox=explicit_sandbox)
     return AgentSdkConfig.model_validate(merged)
 
 
-def _apply_sandbox_profile_overrides(merged: Dict[str, Any]) -> None:
+def _apply_sandbox_profile_overrides(
+    merged: Dict[str, Any],
+    *,
+    explicit_sandbox: Mapping[str, Any] | None = None,
+) -> None:
     """
     将 `sandbox.profile`（dev/balanced/prod）展开为具体字段。
 
     约束：
     - `sandbox.profile` 仅允许 `dev|balanced|prod`；缺失则默认 `dev`；未知值必须 fail-fast（不得静默 no-op）。
-    - profile 的展开结果会覆盖 `sandbox.default_policy` 与 `sandbox.os.*`（profile 是更高层的“宏”）。
+    - profile preset 的定位是 baseline defaults（仅填缺省），不得覆盖调用方显式写入的字段。
     """
 
     sandbox = merged.get("sandbox")
@@ -448,8 +498,9 @@ def _apply_sandbox_profile_overrides(merged: Dict[str, Any]) -> None:
     if preset is None:
         raise ValueError(f"sandbox.profile must be one of: {sorted(presets.keys())}; got: {profile}")
 
-    # profile 展开：覆盖到 sandbox 下（宏级别优先）
-    _deep_merge(sandbox, preset)
+    # profile 展开：preset 覆盖 embedded defaults，但不覆盖显式配置（显式字段含 null 也不得覆盖）
+    explicit = explicit_sandbox if isinstance(explicit_sandbox, Mapping) else {}
+    _deep_fill_missing(sandbox, preset, explicit=explicit)
 
 
 def load_config(config_paths: list[Path]) -> AgentSdkConfig:
