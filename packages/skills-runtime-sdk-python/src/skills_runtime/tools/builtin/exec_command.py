@@ -91,6 +91,7 @@ def exec_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _ExecCommandArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     if ctx.exec_sessions is None:
@@ -100,7 +101,7 @@ def exec_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     if args.workdir is not None:
         try:
             workdir = ctx.resolve_path(str(args.workdir))
-        except Exception as e:
+        except Exception as e:  # 防御性兜底：resolve_path 可能抛出 UserError（越界）或 OSError 等。
             return ToolResult.error_payload(error_kind="permission", stderr=str(e))
         if not workdir.exists() or not workdir.is_dir():
             return ToolResult.error_payload(error_kind="validation", stderr=f"workdir is not a directory: {workdir}")
@@ -138,6 +139,7 @@ def exec_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             argv = list(prepared.argv)
             exec_cwd = prepared.cwd
         except Exception as e:
+            # 防御性兜底：sandbox adapter 由外部注入，可能抛出任意异常。
             return ToolResult.error_payload(
                 error_kind="sandbox_denied",
                 stderr=str(e),
@@ -146,7 +148,7 @@ def exec_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
 
     try:
         session = ctx.exec_sessions.spawn(argv=argv, cwd=exec_cwd, env=env, tty=bool(args.tty))  # type: ignore[union-attr]
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e))
 
     max_output_bytes = _max_output_bytes_from_tokens(args.max_output_tokens)
@@ -157,7 +159,7 @@ def exec_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             yield_time_ms=int(args.yield_time_ms),
             max_output_bytes=max_output_bytes,
         )
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e))
 
     stdout = ctx.redact_text(wr.stdout)

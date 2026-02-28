@@ -289,6 +289,7 @@ def read_file(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _ReadFileArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     mode = (args.mode or "slice").strip() or "slice"
@@ -302,6 +303,7 @@ def read_file(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         path = ctx.resolve_path(args.file_path)
     except Exception as e:
+        # 防御性兜底：resolve_path 可能抛出 UserError（越界）或 OSError 等。
         return ToolResult.error_payload(error_kind="permission", stderr=str(e))
 
     if not path.exists():
@@ -325,7 +327,7 @@ def read_file(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             stderr="failed to decode file as utf-8 text",
             data={"file_path": str(path)},
         )
-    except Exception as e:
+    except OSError as e:
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e), data={"file_path": str(path)})
 
     lines = text.splitlines()

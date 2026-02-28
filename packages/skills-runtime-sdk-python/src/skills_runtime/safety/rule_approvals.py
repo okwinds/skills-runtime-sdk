@@ -9,10 +9,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
+
+logger = logging.getLogger(__name__)
 
 
 ApprovalCondition = Callable[[ApprovalRequest], bool]
@@ -80,6 +83,7 @@ class RuleBasedApprovalProvider(ApprovalProvider):
                 if bool(cond(request)):
                     return rule.decision
             except Exception:
-                # fail-closed：条件异常视为不命中
+                # fail-closed：条件异常视为不命中，避免 fail-open 风险。
+                logger.debug("Approval rule condition raised an exception", exc_info=True)
                 continue
         return self._default

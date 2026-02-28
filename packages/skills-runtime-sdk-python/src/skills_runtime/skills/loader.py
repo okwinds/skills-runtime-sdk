@@ -79,7 +79,7 @@ def _split_frontmatter(text: str) -> Tuple[Dict[str, Any], str]:
     body = "".join(lines[end_idx + 1 :])
     try:
         obj = yaml.safe_load(fm_text) or {}
-    except Exception:
+    except yaml.YAMLError:
         obj = {}
     if not isinstance(obj, dict):
         obj = {}
@@ -96,7 +96,7 @@ def _load_required_env_vars(skill_dir: Path) -> List[str]:
         return []
     try:
         obj = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    except Exception:
+    except yaml.YAMLError:
         return []
     if not isinstance(obj, dict):
         return []
@@ -182,7 +182,7 @@ def _read_frontmatter_only(path: Path, *, max_frontmatter_bytes: int) -> Dict[st
     fm_text = "".join(fm_lines)
     try:
         obj = yaml.safe_load(fm_text) or {}
-    except Exception:
+    except yaml.YAMLError:
         obj = {}
     if not isinstance(obj, dict):
         obj = {}

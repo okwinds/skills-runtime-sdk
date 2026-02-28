@@ -94,13 +94,13 @@ def _collect_entries(*, root: Path, depth: int) -> list[_Entry]:
         current, current_depth = queue.pop(0)
         try:
             children = list(current.iterdir())
-        except Exception:
+        except OSError:
             continue
 
         for child in children:
             try:
                 rel = child.relative_to(root)
-            except Exception:
+            except ValueError:
                 continue
             if _is_dot_entry(rel):
                 continue
@@ -114,7 +114,7 @@ def _collect_entries(*, root: Path, depth: int) -> list[_Entry]:
                     typ = "dir"
                 elif child.is_file():
                     typ = "file"
-            except Exception:
+            except OSError:
                 typ = "other"
 
             out.append(_Entry(rel_path=rel_str, abs_path=str(child.resolve()), type=typ))
@@ -143,11 +143,13 @@ def list_dir(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _ListDirArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     try:
         root = ctx.resolve_path(args.dir_path)
     except Exception as e:
+        # 防御性兜底：resolve_path 可能抛出 UserError（越界）或 OSError 等。
         return ToolResult.error_payload(error_kind="permission", stderr=str(e))
 
     if not root.exists():

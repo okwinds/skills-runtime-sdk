@@ -97,7 +97,7 @@ class ChatCompletionsSseParser:
 
         try:
             obj = json.loads(data_s)
-        except Exception:
+        except json.JSONDecodeError:
             return []
 
         choices = obj.get("choices")
@@ -278,7 +278,7 @@ class ChatCompletionsSseParser:
             try:
                 parsed = json.loads(raw_args) if raw_args.strip() else {}
                 args_obj = parsed if isinstance(parsed, dict) else {}
-            except Exception:
+            except json.JSONDecodeError:
                 args_obj = {}
 
             tool_calls.append(ToolCall(call_id=call_id, name=st.name, args=args_obj, raw_arguments=raw_args))

@@ -8,21 +8,14 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.core.utils import now_rfc3339
 from skills_runtime.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec
 from skills_runtime.tools.registry import ToolExecutionContext
-
-
-def _now_rfc3339() -> str:
-    """返回当前 UTC 时间的 RFC3339 字符串（以 `Z` 结尾）。"""
-
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
 
 class _PlanStep(BaseModel):
     """单个计划条目。"""
@@ -84,6 +77,7 @@ def update_plan(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _UpdatePlanArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     in_progress_total = sum(1 for it in args.plan if it.status == "in_progress")
@@ -98,7 +92,7 @@ def update_plan(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     ctx.emit_event(
         AgentEvent(
             type="plan_updated",
-            timestamp=_now_rfc3339(),
+            timestamp=now_rfc3339(),
             run_id=ctx.run_id,
             payload={"call_id": call.call_id, "plan": plan_jsonable, "explanation": args.explanation},
         )

@@ -169,6 +169,8 @@ agent.register_tool(spec, handler, override=False)
 注意：
 - 冲突策略与 `ToolRegistry.register` 一致：默认拒绝同名；仅当 `override=True` 时允许显式覆盖
 - 通过 `register_tool` 注入的工具同样属于 **自定义工具**，会遵循自定义工具审批门禁（Route A）
+- `Agent` 对外公开 API 保持不变（向后兼容）。内部实现中，`Agent` 现在是一个薄外观层，将实际工作委托给 `AgentLoop`；所有现有调用方无需修改。
+- 如需为注册的工具附加自定义安全语义，可实现 `ToolSafetyDescriptor`（见 `help/06-tools-and-safety.cn.md` §6.10 及 `tools/protocol.py`）。
 
 ## 3.7 注入审批提供者（ApprovalProvider）
 

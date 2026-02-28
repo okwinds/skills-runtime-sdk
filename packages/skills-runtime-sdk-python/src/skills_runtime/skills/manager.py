@@ -32,7 +32,7 @@ from skills_runtime.skills.models import ScanReport, Skill
 from skills_runtime.skills.bundles import ExtractedBundle, ensure_extracted_bundle
 
 
-def _utc_now_rfc3339() -> str:
+def utc_rfc3339_now() -> str:
     """生成 UTC RFC3339 时间戳。"""
 
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -126,7 +126,7 @@ class SkillsManager:
             return False
         try:
             int(value, 16)
-        except Exception:
+        except ValueError:
             return False
         return True
 
@@ -470,7 +470,7 @@ class SkillsManager:
         try:
             versioning_enabled = bool(getattr(self._skills_config.versioning, "enabled", False))
             versioning_strategy = str(getattr(self._skills_config.versioning, "strategy", "TODO") or "TODO")
-        except Exception:
+        except AttributeError:
             versioning_enabled = False
             versioning_strategy = "TODO"
         if versioning_enabled or versioning_strategy != "TODO":
@@ -486,7 +486,7 @@ class SkillsManager:
         # versioning 允许额外字段用于前向兼容，但 preflight 必须 fail-fast 提示误配置（未知字段不会生效）。
         try:
             extra = dict(getattr(self._skills_config.versioning, "model_extra", None) or {})
-        except Exception:
+        except AttributeError:
             extra = {}
         if extra:
             issues.append(
@@ -955,7 +955,7 @@ class SkillsManager:
         dsn = self._source_dsn_from_env(source)
         try:
             import redis  # type: ignore[import-not-found]
-        except Exception as exc:
+        except ImportError as exc:
             dsn_env = source.options.get("dsn_env")
             raise FrameworkError(
                 code="SKILL_SCAN_SOURCE_UNAVAILABLE",
@@ -972,6 +972,7 @@ class SkillsManager:
         try:
             client = redis.from_url(dsn)
         except Exception as exc:
+            # 防御性兜底：redis 连接失败可能抛出 redis.exceptions.ConnectionError 等各种异常。
             dsn_env = source.options.get("dsn_env")
             raise FrameworkError(
                 code="SKILL_SCAN_SOURCE_UNAVAILABLE",
@@ -1003,7 +1004,7 @@ class SkillsManager:
         dsn = self._source_dsn_from_env(source)
         try:
             import psycopg  # type: ignore[import-not-found]
-        except Exception as exc:
+        except ImportError as exc:
             dsn_env = source.options.get("dsn_env")
             raise FrameworkError(
                 code="SKILL_SCAN_SOURCE_UNAVAILABLE",
@@ -1020,6 +1021,7 @@ class SkillsManager:
         try:
             client = psycopg.connect(dsn)
         except Exception as exc:
+            # 防御性兜底：psycopg 连接失败可能抛出 psycopg.OperationalError 等各种异常。
             dsn_env = source.options.get("dsn_env")
             raise FrameworkError(
                 code="SKILL_SCAN_SOURCE_UNAVAILABLE",
@@ -1098,7 +1100,7 @@ class SkillsManager:
             )
         try:
             return json.loads(value)
-        except Exception as exc:
+        except json.JSONDecodeError as exc:
             raise FrameworkError(
                 code="SKILL_SCAN_METADATA_INVALID",
                 message="Skill metadata is invalid.",
@@ -1162,6 +1164,7 @@ class SkillsManager:
         try:
             keys_iter = client.scan_iter(match=pattern)
         except Exception as exc:
+            # 防御性兜底：redis scan_iter 可能抛出 redis.exceptions.* 等各种异常。
             dsn_env = source.options.get("dsn_env")
             errors.append(
                 FrameworkIssue(
@@ -1185,6 +1188,7 @@ class SkillsManager:
             except StopIteration:
                 break
             except Exception as exc:
+                # 防御性兜底：redis 迭代可能抛出 redis.exceptions.* 等各种异常。
                 dsn_env = source.options.get("dsn_env")
                 errors.append(
                     FrameworkIssue(
@@ -1206,6 +1210,7 @@ class SkillsManager:
             try:
                 meta = client.hgetall(raw_key)
             except Exception as exc:
+                # 防御性兜底：redis hgetall 可能抛出 redis.exceptions.* 等各种异常。
                 errors.append(
                     FrameworkIssue(
                         code="SKILL_SCAN_SOURCE_UNAVAILABLE",
@@ -1482,6 +1487,7 @@ class SkillsManager:
             errors.append(exc.to_issue())
             return
 
+        # 防御性兜底：f-string 格式化在极少数情况下可能失败（schema/table 含特殊字符）。
         try:
             # 注意：使用上下文管理器获取 client，避免默认缓存单 connection（并发安全不作假设）。
             table_ref = f'"{schema}"."{table}"'
@@ -1503,6 +1509,7 @@ class SkillsManager:
             errors.append(exc.to_issue())
             return
         except Exception as exc:
+            # 防御性兜底：psycopg 查询可能抛出 psycopg.OperationalError 等各种异常。
             errors.append(
                 FrameworkIssue(
                     code="SKILL_SCAN_SOURCE_UNAVAILABLE",
@@ -1876,6 +1883,7 @@ class SkillsManager:
         try:
             raw = skill.body_loader()
         except Exception as exc:
+            # 防御性兜底：body_loader 可能是 IO/网络/DB 操作，可能抛出任意异常。
             raise FrameworkError(
                 code="SKILL_BODY_READ_FAILED",
                 message="Skill body read failed.",

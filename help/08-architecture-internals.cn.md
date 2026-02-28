@@ -36,11 +36,17 @@ SDK 有意分成三层（降低隐式行为、提升可复现性）：
                       v
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Core（进程内）                                                       │
-│  Agent（对外入口）                                                   │
-│   - PromptManager（模板 + skills + history trim）                     │
-│   - ToolDispatcher/ToolRegistry（校验 -> gate -> exec -> result）     │
-│   - WAL（events.jsonl）+ WalEmitter（append -> hooks -> stream）      │
-│  code: packages/.../skills_runtime/core/agent.py                      │
+│  Agent（薄外观层，对外公开 API）                                     │
+│   └─ AgentLoop（turn 循环 + 工具编排）                               │
+│       - PromptManager（模板 + skills + history trim）                 │
+│       - SafetyGate（统一 policy/approval 门禁）                      │
+│           └─ ToolSafetyDescriptor（每个工具的安全语义描述）          │
+│       - ToolDispatcher/ToolRegistry（校验 -> gate -> exec）          │
+│       - WAL（events.jsonl）+ WalEmitter（append -> hooks -> stream） │
+│  code: packages/.../skills_runtime/core/agent.py          （外观层） │
+│        packages/.../skills_runtime/core/agent_loop.py     （loop）   │
+│        packages/.../skills_runtime/safety/gate.py         （门禁）   │
+│        packages/.../skills_runtime/safety/descriptors.py  （内置）   │
 └──────────────────────────────────────────────────────────────────────┘
                       │（可选）
                       v
@@ -159,8 +165,11 @@ Agent loop 除了“调模型 + 执行工具”之外，还必须保证：
 - approvals 与 tool 事件的相对顺序稳定（否则 UI 容易漂移）
 
 关键模块：
-- `packages/skills-runtime-sdk-python/src/skills_runtime/core/agent.py`
+- `packages/skills-runtime-sdk-python/src/skills_runtime/core/agent.py`（薄外观层，约 296 行）
+- `packages/skills-runtime-sdk-python/src/skills_runtime/core/agent_loop.py`（AgentLoop：turn 循环 + 工具编排）
 - `packages/skills-runtime-sdk-python/src/skills_runtime/core/loop_controller.py`
+- `packages/skills-runtime-sdk-python/src/skills_runtime/safety/gate.py`（SafetyGate：统一 policy/approval 门禁）
+- `packages/skills-runtime-sdk-python/src/skills_runtime/safety/descriptors.py`（7 个内置 ToolSafetyDescriptor）
 
 ### 8.2.2 时序图（LLM + tools + approvals + WAL）
 
@@ -345,12 +354,14 @@ scan 可配置 refresh_policy：
 2) **执行**：handler 在 `ToolExecutionContext` 中运行，产出 `ToolResult`
 
 ```text
-ToolSpec -> LLM tool_calls -> ToolCall(args) -> validate -> handler -> ToolResult
+ToolSpec -> LLM tool_calls -> ToolCall(args) -> validate -> SafetyGate(ToolSafetyDescriptor) -> handler -> ToolResult
 ```
 
 代码：
-- `packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`
+- `packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`（ToolSpec、ToolSafetyDescriptor、PassthroughDescriptor）
 - `packages/skills-runtime-sdk-python/src/skills_runtime/tools/registry.py`
+- `packages/skills-runtime-sdk-python/src/skills_runtime/safety/gate.py`（SafetyGate）
+- `packages/skills-runtime-sdk-python/src/skills_runtime/safety/descriptors.py`（内置 descriptors）
 
 ### 8.6.2 ExecutionContext 也是安全边界的一部分
 

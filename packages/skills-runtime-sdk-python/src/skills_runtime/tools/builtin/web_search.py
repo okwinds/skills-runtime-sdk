@@ -60,6 +60,7 @@ def web_search(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _WebSearchArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     q = str(args.q).strip()
@@ -77,6 +78,7 @@ def web_search(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         results = provider.search(q=q, recency=args.recency, limit=int(args.limit))  # type: ignore[attr-defined]
     except Exception as e:
+        # 防御性兜底：web_search provider 由外部注入，可能抛出任意异常。
         duration_ms = int((time.monotonic() - start) * 1000)
         payload_err = ToolResultPayload(
             ok=False,

@@ -15,6 +15,16 @@ Purpose: give a coding agent a runnable “happy path” + key entrypoints.
 - Examples library (offline-by-default, teaching/coverage): `docs_for_coding_agent/examples/`
 - Human-facing app examples: `examples/apps/`
 
+## Architecture (internal components, M2 complete)
+
+The public API entry point is `Agent` (thin facade, `core/agent.py`). Internal structure:
+
+- `AgentLoop` (`core/agent_loop.py`): turn loop, LLM calls, tool dispatch.
+- `SafetyGate` (`safety/gate.py`): unified policy/approval gate, replaces if/elif dispatch chain.
+- `ToolSafetyDescriptor` (`tools/protocol.py`): Protocol for tool self-description of safety attributes.
+
+Examples and external integrations only use the public API (`Agent`, `tools/protocol.py`, `safety/approvals.py`, `llm/`). Do not import from `core/agent_loop.py` or `safety/gate.py` directly.
+
 ## Offline verification
 
 ```bash

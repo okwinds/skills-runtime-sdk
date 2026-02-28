@@ -57,6 +57,7 @@ def wait_tool(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _WaitArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     mgr = ctx.collab_manager
@@ -69,6 +70,7 @@ def wait_tool(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     except KeyError as e:
         return ToolResult.error_payload(error_kind="validation", stderr=str(e), data={"ids": ids})
     except Exception as e:
+        # 防御性兜底：collab_manager 由外部注入，可能抛出任意异常。
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e))
 
     results = []

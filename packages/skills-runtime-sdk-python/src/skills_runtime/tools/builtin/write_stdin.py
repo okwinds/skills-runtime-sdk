@@ -60,6 +60,7 @@ def write_stdin(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _WriteStdinArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     if ctx.exec_sessions is None:
@@ -81,7 +82,7 @@ def write_stdin(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
         )
     except ValueError as e:
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e))
 
     stdout = ctx.redact_text(wr.stdout)

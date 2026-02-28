@@ -64,7 +64,7 @@ def _resolve_workspace_root(raw: str) -> Tuple[Optional[Path], Optional[Framewor
 
     try:
         ws = Path(raw).expanduser().resolve()
-    except Exception as exc:
+    except OSError as exc:
         return None, FrameworkIssue(
             code="CLI_WORKSPACE_ROOT_INVALID",
             message="Workspace root is invalid.",
@@ -104,7 +104,7 @@ def _load_yaml_mapping(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[F
         )
     try:
         obj = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except Exception as exc:
+    except (OSError, yaml.YAMLError) as exc:
         return None, FrameworkIssue(
             code="CLI_OVERLAY_LOAD_FAILED",
             message="Overlay config load failed.",
@@ -155,6 +155,7 @@ def _load_effective_config(
             )
         ]
     except Exception as exc:
+        # 防御性兜底：config 加载可能因 IO/YAML/pydantic 等各种原因失败。
         return None, [
             FrameworkIssue(
                 code="CLI_CONFIG_LOAD_FAILED",
@@ -424,7 +425,7 @@ def _tool_result_to_jsonable(result: ToolResult) -> Dict[str, Any]:
         obj = json.loads(result.content)
         if isinstance(obj, dict):
             return obj
-    except Exception:
+    except json.JSONDecodeError:
         pass
     return {
         "ok": bool(result.ok),
@@ -460,7 +461,8 @@ def _prepare_bootstrap_for_cli(args: argparse.Namespace) -> Tuple[Optional[Path]
     if not bool(args.no_dotenv):
         try:
             env_file = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
-        except Exception as exc:
+        except (OSError, Exception) as exc:
+            # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
             dotenv_error = str(exc)
 
     overlay_paths.extend(bootstrap.discover_overlay_paths(workspace_root=ws))
@@ -630,14 +632,14 @@ def _resolve_input_file_path(*, workspace_root: Path, raw: str) -> Tuple[Optiona
         if not p.is_absolute():
             p = (workspace_root / p).resolve()
         p = p.resolve()
-    except Exception as exc:
+    except OSError as exc:
         return None, ToolResult.error_payload(error_kind="validation", stderr=str(exc))
 
     try:
         # 复用 ToolExecutionContext 的边界语义
         ctx = ToolExecutionContext(workspace_root=workspace_root, run_id="tools_cli", emit_tool_events=False)
         _ = ctx.resolve_path(str(p))
-    except Exception as exc:
+    except Exception as exc:  # 防御性兜底：resolve_path 可能抛出 UserError（越界）或 OSError 等。
         return None, ToolResult.error_payload(error_kind="permission", stderr=str(exc))
 
     if not p.exists():
@@ -670,14 +672,14 @@ def _load_json_object_from_input(
         assert p is not None
         try:
             raw = p.read_text(encoding="utf-8")
-        except Exception as exc:
+        except OSError as exc:
             return None, ToolResult.error_payload(error_kind="validation", stderr=str(exc))
     else:
         return None, ToolResult.error_payload(error_kind="validation", stderr="missing input")
 
     try:
         obj = json.loads(raw or "")
-    except Exception as exc:
+    except json.JSONDecodeError as exc:
         return None, ToolResult.error_payload(error_kind="validation", stderr=str(exc))
     if not isinstance(obj, dict):
         return None, ToolResult.error_payload(error_kind="validation", stderr="input JSON root must be an object")
@@ -1103,7 +1105,7 @@ def _handle_tools_request_user_input(args: argparse.Namespace) -> int:
     if args.answers_json is not None:
         try:
             answers_obj = json.loads(str(args.answers_json))
-        except Exception as exc:
+        except json.JSONDecodeError as exc:
             result_bad = ToolResult.error_payload(error_kind="validation", stderr=str(exc))
             _dump_tools_cli_payload(
                 tool_name="request_user_input",
@@ -1475,6 +1477,7 @@ def _handle_preflight(args: argparse.Namespace) -> int:
             try:
                 env_file = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
             except Exception as exc:
+                # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
                 issues.append(
                     FrameworkIssue(
                         code="CLI_DOTENV_LOAD_FAILED",
@@ -1537,6 +1540,7 @@ def _handle_scan(args: argparse.Namespace) -> int:
             try:
                 bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
             except Exception as exc:
+                # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
                 issues.append(
                     FrameworkIssue(
                         code="CLI_DOTENV_LOAD_FAILED",
@@ -1589,6 +1593,7 @@ def _handle_scan(args: argparse.Namespace) -> int:
                 stats={"spaces_total": 0, "sources_total": 0, "skills_total": 0},
             )
     except Exception as exc:
+        # 防御性兜底：scan 过程可能因 IO/网络/DB 等各种原因失败。
         report = ScanReport(
             scan_id="scan_cli_error",
             skills=[],

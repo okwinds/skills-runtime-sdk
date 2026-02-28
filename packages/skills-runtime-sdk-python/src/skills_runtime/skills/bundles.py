@@ -42,7 +42,7 @@ def _is_sha256_hex(value: str) -> bool:
         return False
     try:
         int(value, 16)
-    except Exception:
+    except ValueError:
         return False
     return True
 
@@ -192,7 +192,7 @@ def extract_zip_bundle_to_dir(
 
     try:
         zf = zipfile.ZipFile(BytesIO(data))
-    except Exception as exc:
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError) as exc:
         raise FrameworkError(
             code="SKILL_BUNDLE_INVALID",
             message="Skill bundle is not a valid zip archive.",

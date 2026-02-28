@@ -15,6 +15,16 @@
 - 示例库（离线可回归，教学/能力覆盖）：`docs_for_coding_agent/examples/`
 - 示例库（面向人类的应用示例）：`examples/apps/`
 
+## 1.1) 内部架构（M2 已完成）
+
+对外入口是 `Agent`（薄门面，`core/agent.py`）。内部组件边界：
+
+- `AgentLoop`（`core/agent_loop.py`）：turn 循环、LLM 调用、工具分发。
+- `SafetyGate`（`safety/gate.py`）：统一安全门禁，替代原 if/elif 分发链。
+- `ToolSafetyDescriptor`（`tools/protocol.py`）：工具自描述安全属性的 Protocol。
+
+示例与外部集成只使用公开 API（`Agent`、`tools/protocol.py`、`safety/approvals.py`、`llm/`），不直接导入 `core/agent_loop.py` 或 `safety/gate.py`。
+
 ## 2) 最短跑通（离线）
 
 1) 跑全量离线回归（最推荐）：

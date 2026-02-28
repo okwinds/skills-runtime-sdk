@@ -12,6 +12,7 @@ JSONL WAL（Write-Ahead Log）。
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
@@ -41,6 +42,7 @@ class JsonlWal:
 
         self.path = Path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
         self._next_index = self._scan_next_index()
 
     def locator(self) -> str:
@@ -53,7 +55,7 @@ class JsonlWal:
 
         try:
             return str(Path(self.path).resolve())
-        except Exception:
+        except OSError:
             return str(self.path)
 
     def _scan_next_index(self) -> int:
@@ -77,13 +79,14 @@ class JsonlWal:
         - 返回的 index 在单进程内单调递增；若外部进程同时写同一文件，本实现不保证。
         """
 
-        index = self._next_index
         payload = event.model_dump(by_alias=True, exclude_none=True)
         line = json.dumps(payload, ensure_ascii=False)
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(line)
-            f.write("\n")
-        self._next_index += 1
+        with self._lock:
+            index = self._next_index
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(line)
+                f.write("\n")
+            self._next_index += 1
         return index
 
     def iter_events(self) -> Iterator[AgentEvent]:

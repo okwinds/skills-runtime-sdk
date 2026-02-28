@@ -35,7 +35,7 @@ def _pid_alive(pid: int) -> bool:
     try:
         os.kill(int(pid), 0)
         return True
-    except Exception:
+    except OSError:
         return False
 
 
@@ -75,7 +75,7 @@ class RuntimeClient:
             return None
         try:
             obj = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError):
             return None
         if not isinstance(obj, dict):
             return None
@@ -86,7 +86,7 @@ class RuntimeClient:
                 socket_path=str(obj.get("socket_path") or ""),
                 created_at_ms=int(obj.get("created_at_ms") or 0),
             )
-        except Exception:
+        except (TypeError, ValueError):
             return None
 
     def _cleanup_stale_server_files(self) -> None:
@@ -125,7 +125,7 @@ class RuntimeClient:
                 try:
                     _ = self._call_with_info(info, method="ping", params={}, timeout_sec=0.5)
                     return info
-                except Exception:
+                except (OSError, ConnectionError, RuntimeError):
                     pass
 
         # stale：清理后重启
@@ -145,7 +145,7 @@ class RuntimeClient:
 
                 base = Path(_agent_sdk.__file__).resolve().parent.parent
                 env["PYTHONPATH"] = str(base)
-            except Exception:
+            except (ImportError, AttributeError, OSError):
                 pass
 
         # 若调用方使用相对 PYTHONPATH（常见于本仓库开发态），则 server 进程的 cwd 不同会导致 import 失败。
@@ -194,7 +194,7 @@ class RuntimeClient:
             if stderr_log.exists():
                 b = stderr_log.read_bytes()
                 tail = b[-2000:].decode("utf-8", errors="replace")
-        except Exception:
+        except OSError:
             tail = ""
         msg = "runtime server start timeout"
         if tail.strip():

@@ -91,13 +91,14 @@ def shell_exec(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _ShellExecArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     cwd = ctx.workspace_root
     if args.cwd is not None:
         try:
             cwd = ctx.resolve_path(args.cwd)
-        except Exception as e:
+        except Exception as e:  # 防御性兜底：resolve_path 可能抛出 UserError（越界）或 OSError 等。
             return ToolResult.error_payload(error_kind="permission", stderr=str(e))
         if not cwd.exists() or not cwd.is_dir():
             return ToolResult.error_payload(error_kind="validation", stderr=f"cwd 不存在或不是目录：{cwd}")
@@ -136,6 +137,7 @@ def shell_exec(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             argv = list(prepared.argv)
             exec_cwd = prepared.cwd
         except Exception as e:
+            # 防御性兜底：sandbox adapter 由外部注入，可能抛出任意异常。
             return ToolResult.error_payload(
                 error_kind="sandbox_denied",
                 stderr=str(e),

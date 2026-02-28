@@ -89,11 +89,13 @@ def file_read(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _FileReadArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     try:
         p = ctx.resolve_path(args.path)
     except Exception as e:
+        # 防御性兜底：resolve_path 可能抛出 UserError（越界）或 OSError 等。
         return ToolResult.error_payload(error_kind="permission", stderr=str(e))
 
     if not p.exists():
@@ -104,7 +106,7 @@ def file_read(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
 
     try:
         text, truncated = _read_text_with_limit(p, max_bytes=max_bytes, marker=marker)
-    except Exception as e:
+    except OSError as e:
         duration_ms = int((time.monotonic() - start) * 1000)
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e), duration_ms=duration_ms)
 

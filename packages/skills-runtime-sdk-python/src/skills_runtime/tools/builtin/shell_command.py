@@ -85,6 +85,7 @@ def shell_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _ShellCommandArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     inner_args: Dict[str, Any] = {"argv": ["/bin/sh", "-lc", str(args.command)]}
@@ -115,7 +116,7 @@ def shell_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             redacted2 = _redact_payload(obj, ctx)
             payload2 = ToolResultPayload.model_validate(redacted2)
             return ToolResult.from_payload(payload2, message=inner_result.message)
-    except Exception:
+    except json.JSONDecodeError:
         pass
 
     return inner_result

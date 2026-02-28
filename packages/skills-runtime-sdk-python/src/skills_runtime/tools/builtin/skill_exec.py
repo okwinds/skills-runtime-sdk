@@ -361,7 +361,7 @@ def skill_exec(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     if timeout_ms is not None:
         try:
             timeout = int(timeout_ms)
-        except Exception:
+        except (TypeError, ValueError):
             return _framework_error_result(
                 error_kind="validation",
                 code="SKILL_ACTION_DEFINITION_INVALID",

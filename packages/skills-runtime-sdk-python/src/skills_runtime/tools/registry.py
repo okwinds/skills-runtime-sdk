@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence, TYPE_CHECKING, Union
 
 from skills_runtime.core.contracts import AgentEvent
 from skills_runtime.core.errors import UserError
+from skills_runtime.core.utils import now_rfc3339
 from skills_runtime.state.jsonl_wal import JsonlWal
 from skills_runtime.state.wal_emitter import WalEmitter
 from skills_runtime.tools.protocol import HumanIOProvider, ToolCall, ToolResult, ToolResultPayload, ToolSpec
@@ -41,12 +41,6 @@ if TYPE_CHECKING:  # pragma: no cover
 
 ToolHandler = Callable[[ToolCall, "ToolExecutionContext"], ToolResult]
 EventSink = Callable[[AgentEvent], None]
-
-
-def _now_rfc3339() -> str:
-    """返回 RFC3339 UTC 时间字符串（以 Z 结尾）。"""
-
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _sanitize_tool_call_arguments_for_event(
@@ -229,6 +223,7 @@ class ToolExecutionContext:
             try:
                 return list(rv())
             except Exception:
+                # 防御性兜底：redaction_values 由外部注入，可能抛出任意异常；fail-open 返回空列表。
                 return []
         return list(rv)
 
@@ -385,7 +380,7 @@ class ToolRegistry:
             if isinstance(obj, (dict, list)):
                 red = _redact_obj(obj)
                 content = json.dumps(red, ensure_ascii=False)
-        except Exception:
+        except json.JSONDecodeError:
             content = self._ctx.redact_text(content)
 
         return ToolResult(
@@ -425,7 +420,7 @@ class ToolRegistry:
         self._ctx.emit_event(
             AgentEvent(
                 type=type_,
-                timestamp=_now_rfc3339(),
+                timestamp=now_rfc3339(),
                 run_id=self._ctx.run_id,
                 turn_id=turn_id,
                 step_id=step_id,

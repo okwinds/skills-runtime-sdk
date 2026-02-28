@@ -169,6 +169,8 @@ agent.register_tool(spec, handler, override=False)
 Notes:
 - Name conflicts follow `ToolRegistry.register`: reject by default, allow override only when `override=True`
 - Tools injected via `register_tool` are still **custom tools** for safety governance (Route A)
+- The public `Agent` API is unchanged (backward compatible). Internally, `Agent` is now a thin facade that delegates to `AgentLoop`; all existing call sites work without modification.
+- To attach custom safety semantics to a registered tool, implement `ToolSafetyDescriptor` (see `help/06-tools-and-safety.md` §6.10 and `tools/protocol.py`).
 
 ## 3.7 Inject an approvals provider (`ApprovalProvider`)
 

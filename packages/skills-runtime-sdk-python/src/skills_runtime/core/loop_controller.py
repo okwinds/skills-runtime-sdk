@@ -12,9 +12,12 @@ LoopController：Agent Loop 的计数/预算/取消控制（internal）。
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -70,6 +73,8 @@ class LoopController:
         try:
             return bool(self.cancel_checker())
         except Exception:
+            # 防御性兜底：cancel_checker 由外部注入，可能抛出任意异常；fail-open 返回 False。
+            logger.debug("cancel_checker raised an exception", exc_info=True)
             return False
 
     def wall_time_exceeded(self) -> bool:

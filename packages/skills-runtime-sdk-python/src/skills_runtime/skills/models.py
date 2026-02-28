@@ -145,7 +145,7 @@ def _coerce_int(value: Any) -> int:
         return int(value)
     try:
         return int(value)
-    except Exception:
+    except (TypeError, ValueError):
         return 0
 
 
@@ -155,6 +155,7 @@ def _safe_repr(value: Any) -> str:
     try:
         return repr(value)
     except Exception:
+        # 防御性兜底：任意对象的 __repr__ 可能抛出异常（用户自定义类）。
         return "<unreprable>"
 
 
@@ -164,6 +165,7 @@ def _safe_str(value: Any) -> str:
     try:
         return str(value)
     except Exception:
+        # 防御性兜底：任意对象的 __str__ 可能抛出异常（用户自定义类）。
         return _safe_repr(value)
 
 
@@ -241,6 +243,7 @@ def _json_sanitize(value: Any, *, _depth: int = 0, _max_depth: int = 8, _stack: 
                         _safe_str(x).encode("utf-8", errors="replace")
                     ).hexdigest()
                 except Exception:
+                    # 防御性兜底：任意对象的 __str__/__hash__ 可能抛出异常（用户自定义类）。
                     return _safe_repr(x)
 
             return sorted(items, key=_sort_key)

@@ -56,7 +56,7 @@ class ToolDispatcher:
         """创建派发器。参数见类注释。"""
 
         self._registry = registry
-        self._now_rfc3339 = now_rfc3339
+        self._now_fn = now_rfc3339
 
     def dispatch_one(
         self,
@@ -91,7 +91,7 @@ class ToolDispatcher:
                 parsed = json.loads(raw_arguments)
                 if not isinstance(parsed, dict):
                     raise ValueError("tool arguments must be a JSON object")
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError) as e:
                 sha256 = hashlib.sha256(raw_arguments.encode("utf-8")).hexdigest()
                 result = ToolResult.error_payload(
                     error_kind="validation",
@@ -101,7 +101,7 @@ class ToolDispatcher:
                 emit_event(
                     AgentEvent(
                         type="tool_call_finished",
-                        timestamp=self._now_rfc3339(),
+                        timestamp=self._now_fn(),
                         run_id=inputs.run_id,
                         turn_id=inputs.turn_id,
                         step_id=inputs.step_id,
@@ -113,7 +113,7 @@ class ToolDispatcher:
         emit_event(
             AgentEvent(
                 type="tool_call_started",
-                timestamp=self._now_rfc3339(),
+                timestamp=self._now_fn(),
                 run_id=inputs.run_id,
                 turn_id=inputs.turn_id,
                 step_id=inputs.step_id,
@@ -130,7 +130,7 @@ class ToolDispatcher:
         emit_event(
             AgentEvent(
                 type="tool_call_finished",
-                timestamp=self._now_rfc3339(),
+                timestamp=self._now_fn(),
                 run_id=inputs.run_id,
                 turn_id=inputs.turn_id,
                 step_id=inputs.step_id,

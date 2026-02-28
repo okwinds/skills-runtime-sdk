@@ -14,11 +14,14 @@ WalEmitter：事件落盘 + hooks + 对外推送的统一出口（internal）。
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
 from skills_runtime.core.contracts import AgentEvent
 from skills_runtime.state.wal_protocol import WalBackend
+
+logger = logging.getLogger(__name__)
 
 
 EventStream = Callable[[AgentEvent], None]
@@ -53,7 +56,9 @@ class WalEmitter:
             try:
                 h(ev)
             except Exception:
-                # fail-open：hook 失败只影响可观测性，不应中断 run
+                # 防御性兜底：hook 是外部可插拔回调，可能抛出任意异常；
+                # fail-open 保证主链路不被监控 hook 打挂。
+                logger.warning("WalEmitter hook raised an exception", exc_info=True)
                 continue
 
     def append(self, ev: AgentEvent) -> None:

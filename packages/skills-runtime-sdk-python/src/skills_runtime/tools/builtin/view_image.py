@@ -77,11 +77,13 @@ def view_image(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _ViewImageArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     try:
         path = ctx.resolve_path(args.path)
     except Exception as e:
+        # 防御性兜底：resolve_path 可能抛出 UserError（越界）或 OSError 等。
         return ToolResult.error_payload(error_kind="permission", stderr=str(e))
 
     if not path.exists():
@@ -99,7 +101,7 @@ def view_image(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
 
     try:
         raw = path.read_bytes()
-    except Exception as e:
+    except OSError as e:
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e), data={"path": str(path)})
 
     if len(raw) > _MAX_IMAGE_BYTES:

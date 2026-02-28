@@ -103,16 +103,21 @@ class ExecSessionManager:
             merged_env.update({str(k): str(v) for k, v in env.items()})
 
         # 让子进程获得 slave 作为 stdio（交互式语义）；并成为新的进程组 leader（更可控的终止策略由上层实现）。
-        proc = subprocess.Popen(  # noqa: S603
-            argv,
-            cwd=str(cwd_path),
-            env=merged_env,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            close_fds=True,
-            start_new_session=True,
-        )
+        try:
+            proc = subprocess.Popen(  # noqa: S603
+                argv,
+                cwd=str(cwd_path),
+                env=merged_env,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
+                start_new_session=True,
+            )
+        except Exception:  # 防御性兜底：Popen 可能抛出 OSError 或其他异常，均需关闭 fd。
+            os.close(slave_fd)
+            os.close(master_fd)
+            raise
         os.close(slave_fd)
 
         sid = self._next_id
@@ -228,7 +233,7 @@ class ExecSessionManager:
                 os.killpg(pid, signal.SIGTERM)
             else:
                 session.proc.terminate()
-        except Exception:
+        except OSError:
             pass
         self._cleanup_session(sid)
 
@@ -251,7 +256,7 @@ class ExecSessionManager:
             return
         try:
             os.close(session.master_fd)
-        except Exception:
+        except OSError:
             pass
 
 
@@ -380,7 +385,7 @@ class PersistentExecSessionManager:
         try:
             _ = self._client.call(method="exec.write", params={"session_id": int(session_id), "chars": "", "yield_time_ms": 0})
             return True
-        except Exception:
+        except (OSError, ConnectionError, RuntimeError):
             return False
 
     def write(
@@ -433,7 +438,7 @@ class PersistentExecSessionManager:
 
         try:
             self._client.call(method="exec.close", params={"session_id": int(session_id)})
-        except Exception:
+        except (OSError, ConnectionError, RuntimeError):
             return
 
     def close_all(self) -> None:
@@ -447,5 +452,5 @@ class PersistentExecSessionManager:
 
         try:
             self._client.call(method="exec.close_all")
-        except Exception:
+        except (OSError, ConnectionError, RuntimeError):
             return

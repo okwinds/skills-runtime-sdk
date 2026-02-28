@@ -305,7 +305,48 @@ Use for long-running or interactive commands:
 2. Prod: tighten allowlist and sandbox profile gradually
 3. Treat `sandbox_denied` as a config/environment problem (not an acceptable silent fallback)
 
-## 6.10 Further reading
+## 6.10 ToolSafetyDescriptor: tools self-describe their safety semantics
+
+The `ToolSafetyDescriptor` protocol (`tools/protocol.py`) lets each tool declare how it should be treated by the safety gate — what counts as "risky", how to sanitize args for approvals/WAL, and which policy category applies.
+
+```python
+class ToolSafetyDescriptor(Protocol):
+    policy_category: str  # e.g. "shell_exec", "file_write", "none"
+
+    def extract_risk(self, args, **ctx) -> ...: ...
+    def sanitize_for_approval(self, args, **ctx) -> ...: ...
+    def sanitize_for_event(self, args, **ctx) -> dict: ...
+```
+
+The SDK ships 7 built-in descriptors in `safety/descriptors.py`:
+`ShellExecDescriptor`, `ShellDescriptor`, `ShellCommandDescriptor`, `ExecCommandDescriptor`, `FileWriteDescriptor`, `ApplyPatchDescriptor`, `SkillExecDescriptor`, `WriteStdinDescriptor`.
+
+For custom tools without a descriptor, `PassthroughDescriptor` is used as a fallback (low risk, args passed through as-is).
+
+`SafetyGate` (`safety/gate.py`) replaces the old `if/elif` dispatch chain in the agent loop. It receives a `get_descriptor` callable and routes each tool call through the appropriate descriptor before making a policy/approval decision.
+
+When registering a custom tool, you can optionally supply a descriptor:
+
+```python
+from skills_runtime.tools.protocol import ToolSafetyDescriptor
+
+class MyDescriptor:
+    policy_category = "shell_exec"  # reuse shell_exec policy path
+
+    def extract_risk(self, args, **ctx):
+        return {"argv": args.get("argv", []), "risk_level": "medium", "reason": "custom"}
+
+    def sanitize_for_approval(self, args, **ctx):
+        return {"argv": args.get("argv", [])}
+
+    def sanitize_for_event(self, args, **ctx):
+        return {"argv": args.get("argv", [])}
+
+agent.register_tool(spec, handler, override=False)
+# descriptor support: see help/08-architecture-internals.md §8.6
+```
+
+## 6.11 Further reading
 
 - `help/sandbox-best-practices.md`
 - `help/04-cli-reference.md`

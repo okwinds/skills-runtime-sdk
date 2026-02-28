@@ -105,7 +105,7 @@ class OpenAIChatCompletionsBackend:
                 if sec <= 0:
                     return None
                 return sec * 1000
-            except Exception:
+            except (ValueError, TypeError):
                 return None
 
         retry_cfg = getattr(self._cfg, "retry", None)
@@ -145,6 +145,7 @@ class OpenAIChatCompletionsBackend:
                 try:
                     notify_delay(float(delay))
                 except Exception:
+                    # 防御性兜底：notify_delay 由外部注入，可能抛出任意异常；不影响退避逻辑。
                     pass
             await asyncio.sleep(delay)
             return float(delay)
@@ -166,7 +167,7 @@ class OpenAIChatCompletionsBackend:
                         if resp.status_code >= 400:
                             try:
                                 await resp.aread()
-                            except Exception:
+                            except httpx.HTTPError:
                                 pass
                         resp.raise_for_status()
                         async for line in resp.aiter_lines():

@@ -305,7 +305,46 @@ run:
 2. 生产环境：逐步收紧 allowlist 与 profile，不一次性拉满
 3. 把 `sandbox_denied` 视为配置问题，不是“自动降级可接受”
 
-## 6.10 相关阅读
+## 6.10 ToolSafetyDescriptor：工具自描述安全语义
+
+`ToolSafetyDescriptor` 协议（`tools/protocol.py`）允许每个工具声明自身的安全语义——什么算"高风险"、如何对 approvals/WAL 脱敏参数、以及适用哪个 policy 分类。
+
+```python
+class ToolSafetyDescriptor(Protocol):
+    policy_category: str  # 例如 "shell_exec"、"file_write"、"none"
+
+    def extract_risk(self, args, **ctx) -> ...: ...
+    def sanitize_for_approval(self, args, **ctx) -> ...: ...
+    def sanitize_for_event(self, args, **ctx) -> dict: ...
+```
+
+SDK 在 `safety/descriptors.py` 中内置了 7 个 descriptor：
+`ShellExecDescriptor`、`ShellDescriptor`、`ShellCommandDescriptor`、`ExecCommandDescriptor`、`FileWriteDescriptor`、`ApplyPatchDescriptor`、`SkillExecDescriptor`、`WriteStdinDescriptor`。
+
+对于没有 descriptor 的自定义工具，`PassthroughDescriptor` 作为兜底（低风险，参数原样透传）。
+
+`SafetyGate`（`safety/gate.py`）取代了原来 agent loop 中的 `if/elif` 分发链。它接收一个 `get_descriptor` 回调，在做 policy/approval 决策前，将每次 tool call 路由到对应的 descriptor。
+
+注册自定义工具时，可以选择性地提供 descriptor：
+
+```python
+class MyDescriptor:
+    policy_category = "shell_exec"  # 复用 shell_exec policy 路径
+
+    def extract_risk(self, args, **ctx):
+        return {"argv": args.get("argv", []), "risk_level": "medium", "reason": "custom"}
+
+    def sanitize_for_approval(self, args, **ctx):
+        return {"argv": args.get("argv", [])}
+
+    def sanitize_for_event(self, args, **ctx):
+        return {"argv": args.get("argv", [])}
+
+agent.register_tool(spec, handler, override=False)
+# descriptor 支持：见 help/08-architecture-internals.cn.md §8.6
+```
+
+## 6.11 相关阅读
 
 - `help/sandbox-best-practices.cn.md`
 - `help/04-cli-reference.cn.md`

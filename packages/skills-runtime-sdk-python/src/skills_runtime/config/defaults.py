@@ -34,9 +34,11 @@ def load_default_config_dict() -> Dict[str, Any]:
         from importlib.resources import files
 
         text = files("skills_runtime.assets").joinpath("default.yaml").read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, ModuleNotFoundError, TypeError):
+        # 防御性兜底：importlib.resources 在不同 Python 版本/安装形态下可能抛出
+        # OSError（文件不存在）、ModuleNotFoundError（包未安装）或 TypeError（API 差异）。
         # 开发态兼容：当未按 package 形式安装时，允许在 repo 内探测对照样例。
-        # 约束：该 fallback 仅用于开发/测试，不应成为“产品运行时依赖”。
+        # 约束：该 fallback 仅用于开发/测试，不应成为”产品运行时依赖”。
         for parent in Path(__file__).resolve().parents:
             candidate = parent / "docs" / "specs" / "skills-runtime-sdk" / "config" / "default.yaml"
             if candidate.exists():

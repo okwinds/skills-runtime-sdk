@@ -102,7 +102,7 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
 
     try:
         text = events_jsonl_path.read_text(encoding="utf-8")
-    except Exception as exc:
+    except OSError as exc:
         _add_invalid_wal(f"failed to read events file: {exc}")
         return summary
 
@@ -112,7 +112,7 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
             continue
         try:
             ev = json.loads(line)
-        except Exception as exc:
+        except json.JSONDecodeError as exc:
             _add_invalid_wal(f"invalid json line: {exc}")
             return summary
 
@@ -208,7 +208,7 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
             dt0 = _parse_rfc3339_to_dt(started_at)
             dt1 = _parse_rfc3339_to_dt(ended_at)
             summary["wall_time_ms"] = int((dt1 - dt0).total_seconds() * 1000)
-        except Exception as exc:
+        except (ValueError, TypeError, OverflowError) as exc:
             _add_invalid_wal(f"failed to parse timestamps: {exc}")
 
     return summary

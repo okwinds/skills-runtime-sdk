@@ -13,9 +13,14 @@ from skills_runtime.safety.approvals import (
     ApprovalRequest,
     compute_approval_key,
 )
+from skills_runtime.safety.gate import GateDecision, SafetyGate
 from skills_runtime.safety.rule_approvals import ApprovalRule, RuleBasedApprovalProvider
 from skills_runtime.safety.guard import CommandRisk, evaluate_command_risk
-from skills_runtime.safety.policy import PolicyDecision, evaluate_policy_for_shell_exec
+from skills_runtime.safety.policy import (
+    PolicyDecision,
+    evaluate_policy_for_custom_tool,
+    evaluate_policy_for_shell_exec,
+)
 
 __all__ = [
     "ApprovalDecision",
@@ -23,9 +28,12 @@ __all__ = [
     "ApprovalProvider",
     "ApprovalRequest",
     "CommandRisk",
+    "GateDecision",
     "PolicyDecision",
     "RuleBasedApprovalProvider",
+    "SafetyGate",
     "compute_approval_key",
     "evaluate_command_risk",
+    "evaluate_policy_for_custom_tool",
     "evaluate_policy_for_shell_exec",
 ]

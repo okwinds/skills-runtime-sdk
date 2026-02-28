@@ -87,6 +87,7 @@ def grep_files(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _GrepFilesArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     pattern = str(args.pattern or "").strip()
@@ -99,14 +100,14 @@ def grep_files(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
 
     try:
         regex = re.compile(pattern)
-    except Exception as e:
+    except re.error as e:
         return ToolResult.error_payload(error_kind="validation", stderr=f"invalid pattern regex: {e}")
 
     root = ctx.workspace_root
     if args.path is not None:
         try:
             root = ctx.resolve_path(args.path)
-        except Exception as e:
+        except Exception as e:  # 防御性兜底：resolve_path 可能抛出 UserError（越界）或 OSError 等。
             return ToolResult.error_payload(error_kind="permission", stderr=str(e))
 
     if root.exists() and root.is_file():
@@ -149,7 +150,7 @@ def grep_files(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             # 过滤隐藏目录（避免深入）
             try:
                 rel_dir = Path(dirpath).relative_to(root)
-            except Exception:
+            except ValueError:
                 rel_dir = Path(".")
             if _is_hidden_rel(rel_dir) and str(rel_dir) != ".":
                 if isinstance(dirnames, list):
@@ -160,7 +161,7 @@ def grep_files(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
                 fpath = Path(dirpath) / fname
                 try:
                     rel = fpath.relative_to(root)
-                except Exception:
+                except ValueError:
                     continue
                 if _is_hidden_rel(rel):
                     continue
@@ -176,7 +177,7 @@ def grep_files(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
                             continue
                         data = head + f.read()
                     text = data.decode("utf-8", errors="replace")
-                except Exception:
+                except OSError:
                     continue
 
                 if regex.search(text) is None:

@@ -217,7 +217,7 @@ class Executor:
             while True:
                 try:
                     chunk = stream.read(4096)  # type: ignore[attr-defined]
-                except Exception:
+                except OSError:
                     return
                 if not chunk:
                     return
@@ -284,7 +284,7 @@ class Executor:
                             self._terminate_process(proc)
                             break
                     except Exception:
-                        # fail-open：取消检测异常不应杀死执行器
+                        # 防御性兜底：cancel_checker 由外部注入，可能抛出任意异常；fail-open 不中断执行器。
                         pass
 
                 remaining = deadline - time.monotonic()
@@ -307,12 +307,12 @@ class Executor:
             try:
                 if proc.stdout:
                     proc.stdout.close()
-            except Exception:
+            except OSError:
                 pass
             try:
                 if proc.stderr:
                     proc.stderr.close()
-            except Exception:
+            except OSError:
                 pass
 
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -408,40 +408,40 @@ class Executor:
         if os.name == "nt":
             try:
                 proc.terminate()
-            except Exception:
+            except OSError:
                 pass
             try:
                 proc.wait(timeout=self._terminate_grace_ms / 1000.0)
                 return
-            except Exception:
+            except subprocess.TimeoutExpired:
                 pass
             try:
                 proc.kill()
-            except Exception:
+            except OSError:
                 pass
             return
 
         # POSIX：尽量杀进程组
         try:
             os.killpg(proc.pid, signal.SIGTERM)
-        except Exception:
+        except OSError:
             try:
                 proc.terminate()
-            except Exception:
+            except OSError:
                 pass
 
         try:
             proc.wait(timeout=self._terminate_grace_ms / 1000.0)
             return
-        except Exception:
+        except subprocess.TimeoutExpired:
             pass
 
         try:
             os.killpg(proc.pid, signal.SIGKILL)
-        except Exception:
+        except OSError:
             try:
                 proc.kill()
-            except Exception:
+            except OSError:
                 pass
 
     def _apply_combined_limit(self, stdout_b: bytes, stderr_b: bytes) -> tuple[bytes, bytes, bool]:

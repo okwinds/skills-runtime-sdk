@@ -96,7 +96,7 @@ class RuntimeServer:
             return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
         try:
             obj = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError):
             return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
         if not isinstance(obj, dict):
             return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
@@ -168,7 +168,7 @@ class RuntimeServer:
         try:
             os.kill(int(pid), 0)
             return True
-        except Exception:
+        except OSError:
             return False
 
     def _ps_env_contains_marker(self, pid: int, marker: str) -> bool:
@@ -192,7 +192,7 @@ class RuntimeServer:
             )
             out = (cp.stdout or "") + "\n" + (cp.stderr or "")
             return str(marker) in out
-        except Exception:
+        except OSError:
             return False
 
     def _kill_process_group(self, pid: int) -> bool:
@@ -208,10 +208,10 @@ class RuntimeServer:
 
         try:
             os.killpg(int(pid), signal.SIGTERM)
-        except Exception:
+        except OSError:
             try:
                 os.kill(int(pid), signal.SIGTERM)
-            except Exception:
+            except OSError:
                 return False
 
         deadline = time.monotonic() + 0.6
@@ -223,8 +223,8 @@ class RuntimeServer:
         # 最后兜底：SIGKILL
         try:
             os.killpg(int(pid), signal.SIGKILL)
-        except Exception:
-            with contextlib.suppress(Exception):
+        except OSError:
+            with contextlib.suppress(OSError):
                 os.kill(int(pid), signal.SIGKILL)
         return True
 
@@ -283,7 +283,7 @@ class RuntimeServer:
                     cmdline = (cp.stdout or "").strip()
                     if cmdline and argv0 in cmdline:
                         verified = True
-                except Exception:
+                except OSError:
                     verified = False
 
             if not verified:
@@ -297,7 +297,7 @@ class RuntimeServer:
                 else:
                     errors.append(f"failed_to_kill pid={pid}")
                     remaining[str(sid)] = dict(item, last_kill_error="failed_to_kill", last_seen_alive_ms=int(time.time() * 1000))
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 errors.append(f"kill_error pid={pid} err={e}")
                 remaining[str(sid)] = dict(item, last_kill_error=str(e), last_seen_alive_ms=int(time.time() * 1000))
 
@@ -526,6 +526,7 @@ class RuntimeServer:
                     x = child.inbox.get(timeout=0.05)
                     return f"got:{x}"
                 except Exception:
+                    # 防御性兜底：Queue.get(timeout) 在取消/关闭时可能抛出非 queue.Empty 异常。
                     continue
             return "cancelled"
         return f"echo:{msg}"
@@ -570,6 +571,7 @@ class RuntimeServer:
                     cur.status = "completed"
                     cur.final_output = str(out)
             except Exception as e:
+                # 防御性兜底：child runner 可能抛出任意异常；记录错误状态，不影响 server 主循环。
                 with self._children_lock:
                     cur = self._children.get(cid)
                     if cur is None:
@@ -779,31 +781,33 @@ class RuntimeServer:
                 except socket.timeout:
                     continue
                 except Exception:
+                    # 防御性兜底：socket accept 可能因信号/系统调用中断等抛出任意异常；
+                    # 继续循环避免 server 崩溃。
                     continue
-
-                with conn:
-                    try:
-                        raw = b""
-                        while True:
-                            b = conn.recv(65536)
-                            if not b:
-                                break
-                            raw += b
-                        req = json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
-                        if not isinstance(req, dict):
-                            raise ValueError("invalid request")
-                        if str(req.get("secret") or "") != self._secret:
-                            raise PermissionError("invalid secret")
-                        method = str(req.get("method") or "")
-                        params = req.get("params") or {}
-                        if not isinstance(params, dict):
-                            raise ValueError("params must be object")
-                        self._last_activity = time.monotonic()
-                        data = self._dispatch(method, params)
-                        resp = {"ok": True, "data": data}
-                    except Exception as e:
-                        resp = {"ok": False, **self._format_rpc_error(e)}
-                    conn.sendall(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
+                try:
+                    raw = b""
+                    while True:
+                        b = conn.recv(65536)
+                        if not b:
+                            break
+                        raw += b
+                    req = json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
+                    if not isinstance(req, dict):
+                        raise ValueError("invalid request")
+                    if str(req.get("secret") or "") != self._secret:
+                        raise PermissionError("invalid secret")
+                    method = str(req.get("method") or "")
+                    params = req.get("params") or {}
+                    if not isinstance(params, dict):
+                        raise ValueError("params must be object")
+                    self._last_activity = time.monotonic()
+                    data = self._dispatch(method, params)
+                    resp = {"ok": True, "data": data}
+                except Exception as e:
+                    # 防御性兜底：RPC handler 可能抛出任意异常；序列化为错误响应返回给 client。
+                    resp = {"ok": False, **self._format_rpc_error(e)}
+                conn.sendall(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
+                conn.close()
         finally:
             # 进程正常退出时尽量回收资源，避免遗留 orphan。
             with contextlib.suppress(Exception):

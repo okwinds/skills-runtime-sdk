@@ -299,11 +299,12 @@ def apply_patch(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _ApplyPatchArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     try:
         sections = _parse_patch_sections(_split_lines(args.input))
-    except Exception as e:
+    except (ValueError, IndexError) as e:
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     changes: List[_Change] = []
@@ -336,7 +337,7 @@ def apply_patch(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     except (PermissionError,) as e:
         return ToolResult.error_payload(error_kind="permission", stderr=str(e))
     except Exception as e:
-        # resolve_path 的越界属于 permission（UserError）
+        # 防御性兜底：resolve_path 的越界属于 permission（UserError），其他为 validation。
         msg = str(e)
         if "禁止访问 workspace_root 之外的路径" in msg:
             return ToolResult.error_payload(error_kind="permission", stderr=msg)

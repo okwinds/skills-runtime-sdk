@@ -36,11 +36,17 @@ The SDK is intentionally split into three layers:
                      v
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Core (in-process)                                                    │
-│  Agent (entrypoint)                                                  │
-│   - PromptManager (templates + skills + history trim)                │
-│   - ToolDispatcher/ToolRegistry (validation -> gate -> exec -> result)│
-│   - WAL (events.jsonl) + WalEmitter (append -> hooks -> stream)      │
-│  code: packages/.../skills_runtime/core/agent.py                      │
+│  Agent (thin facade, public API)                                     │
+│   └─ AgentLoop (turn loop, tool orchestration)                       │
+│       - PromptManager (templates + skills + history trim)            │
+│       - SafetyGate (unified policy/approval gate)                    │
+│           └─ ToolSafetyDescriptor (per-tool safety semantics)        │
+│       - ToolDispatcher/ToolRegistry (validation -> gate -> exec)     │
+│       - WAL (events.jsonl) + WalEmitter (append -> hooks -> stream)  │
+│  code: packages/.../skills_runtime/core/agent.py          (facade)   │
+│        packages/.../skills_runtime/core/agent_loop.py     (loop)     │
+│        packages/.../skills_runtime/safety/gate.py         (gate)     │
+│        packages/.../skills_runtime/safety/descriptors.py  (builtin)  │
 └──────────────────────────────────────────────────────────────────────┘
                      │ (optional)
                      v
@@ -161,8 +167,11 @@ The agent loop does more than “call model then run tools”; it also:
 - keeps approvals ordering stable relative to tool events (so UIs don’t drift)
 
 Key modules:
-- `packages/skills-runtime-sdk-python/src/skills_runtime/core/agent.py`
+- `packages/skills-runtime-sdk-python/src/skills_runtime/core/agent.py` (thin facade, ~296 lines)
+- `packages/skills-runtime-sdk-python/src/skills_runtime/core/agent_loop.py` (AgentLoop: turn loop + tool orchestration)
 - `packages/skills-runtime-sdk-python/src/skills_runtime/core/loop_controller.py`
+- `packages/skills-runtime-sdk-python/src/skills_runtime/safety/gate.py` (SafetyGate: unified policy/approval gate)
+- `packages/skills-runtime-sdk-python/src/skills_runtime/safety/descriptors.py` (7 built-in ToolSafetyDescriptors)
 
 ### 8.2.2 Sequence diagram (LLM + tools + approvals + WAL)
 
@@ -349,12 +358,14 @@ There are two related pieces:
 2) **Tool execution**: a handler function runs with a `ToolExecutionContext`
 
 ```text
-ToolSpec  ->  LLM tool_calls  ->  ToolCall(args)  -> validate -> handler -> ToolResult
+ToolSpec  ->  LLM tool_calls  ->  ToolCall(args)  -> validate -> SafetyGate(ToolSafetyDescriptor) -> handler -> ToolResult
 ```
 
 Code:
-- `packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`
+- `packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py` (ToolSpec, ToolSafetyDescriptor, PassthroughDescriptor)
 - `packages/skills-runtime-sdk-python/src/skills_runtime/tools/registry.py`
+- `packages/skills-runtime-sdk-python/src/skills_runtime/safety/gate.py` (SafetyGate)
+- `packages/skills-runtime-sdk-python/src/skills_runtime/safety/descriptors.py` (built-in descriptors)
 
 ### 8.6.2 The execution context is part of the security boundary
 

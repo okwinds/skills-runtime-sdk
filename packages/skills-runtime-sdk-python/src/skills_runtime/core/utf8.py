@@ -32,7 +32,9 @@ def ensure_utf8_stdio() -> None:
                 if callable(reconfigure):
                     reconfigure(encoding="utf-8", errors="replace")
             except Exception:
+                # 防御性兜底：reconfigure() 在某些嵌入式/冻结 Python 环境中可能抛出任意异常。
                 continue
     except Exception:
+        # 防御性兜底：极少数环境下 sys 模块访问本身可能失败（嵌入式解释器）。
         return
 

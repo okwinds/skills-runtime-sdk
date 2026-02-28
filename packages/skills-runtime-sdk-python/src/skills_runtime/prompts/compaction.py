@@ -121,7 +121,7 @@ def format_history_for_compaction(
                     error_kind = obj.get("error_kind") if isinstance(obj.get("error_kind"), str) else None
                     stdout = str(obj.get("stdout") or "")
                     stderr = str(obj.get("stderr") or "")
-            except Exception:
+            except json.JSONDecodeError:
                 pass
             head = f"TOOL(tool_call_id={tool_call_id}, ok={ok}, error_kind={error_kind})"
             body = []

@@ -132,7 +132,7 @@ def _references_default_max_bytes(ctx: ToolExecutionContext) -> int:
     raw = getattr(references, "default_max_bytes", None)
     try:
         v = int(raw)
-    except Exception:
+    except (TypeError, ValueError):
         v = int(ctx.max_file_bytes)
     return max(1, v)
 
@@ -317,7 +317,7 @@ def skill_ref_read(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     if max_bytes_raw is not None:
         try:
             max_bytes = int(max_bytes_raw)
-        except Exception:
+        except (TypeError, ValueError):
             return _framework_error_result(
                 error_kind="validation",
                 code="SKILL_REF_PATH_INVALID",

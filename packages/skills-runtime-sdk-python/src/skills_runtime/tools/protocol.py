@@ -207,6 +207,46 @@ class ToolResult(BaseModel):
 
 
 @runtime_checkable
+class ToolSafetyDescriptor(Protocol):
+    """
+    Tool 安全描述符协议（供 SafetyGate 与 descriptors 使用）。
+
+    兼容两类实现：
+    - extract_risk 返回 `(argv, CommandRisk)`；
+    - extract_risk 返回 dict（包含 argv/risk_level/reason）。
+    """
+
+    policy_category: str
+
+    def extract_risk(self, args: Dict[str, Any], **ctx: Any) -> Any:
+        ...
+
+    def sanitize_for_approval(self, args: Dict[str, Any], **ctx: Any) -> Any:
+        ...
+
+    def sanitize_for_event(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        ...
+
+
+class PassthroughDescriptor:
+    """兜底 descriptor：不做额外安全判定，仅透传参数。"""
+
+    policy_category = "none"
+
+    def extract_risk(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        _ = (args, ctx)
+        return {"argv": [], "risk_level": "low", "reason": "No risk extraction for passthrough descriptor."}
+
+    def sanitize_for_approval(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        _ = ctx
+        return dict(args)
+
+    def sanitize_for_event(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        _ = ctx
+        return dict(args)
+
+
+@runtime_checkable
 class HumanIOProvider(Protocol):
     """
     人类输入适配接口（ask_human 的上层实现由调用方提供）。

@@ -12,21 +12,14 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.core.utils import now_rfc3339
 from skills_runtime.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec
 from skills_runtime.tools.registry import ToolExecutionContext
-
-
-def _now_rfc3339() -> str:
-    """返回当前 UTC 时间的 RFC3339 字符串（以 `Z` 结尾）。"""
-
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
 
 class _Option(BaseModel):
     """request_user_input：options 条目。"""
@@ -107,13 +100,14 @@ def request_user_input(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         args = _RequestUserInputArgs.model_validate(call.args)
     except Exception as e:
+        # 防御性兜底：pydantic 验证失败（ValidationError 或其他）。
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
     # 统一先发出 human_request（即使 human_io 缺失也可审计/回放）
     ctx.emit_event(
         AgentEvent(
             type="human_request",
-            timestamp=_now_rfc3339(),
+            timestamp=now_rfc3339(),
             run_id=ctx.run_id,
             payload={
                 "call_id": call.call_id,
@@ -165,7 +159,7 @@ def request_user_input(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
         ctx.emit_event(
             AgentEvent(
                 type="human_response",
-                timestamp=_now_rfc3339(),
+                timestamp=now_rfc3339(),
                 run_id=ctx.run_id,
                 payload={"call_id": call.call_id, "question_id": q.id, "answer": str(answer)},
             )
