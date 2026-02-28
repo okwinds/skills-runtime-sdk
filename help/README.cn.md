@@ -65,7 +65,8 @@
 - `help/examples/run_agent_minimal.py`：Python 最小运行示例
 - `help/examples/run_agent_with_custom_tool.py`：自定义 tool 示例
 - `help/examples/studio-api.http`：Studio API 调用样例
-- `examples/`：SDK 全能力离线示例库（按 step_by_step/tools/skills/state 分层）
+- `docs_for_coding_agent/examples/`：编码智能体的能力覆盖示例库（step_by_step/tools/skills/state；默认离线可回归）
+- `examples/apps/`：面向人类的应用示例（离线可回归 + 真模型可跑；生成 `runtime.yaml` 等产物）
 - `docs_for_coding_agent/`：给编码智能体的教学文档包（CAP-* 清单 + 覆盖映射 + cheatsheet）
 
 ## 重要约束

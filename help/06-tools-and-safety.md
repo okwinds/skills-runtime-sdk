@@ -307,7 +307,7 @@ Use for long-running or interactive commands:
 
 ## 6.10 ToolSafetyDescriptor: tools self-describe their safety semantics
 
-The `ToolSafetyDescriptor` protocol (`tools/protocol.py`) lets each tool declare how it should be treated by the safety gate — what counts as "risky", how to sanitize args for approvals/WAL, and which policy category applies.
+The `ToolSafetyDescriptor` protocol (package path: `skills_runtime/tools/protocol.py`; repo path: `packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`) lets each tool declare how it should be treated by the safety gate — what counts as "risky", how to sanitize args for approvals/WAL, and which policy category applies.
 
 ```python
 class ToolSafetyDescriptor(Protocol):
@@ -323,7 +323,7 @@ The SDK ships 7 built-in descriptors in `safety/descriptors.py`:
 
 For custom tools without a descriptor, `PassthroughDescriptor` is used as a fallback (low risk, args passed through as-is).
 
-`SafetyGate` (`safety/gate.py`) replaces the old `if/elif` dispatch chain in the agent loop. It receives a `get_descriptor` callable and routes each tool call through the appropriate descriptor before making a policy/approval decision.
+`SafetyGate` (package path: `skills_runtime/safety/gate.py`; repo path: `packages/skills-runtime-sdk-python/src/skills_runtime/safety/gate.py`) replaces the old `if/elif` dispatch chain in the agent loop. It receives a `get_descriptor` callable and routes each tool call through the appropriate descriptor before making a policy/approval decision.
 
 When registering a custom tool, you can optionally supply a descriptor:
 

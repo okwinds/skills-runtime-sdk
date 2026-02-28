@@ -33,13 +33,15 @@ Checklist:
 
 3. Run Skills CLI preflight + scan (validate sources + mentions + overlay correctness):
 
-   ```bash
-   PYTHONPATH=packages/skills-runtime-sdk-python/src \
-     python3 -m skills_runtime.cli.main skills preflight --workspace-root . --config /tmp/sdk.overlay.yaml --pretty
+    ```bash
+    cp help/examples/skills.cli.overlay.yaml /tmp/skills.cli.overlay.yaml
 
-   PYTHONPATH=packages/skills-runtime-sdk-python/src \
-     python3 -m skills_runtime.cli.main skills scan --workspace-root . --config /tmp/sdk.overlay.yaml --pretty
-   ```
+    PYTHONPATH=packages/skills-runtime-sdk-python/src \
+      python3 -m skills_runtime.cli.main skills preflight --workspace-root . --config /tmp/skills.cli.overlay.yaml --pretty
+
+    PYTHONPATH=packages/skills-runtime-sdk-python/src \
+      python3 -m skills_runtime.cli.main skills scan --workspace-root . --config /tmp/skills.cli.overlay.yaml --pretty
+    ```
 
 4. Run the minimal Python example (validate run + tools/approvals/sandbox baseline flow):
 

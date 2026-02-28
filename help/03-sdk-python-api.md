@@ -39,7 +39,6 @@ backend = OpenAIChatCompletionsBackend(llm_cfg)
 agent = Agent(
     workspace_root=workspace_root,
     backend=backend,
-    config_paths=[workspace_root / "config" / "runtime.yaml"],
 )
 ```
 
@@ -129,16 +128,8 @@ asyncio.run(main())
 
 `Agent.tool` can register a Python function as a tool.
 
-```python
-from skills_runtime.agent import Agent
-
-@agent.tool(name="sum_numbers", description="Sum two integers")
-def sum_numbers(a: int, b: int) -> int:
-    return a + b
-
-result = agent.run("Call sum_numbers to compute 7 + 8")
-print(result.final_output)
-```
+Runnable example:
+- `help/examples/run_agent_with_custom_tool.py`
 
 Notes:
 - Prefer primitive types (`str/int/float/bool`) for tool args
@@ -170,7 +161,7 @@ Notes:
 - Name conflicts follow `ToolRegistry.register`: reject by default, allow override only when `override=True`
 - Tools injected via `register_tool` are still **custom tools** for safety governance (Route A)
 - The public `Agent` API is unchanged (backward compatible). Internally, `Agent` is now a thin facade that delegates to `AgentLoop`; all existing call sites work without modification.
-- To attach custom safety semantics to a registered tool, implement `ToolSafetyDescriptor` (see `help/06-tools-and-safety.md` §6.10 and `tools/protocol.py`).
+- To attach custom safety semantics to a registered tool, implement `ToolSafetyDescriptor` (see `help/06-tools-and-safety.md` §6.10; package path: `skills_runtime/tools/protocol.py`; repo path: `packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`).
 
 ## 3.7 Inject an approvals provider (`ApprovalProvider`)
 
@@ -186,7 +177,6 @@ class AlwaysApprove(ApprovalProvider):
 agent = Agent(
     workspace_root=Path(".").resolve(),
     backend=backend,
-    config_paths=[Path("config/runtime.yaml")],
     approval_provider=AlwaysApprove(),
 )
 ```

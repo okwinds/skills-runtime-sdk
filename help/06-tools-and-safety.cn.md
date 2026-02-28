@@ -307,7 +307,7 @@ run:
 
 ## 6.10 ToolSafetyDescriptor：工具自描述安全语义
 
-`ToolSafetyDescriptor` 协议（`tools/protocol.py`）允许每个工具声明自身的安全语义——什么算"高风险"、如何对 approvals/WAL 脱敏参数、以及适用哪个 policy 分类。
+`ToolSafetyDescriptor` 协议（安装包路径：`skills_runtime/tools/protocol.py`；仓库路径：`packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`）允许每个工具声明自身的安全语义——什么算"高风险"、如何对 approvals/WAL 脱敏参数、以及适用哪个 policy 分类。
 
 ```python
 class ToolSafetyDescriptor(Protocol):
@@ -323,7 +323,7 @@ SDK 在 `safety/descriptors.py` 中内置了 7 个 descriptor：
 
 对于没有 descriptor 的自定义工具，`PassthroughDescriptor` 作为兜底（低风险，参数原样透传）。
 
-`SafetyGate`（`safety/gate.py`）取代了原来 agent loop 中的 `if/elif` 分发链。它接收一个 `get_descriptor` 回调，在做 policy/approval 决策前，将每次 tool call 路由到对应的 descriptor。
+`SafetyGate`（安装包路径：`skills_runtime/safety/gate.py`；仓库路径：`packages/skills-runtime-sdk-python/src/skills_runtime/safety/gate.py`）取代了原来 agent loop 中的 `if/elif` 分发链。它接收一个 `get_descriptor` 回调，在做 policy/approval 决策前，将每次 tool call 路由到对应的 descriptor。
 
 注册自定义工具时，可以选择性地提供 descriptor：
 

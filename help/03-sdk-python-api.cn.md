@@ -39,7 +39,6 @@ backend = OpenAIChatCompletionsBackend(llm_cfg)
 agent = Agent(
     workspace_root=workspace_root,
     backend=backend,
-    config_paths=[workspace_root / "config" / "runtime.yaml"],
 )
 ```
 
@@ -129,16 +128,8 @@ asyncio.run(main())
 
 `Agent.tool` 支持把 Python 函数直接注册为 tool。
 
-```python
-from skills_runtime.agent import Agent
-
-@agent.tool(name="sum_numbers", description="计算两个整数之和")
-def sum_numbers(a: int, b: int) -> int:
-    return a + b
-
-result = agent.run("请调用 sum_numbers 计算 7 + 8")
-print(result.final_output)
-```
+可运行示例见：
+- `help/examples/run_agent_with_custom_tool.py`
 
 注意：
 - 参数类型建议使用基础类型（`str/int/float/bool`）
@@ -170,7 +161,7 @@ agent.register_tool(spec, handler, override=False)
 - 冲突策略与 `ToolRegistry.register` 一致：默认拒绝同名；仅当 `override=True` 时允许显式覆盖
 - 通过 `register_tool` 注入的工具同样属于 **自定义工具**，会遵循自定义工具审批门禁（Route A）
 - `Agent` 对外公开 API 保持不变（向后兼容）。内部实现中，`Agent` 现在是一个薄外观层，将实际工作委托给 `AgentLoop`；所有现有调用方无需修改。
-- 如需为注册的工具附加自定义安全语义，可实现 `ToolSafetyDescriptor`（见 `help/06-tools-and-safety.cn.md` §6.10 及 `tools/protocol.py`）。
+- 如需为注册的工具附加自定义安全语义，可实现 `ToolSafetyDescriptor`（见 `help/06-tools-and-safety.cn.md` §6.10；安装包路径：`skills_runtime/tools/protocol.py`；仓库路径：`packages/skills-runtime-sdk-python/src/skills_runtime/tools/protocol.py`）。
 
 ## 3.7 注入审批提供者（ApprovalProvider）
 
@@ -186,7 +177,6 @@ class AlwaysApprove(ApprovalProvider):
 agent = Agent(
     workspace_root=Path(".").resolve(),
     backend=backend,
-    config_paths=[Path("config/runtime.yaml")],
     approval_provider=AlwaysApprove(),
 )
 ```

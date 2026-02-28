@@ -65,7 +65,8 @@ Supplemental topics (not numbered):
 - `help/examples/run_agent_minimal.py`: minimal Python run example
 - `help/examples/run_agent_with_custom_tool.py`: custom tool example
 - `help/examples/studio-api.http`: Studio API call examples
-- `examples/`: full-spectrum offline examples library (step_by_step/tools/skills/state)
+- `docs_for_coding_agent/examples/`: capability-coverage examples for coding agents (step_by_step/tools/skills/state; offline by default)
+- `examples/apps/`: human-facing app examples (offline regression + real-model runnable; generates `runtime.yaml` artifacts)
 - `docs_for_coding_agent/`: coding-agent teaching pack (CAP inventory + coverage map + cheatsheets)
 
 ## Notes / constraints
