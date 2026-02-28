@@ -193,6 +193,67 @@ def test_docs_for_coding_agent_code_entrypoints_exist() -> None:
     assert not missing, missing
 
 
+def test_docs_for_coding_agent_cheatsheets_do_not_use_repo_root_fake_paths() -> None:
+    """
+    Drift guardrail:
+    - cheatsheets must not contain stale repo-root paths like `core/agent.py`
+    - use either repo paths under `packages/.../src/skills_runtime/...` or package paths `skills_runtime/...`
+    """
+
+    repo_root = Path(__file__).resolve().parents[1]
+    cheatsheets = [
+        repo_root / "docs_for_coding_agent" / "cheatsheet.zh-CN.md",
+        repo_root / "docs_for_coding_agent" / "cheatsheet.en.md",
+    ]
+
+    banned_tokens = {
+        "core/agent.py",
+        "core/agent_loop.py",
+        "safety/gate.py",
+        "tools/protocol.py",
+    }
+
+    hits: list[tuple[str, str]] = []
+    for fp in cheatsheets:
+        tokens = _extract_backticked_tokens(text=fp.read_text(encoding="utf-8"))
+        for t in tokens:
+            if t in banned_tokens:
+                hits.append((fp.name, t))
+
+    assert not hits, hits
+
+    missing_repo_paths: list[tuple[str, str]] = []
+    for fp in cheatsheets:
+        tokens = _extract_backticked_tokens(text=fp.read_text(encoding="utf-8"))
+        for t in tokens:
+            if not t.startswith("packages/"):
+                continue
+            if "*" in t:
+                continue
+            if not t.endswith(".py"):
+                continue
+            p = (repo_root / t).resolve()
+            if not p.exists():
+                missing_repo_paths.append((fp.name, t))
+
+    assert not missing_repo_paths, missing_repo_paths
+
+
+def test_help_python_api_examples_do_not_assume_missing_config_or_undefined_agent() -> None:
+    """
+    Drift guardrail for help/03-sdk-python-api.*:
+    - must not assume an implicit `config/runtime.yaml`
+    - must not contain a standalone `@agent.tool` snippet that raises NameError
+    """
+
+    repo_root = Path(__file__).resolve().parents[1]
+    for rel in ("help/03-sdk-python-api.md", "help/03-sdk-python-api.cn.md"):
+        text = (repo_root / rel).read_text(encoding="utf-8")
+        assert "config/runtime.yaml" not in text, rel
+        assert "@agent.tool" not in text, rel
+        assert "help/examples/run_agent_with_custom_tool.py" in text, rel
+
+
 def test_curated_docs_do_not_reference_nonexistent_examples_workflows_dir() -> None:
     """
     漂移护栏：关键入口文档不应再把 workflows 示例写在 `examples/workflows/`。
