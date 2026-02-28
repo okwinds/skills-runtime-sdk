@@ -111,7 +111,8 @@ def write_overlay_for_app(
                 f"  base_url: {json.dumps(str(llm_base_url))}",
                 "  api_key_env: \"OPENAI_API_KEY\"",
                 "  timeout_sec: 60",
-                "  max_retries: 2",
+                "  retry:",
+                "    max_retries: 2",
             ]
         )
     if planner_model is not None or executor_model is not None:
