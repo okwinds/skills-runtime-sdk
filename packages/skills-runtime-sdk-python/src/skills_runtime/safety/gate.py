@@ -69,12 +69,26 @@ class SafetyGate:
 
     @staticmethod
     def _normalize_argv(argv: Any) -> list[str]:
+        """
+        将 `argv` 规范化为 `list[str]`（仅保留 str 元素）。
+
+        参数：`argv`：任意输入；仅当其为 list 时才会提取其中的 str。
+        返回：规范化后的参数列表；非 list 输入返回空列表。
+        """
+
         if isinstance(argv, list):
             return [x for x in argv if isinstance(x, str)]
         return []
 
     @staticmethod
     def _command_summary(tool_name: str, request: Dict[str, Any]) -> str:
+        """
+        生成面向审批 UI 的单行摘要文本。
+
+        参数：`tool_name`：工具名；`request`：已可展示/脱敏的请求 dict（读取 `argv/command/cmd`）。
+        返回：摘要字符串（用于人类审批提示）。
+        """
+
         argv = request.get("argv")
         if isinstance(argv, list) and argv:
             cmd = " ".join(str(x) for x in argv)
@@ -83,6 +97,13 @@ class SafetyGate:
         return f"授权：{tool_name} 执行命令：{cmd}"
 
     def _extract_risk(self, descriptor: ToolSafetyDescriptor, args: Dict[str, Any]) -> tuple[list[str], CommandRisk]:
+        """
+        从 descriptor 提取风险信息，并统一为 `(argv, CommandRisk)` 形态。
+
+        参数：`descriptor`：工具安全描述符；`args`：原始 tool call args。
+        返回：`(argv, risk)`；其中 `argv` 为规范化的 `list[str]`，`risk` 为 `CommandRisk`。
+        """
+
         try:
             risk_raw = descriptor.extract_risk(args, skills_manager=self._skills_manager)
         except TypeError:
@@ -110,6 +131,13 @@ class SafetyGate:
         return [], CommandRisk(risk_level="low", reason="descriptor risk unavailable")
 
     def _sanitize_for_approval(self, call: ToolCall, descriptor: ToolSafetyDescriptor) -> tuple[str, Dict[str, Any]]:
+        """
+        生成审批用的 `(summary, request_dict)`（需为可展示/已脱敏内容）。
+
+        参数：`call`：ToolCall；`descriptor`：工具安全描述符。
+        返回：`(summary, request_dict)`；若 descriptor 仅返回 `request_dict`，则自动生成 summary。
+        """
+
         try:
             payload = descriptor.sanitize_for_approval(call.args, skills_manager=self._skills_manager)
         except TypeError:

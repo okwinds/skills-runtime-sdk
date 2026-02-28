@@ -219,12 +219,33 @@ class ToolSafetyDescriptor(Protocol):
     policy_category: str
 
     def extract_risk(self, args: Dict[str, Any], **ctx: Any) -> Any:
+        """
+        提取风险信息（供 SafetyGate 做 policy 决策）。
+
+        参数：`args`：原始工具参数；`ctx`：可选上下文（如 skills_manager）。
+        返回：`(argv, CommandRisk)` 或 dict（含 `argv/risk_level/reason`）。
+        """
+
         ...
 
     def sanitize_for_approval(self, args: Dict[str, Any], **ctx: Any) -> Any:
+        """
+        生成面向人类审批的可展示载荷（需脱敏）。
+
+        参数：`args`：原始工具参数；`ctx`：可选上下文（如 skills_manager）。
+        返回：`(summary, request_dict)` 或 `request_dict`（上层可自动生成 summary）。
+        """
+
         ...
 
     def sanitize_for_event(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        """
+        生成可写入事件/WAL 的安全载荷（不得包含 secrets 明文）。
+
+        参数：`args`：原始工具参数；`ctx`：可选上下文（如 skills_manager）。
+        返回：用于日志/事件的 dict（应完成必要脱敏）。
+        """
+
         ...
 
 
@@ -234,14 +255,35 @@ class PassthroughDescriptor:
     policy_category = "none"
 
     def extract_risk(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        """
+        passthrough：不做风险提取，返回默认 low 风险结果。
+
+        参数：`args`：原始参数；`ctx`：可选上下文（忽略）。
+        返回：dict（`argv=[]`、`risk_level='low'`、`reason` 为说明）。
+        """
+
         _ = (args, ctx)
         return {"argv": [], "risk_level": "low", "reason": "No risk extraction for passthrough descriptor."}
 
     def sanitize_for_approval(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        """
+        passthrough：透传 args 作为审批展示载荷（调用方需确保已脱敏）。
+
+        参数：`args`：原始参数；`ctx`：可选上下文（忽略）。
+        返回：`dict(args)` 的浅拷贝。
+        """
+
         _ = ctx
         return dict(args)
 
     def sanitize_for_event(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        """
+        passthrough：透传 args 作为事件载荷（调用方需确保已脱敏）。
+
+        参数：`args`：原始参数；`ctx`：可选上下文（忽略）。
+        返回：`dict(args)` 的浅拷贝。
+        """
+
         _ = ctx
         return dict(args)
 
