@@ -58,14 +58,17 @@ def write_overlay_for_app(
     executor_model: Optional[str] = None,
 ) -> Path:
     """
-    为单个 app 写入 overlay（runtime.yaml）。
+    为单个 app 写入 overlay（config/runtime.yaml）。
 
     说明：
     - overlay 写在 workspace_root 下，便于“产物与配置同处一个 workspace”；
     - skills source root 使用绝对路径，避免工作目录变化导致扫描失败。
     """
 
-    overlay = workspace_root / "runtime.yaml"
+    # 对齐 Bootstrap 的默认发现契约：<workspace_root>/config/runtime.yaml
+    config_dir = (workspace_root / "config").resolve()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    overlay = config_dir / "runtime.yaml"
     cfg: Dict[str, Any] = {
         "run": {"max_steps": int(max_steps)},
         "safety": {

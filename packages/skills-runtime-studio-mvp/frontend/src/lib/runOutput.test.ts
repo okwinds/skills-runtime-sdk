@@ -11,6 +11,14 @@ describe('extractRunOutputText', () => {
     expect(text?.value).toContain('OPENAI_API_KEY');
   });
 
+  it('renders run_failed details.exception_class when present', () => {
+    const text = extractRunOutputText({
+      type: 'run_failed',
+      payload: { error_kind: 'unknown', message: 'boom', details: { exception_class: 'RuntimeError' } },
+    });
+    expect(text?.value).toContain('exception_class=RuntimeError');
+  });
+
   it('renders run_completed final_output', () => {
     const text = extractRunOutputText({
       type: 'run_completed',
@@ -23,4 +31,3 @@ describe('extractRunOutputText', () => {
     expect(extractRunOutputText({ type: 'tool_call_started', payload: {} })).toBeNull();
   });
 });
-

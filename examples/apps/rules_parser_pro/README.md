@@ -20,7 +20,7 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 预期：
 - stdout 含：`EXAMPLE_OK: app_rules_parser_pro`
-- workspace 下生成：`plan.json`、`result.json`、`report.md`、`runtime.yaml`
+- workspace 下生成：`plan.json`、`result.json`、`report.md`、`config/runtime.yaml`
 
 ## 2) 真模型运行（OpenAICompatible）
 
@@ -36,4 +36,3 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 说明：
 - 真模型模式要求模型具备 tool calling 能力，才能按要求写文件/跑 QA。
-

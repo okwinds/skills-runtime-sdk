@@ -63,6 +63,11 @@ skills:
   bundles:
     max_bytes: 1048576 # 1 MiB (fail-closed default for bundle-backed Phase 3 tools)
     cache_dir: ".skills_runtime_sdk/bundles"
+    # 解压后预算（zip bomb mitigation）：
+    # - null 表示使用运行时默认推导值（见 `skills_runtime.skills.bundles.extract_zip_bundle_to_dir`）
+    max_extracted_bytes: null
+    max_files: null
+    max_single_file_bytes: null
   actions:
     enabled: false
   references:

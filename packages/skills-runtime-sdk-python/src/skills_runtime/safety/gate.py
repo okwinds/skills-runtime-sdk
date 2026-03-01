@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Sequence
 
+from skills_runtime.core.event_redaction import _sanitize_tool_call_arguments_for_event
 from skills_runtime.config.loader import AgentSdkSafetyConfig
 from skills_runtime.safety.descriptors import DenyDescriptor
 from skills_runtime.safety.guard import CommandRisk
@@ -131,13 +132,28 @@ class SafetyGate:
 
         return [], CommandRisk(risk_level="low", reason="descriptor risk unavailable")
 
-    def _sanitize_for_approval(self, call: ToolCall, descriptor: ToolSafetyDescriptor) -> tuple[str, Dict[str, Any]]:
+    def _sanitize_for_approval(
+        self,
+        call: ToolCall,
+        descriptor: ToolSafetyDescriptor,
+        *,
+        redaction_values: Sequence[str] = (),
+    ) -> tuple[str, Dict[str, Any]]:
         """
         生成审批用的 `(summary, request_dict)`（需为可展示/已脱敏内容）。
 
         参数：`call`：ToolCall；`descriptor`：工具安全描述符。
         返回：`(summary, request_dict)`；若 descriptor 仅返回 `request_dict`，则自动生成 summary。
         """
+
+        if isinstance(descriptor, PassthroughDescriptor):
+            request = _sanitize_tool_call_arguments_for_event(
+                call.name,
+                args=call.args,
+                redaction_values=redaction_values,
+                skills_manager=self._skills_manager,
+            )
+            return self._command_summary(call.name, request), dict(request)
 
         try:
             payload = descriptor.sanitize_for_approval(call.args, skills_manager=self._skills_manager)
@@ -242,16 +258,27 @@ class SafetyGate:
         )
         return ToolResult.from_payload(denied_payload, message="policy denied")
 
-    def sanitize_for_approval(self, call: ToolCall) -> tuple[str, Dict[str, Any]]:
+    def sanitize_for_approval(self, call: ToolCall, *, redaction_values: Sequence[str] = ()) -> tuple[str, Dict[str, Any]]:
         """获取审批阶段的脱敏摘要/请求。"""
 
         descriptor = self._get_descriptor(call.name)
-        return self._sanitize_for_approval(call, descriptor)
+        return self._sanitize_for_approval(call, descriptor, redaction_values=redaction_values)
 
     def sanitize_for_event(self, call: ToolCall, **ctx: Any) -> Dict[str, Any]:
         """获取 WAL 事件使用的脱敏参数。"""
 
         descriptor = self._get_descriptor(call.name)
+        if isinstance(descriptor, PassthroughDescriptor):
+            redaction_values = ctx.get("redaction_values") or ()
+            if not isinstance(redaction_values, (list, tuple)):
+                redaction_values = ()
+            payload = _sanitize_tool_call_arguments_for_event(
+                call.name,
+                args=call.args,
+                redaction_values=redaction_values,
+                skills_manager=self._skills_manager,
+            )
+            return dict(payload) if isinstance(payload, dict) else {}
         try:
             payload = descriptor.sanitize_for_event(call.args, skills_manager=self._skills_manager, **ctx)
         except TypeError:

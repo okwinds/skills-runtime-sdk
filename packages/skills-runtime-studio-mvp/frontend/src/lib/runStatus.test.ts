@@ -70,4 +70,17 @@ describe('deriveStatusItem', () => {
     expect(it0?.force_open).toBe(true);
     expect(it0?.always_open).toBe(true);
   });
+
+  it('includes details.exception_class on run_failed status when present', () => {
+    const it0 = deriveStatusItem({
+      event: 'run_failed',
+      data: {
+        type: 'run_failed',
+        timestamp: '2026-02-10T10:00:00Z',
+        payload: { error_kind: 'unknown', message: 'boom', details: { exception_class: 'RuntimeError' } },
+      },
+      raw: '{}',
+    });
+    expect(it0?.message).toContain('异常=RuntimeError');
+  });
 });

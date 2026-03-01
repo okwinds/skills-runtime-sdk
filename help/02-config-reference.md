@@ -109,6 +109,14 @@ Budgets and cache behavior for bundle-backed Phase 3 tool paths (e.g. Redis bund
 
 - `skills.bundles.max_bytes`: maximum bundle bytes (default `1048576` = 1 MiB; fail-closed on overflow)
 - `skills.bundles.cache_dir`: extracted bundle cache directory (default `.skills_runtime_sdk/bundles`; runtime-owned, safe to delete/rebuild)
+- `skills.bundles.max_extracted_bytes`: post-extraction total bytes budget (default `null`: derived as `max_bytes * 16`; fail-closed on overflow)
+- `skills.bundles.max_files`: extracted file count budget (default `null`: runtime default `4096`; fail-closed on overflow)
+- `skills.bundles.max_single_file_bytes`: per-file extracted bytes budget (default `null`: derived as `max_bytes * 8`; fail-closed on overflow)
+
+Recommended values (for default `max_bytes=1MiB`):
+- `max_extracted_bytes: 16777216` (16 MiB)
+- `max_single_file_bytes: 8388608` (8 MiB)
+- `max_files: 4096`
 
 ### `prompt`
 

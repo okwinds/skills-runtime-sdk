@@ -86,6 +86,7 @@ async def process_pending_tool_calls(
                 step_id=step_id,
                 payload={
                     "call_id": call.call_id,
+                    "tool": call.name,
                     "name": call.name,
                     "arguments": safety_gate.sanitize_for_event(call, redaction_values=redaction_values),
                     **(
@@ -141,7 +142,7 @@ async def process_pending_tool_calls(
 
         approval_key: Optional[str] = None
         if requires_approval:
-            summary, request_obj = safety_gate.sanitize_for_approval(call)
+            summary, request_obj = safety_gate.sanitize_for_approval(call, redaction_values=redaction_values)
             approval_key = compute_approval_key(tool=call.name, request=request_obj)
 
             if approval_key in approved_for_session_keys:

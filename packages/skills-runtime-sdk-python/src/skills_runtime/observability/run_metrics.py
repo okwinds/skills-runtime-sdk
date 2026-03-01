@@ -100,89 +100,96 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
         summary["errors"].append({"kind": "invalid_wal", "message": message})
         summary["status"] = "unknown"
 
+    invalid_json_lines = 0
+    invalid_event_lines = 0
+
     try:
-        text = events_jsonl_path.read_text(encoding="utf-8")
+        fh = events_jsonl_path.open("r", encoding="utf-8")
     except OSError as exc:
         _add_invalid_wal(f"failed to read events file: {exc}")
         return summary
 
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError as exc:
-            _add_invalid_wal(f"invalid json line: {exc}")
-            return summary
+    with fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                # 前向兼容/稳健性：允许 WAL 里出现坏行，不应导致 metrics 整体崩溃。
+                invalid_json_lines += 1
+                continue
 
-        if not isinstance(ev, dict):
-            _add_invalid_wal("event must be an object")
-            return summary
+            if not isinstance(ev, dict):
+                invalid_event_lines += 1
+                continue
 
-        rid = ev.get("run_id")
-        if run_id is None:
-            run_id = str(rid or "")
-            summary["run_id"] = run_id
-        else:
-            if str(rid or "") != run_id:
-                _add_invalid_wal("inconsistent run_id detected in WAL")
-                return summary
-
-        turn_id = ev.get("turn_id")
-        if isinstance(turn_id, str) and turn_id:
-            turn_ids.add(turn_id)
-
-        typ = str(ev.get("type") or "")
-        ts = ev.get("timestamp") or None
-        ts_str = str(ts) if isinstance(ts, str) else None
-
-        if typ == "run_started" and started_at is None and ts_str:
-            started_at = ts_str
-        if typ in {"run_completed", "run_failed", "run_cancelled"} and ts_str:
-            ended_at = ts_str
-
-        if typ == "run_completed":
-            has_completed = True
-        elif typ == "run_failed":
-            has_failed = True
-            payload = ev.get("payload")
-            if isinstance(payload, dict):
-                run_failed_payload = payload
-        elif typ == "run_cancelled":
-            has_cancelled = True
-
-        # counts
-        if typ == "llm_request_started":
-            summary["counts"]["llm_requests_total"] += 1
-        elif typ == "approval_requested":
-            summary["counts"]["approvals_requested_total"] += 1
-        elif typ == "approval_decided":
-            summary["counts"]["approvals_decided_total"] += 1
-        elif typ == "human_request":
-            summary["counts"]["human_requests_total"] += 1
-        elif typ == "tool_call_finished":
-            summary["counts"]["tool_calls_total"] += 1
-            payload = ev.get("payload") or {}
-            if not isinstance(payload, dict):
-                payload = {}
-            tool = str(payload.get("tool") or "")
-            result = payload.get("result") or {}
-            if not isinstance(result, dict):
-                result = {}
-            ok = bool(result.get("ok") is True)
-            duration_ms = int(result.get("duration_ms") or 0)
-            summary["tools"]["duration_ms_total"] += max(duration_ms, 0)
-            by_name: Dict[str, Any] = summary["tools"]["by_name"]
-            if tool not in by_name:
-                by_name[tool] = {"calls": 0, "ok": 0, "failed": 0, "duration_ms_total": 0}
-            bucket = by_name[tool]
-            bucket["calls"] += 1
-            bucket["duration_ms_total"] += max(duration_ms, 0)
-            if ok:
-                bucket["ok"] += 1
+            rid = ev.get("run_id")
+            if run_id is None:
+                run_id = str(rid or "")
+                summary["run_id"] = run_id
             else:
-                bucket["failed"] += 1
+                if str(rid or "") != run_id:
+                    _add_invalid_wal("inconsistent run_id detected in WAL")
+                    return summary
+
+            turn_id = ev.get("turn_id")
+            if isinstance(turn_id, str) and turn_id:
+                turn_ids.add(turn_id)
+
+            typ = str(ev.get("type") or "")
+            ts = ev.get("timestamp") or None
+            ts_str = str(ts) if isinstance(ts, str) else None
+
+            if typ == "run_started" and started_at is None and ts_str:
+                started_at = ts_str
+            if typ in {"run_completed", "run_failed", "run_cancelled"} and ts_str:
+                ended_at = ts_str
+
+            if typ == "run_completed":
+                has_completed = True
+            elif typ == "run_failed":
+                has_failed = True
+                payload = ev.get("payload")
+                if isinstance(payload, dict):
+                    run_failed_payload = payload
+            elif typ == "run_cancelled":
+                has_cancelled = True
+
+            # counts
+            if typ == "llm_request_started":
+                summary["counts"]["llm_requests_total"] += 1
+            elif typ == "approval_requested":
+                summary["counts"]["approvals_requested_total"] += 1
+            elif typ == "approval_decided":
+                summary["counts"]["approvals_decided_total"] += 1
+            elif typ == "human_request":
+                summary["counts"]["human_requests_total"] += 1
+            elif typ == "tool_call_finished":
+                summary["counts"]["tool_calls_total"] += 1
+                payload = ev.get("payload") or {}
+                if not isinstance(payload, dict):
+                    payload = {}
+                tool = str(payload.get("tool") or payload.get("name") or "")  # 兼容旧 WAL：name-only
+                if not tool:
+                    tool = "unknown_tool"
+                result = payload.get("result") or {}
+                if not isinstance(result, dict):
+                    result = {}
+                ok = bool(result.get("ok") is True)
+                duration_ms = int(result.get("duration_ms") or 0)
+                summary["tools"]["duration_ms_total"] += max(duration_ms, 0)
+                by_name: Dict[str, Any] = summary["tools"]["by_name"]
+                if tool not in by_name:
+                    by_name[tool] = {"calls": 0, "ok": 0, "failed": 0, "duration_ms_total": 0}
+                bucket = by_name[tool]
+                bucket["calls"] += 1
+                bucket["duration_ms_total"] += max(duration_ms, 0)
+                if ok:
+                    bucket["ok"] += 1
+                else:
+                    bucket["failed"] += 1
 
     summary["counts"]["turns_total"] = len(turn_ids)
     summary["started_at"] = started_at
@@ -202,6 +209,11 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
         msg = str(run_failed_payload.get("message") or "")
         if kind or msg:
             summary["errors"].append({"kind": kind or "unknown", "message": msg})
+
+    if invalid_json_lines:
+        summary["errors"].append({"kind": "invalid_wal", "message": f"skipped invalid json lines: {invalid_json_lines}"})
+    if invalid_event_lines:
+        summary["errors"].append({"kind": "invalid_wal", "message": f"skipped non-object event lines: {invalid_event_lines}"})
 
     if started_at and ended_at:
         try:

@@ -254,6 +254,9 @@ class AgentSdkSkillsConfig(BaseModel):
 
         max_bytes: StrictInt = Field(default=1 * 1024 * 1024, ge=1)
         cache_dir: str = Field(default=".skills_runtime_sdk/bundles")
+        max_extracted_bytes: Optional[StrictInt] = Field(default=None, ge=1)
+        max_files: Optional[StrictInt] = Field(default=None, ge=1)
+        max_single_file_bytes: Optional[StrictInt] = Field(default=None, ge=1)
 
     class Versioning(BaseModel):
         """

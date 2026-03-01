@@ -85,6 +85,9 @@ def ensure_redis_bundle_extracted(
     get_redis_client_for_source: Callable[[AgentSdkSkillsConfig.Source], Any],
     bundle_cache_root: Path,
     bundle_max_bytes: int,
+    bundle_max_extracted_bytes: int | None,
+    bundle_max_files: int | None,
+    bundle_max_single_file_bytes: int | None,
 ) -> ExtractedBundle:
     """
     Lazily fetch and extract a skill bundle from Redis.
@@ -173,6 +176,9 @@ def ensure_redis_bundle_extracted(
         bundle_sha256=bundle_sha256,
         bundle_bytes=bundle_bytes,
         max_bytes=int(bundle_max_bytes),
+        max_extracted_bytes=bundle_max_extracted_bytes,
+        max_files=bundle_max_files,
+        max_single_file_bytes=bundle_max_single_file_bytes,
     )
 
 

@@ -97,14 +97,16 @@ def _build_resume_summary(
     lines.append(f"previous_terminal: {terminal_type}")
     if terminal_text:
         lines.append(f"previous_terminal_text: {terminal_text}")
-    if last_tools:
-        lines.append("recent_tools:")
-        for e in reversed(last_tools):
-            tool = str(e.payload.get("tool") or "")
-            result = e.payload.get("result") or {}
-            ok = result.get("ok")
-            error_kind = result.get("error_kind")
-            lines.append(f"- {tool} ok={ok} error_kind={error_kind}")
+        if last_tools:
+            lines.append("recent_tools:")
+            for e in reversed(last_tools):
+                tool = str(e.payload.get("tool") or e.payload.get("name") or "")
+                if not tool:
+                    tool = "unknown_tool"
+                result = e.payload.get("result") or {}
+                ok = result.get("ok")
+                error_kind = result.get("error_kind")
+                lines.append(f"- {tool} ok={ok} error_kind={error_kind}")
 
     out = "\n".join(lines).strip()
     if len(out) > 4096:

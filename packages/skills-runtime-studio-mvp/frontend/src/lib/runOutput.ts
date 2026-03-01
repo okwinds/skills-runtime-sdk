@@ -16,7 +16,10 @@ function formatRunFailed(payload: Record<string, unknown>): string | null {
   const message = readStringField(payload, 'message');
   if (!message) return null;
   const errorKind = readStringField(payload, 'error_kind') ?? 'unknown';
-  return `[run_failed] ${errorKind}: ${message}`;
+  const details = isRecord(payload.details) ? payload.details : null;
+  const exceptionClass = details ? readStringField(details, 'exception_class') : null;
+  const extra = exceptionClass ? ` (exception_class=${exceptionClass})` : '';
+  return `[run_failed] ${errorKind}: ${message}${extra}`;
 }
 
 function formatRunCancelled(payload: Record<string, unknown>): string | null {

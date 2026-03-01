@@ -16,7 +16,7 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 
 预期：
 - stdout 含：`EXAMPLE_OK: app_form_interview_pro`
-- workspace 下生成：`submission.json`、`report.md`、`runtime.yaml`
+- workspace 下生成：`submission.json`、`report.md`、`config/runtime.yaml`
 - WAL（`events.jsonl`）中出现：`skill_injected`、`human_request/human_response`、`plan_updated`、`approval_*`
 
 ## 2) 真模型运行（OpenAICompatible）
@@ -40,4 +40,3 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
 说明：
 - 真模型模式需要一个“支持 tool calling”的 chat model，否则可能无法按要求触发工具调用。
 - 终端会提示审批（approvals）与结构化问答（HumanIOProvider）。
-

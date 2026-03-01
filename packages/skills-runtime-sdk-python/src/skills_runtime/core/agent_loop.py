@@ -513,6 +513,7 @@ class AgentLoop:
                                             "tool_calls": [
                                                 {
                                                     "call_id": c.call_id,
+                                                    "tool": c.name,
                                                     "name": c.name,
                                                     "arguments": safety_gate.sanitize_for_event(c, redaction_values=redaction_values),
                                                 }

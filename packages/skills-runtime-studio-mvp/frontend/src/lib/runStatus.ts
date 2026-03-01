@@ -130,7 +130,10 @@ export function deriveStatusItem(ev: StreamRunEvent): StatusItem | null {
     const p = payload;
     const kind = p ? getStringField(p, 'error_kind') : null;
     const message = p ? getStringField(p, 'message') : null;
-    const text = kind && message ? `失败：${kind}（${message}）` : '失败';
+    const details = p && isRecord(p.details) ? (p.details as Record<string, unknown>) : null;
+    const exceptionClass = details ? getStringField(details, 'exception_class') : null;
+    const extra = exceptionClass ? `；异常=${exceptionClass}` : '';
+    const text = kind && message ? `失败：${kind}（${message}${extra}）` : '失败';
     return { id: generateId(), timestamp: ts, message: text, force_open: true, always_open: true, source_event: ev.event };
   }
   if (ev.event === 'run_cancelled') {

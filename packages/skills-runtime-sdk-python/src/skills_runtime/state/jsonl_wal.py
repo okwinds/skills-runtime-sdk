@@ -11,6 +11,7 @@ JSONL WAL（Write-Ahead Log）。
 
 from __future__ import annotations
 
+import logging
 import json
 import os
 import threading
@@ -104,16 +105,61 @@ class JsonlWal:
         def _iter() -> Iterator[AgentEvent]:
             """内部生成器：逐行读取 JSONL 并反序列化为 `AgentEvent`。"""
 
+            invalid_json_lines = 0
+            non_object_lines = 0
+            invalid_event_lines = 0
+
             with self.path.open("r", encoding="utf-8") as f:
-                for raw_line in f:
+                for line_no, raw_line in enumerate(f, start=1):
                     line = raw_line.strip()
                     if not line:
                         continue
-                    obj = json.loads(line)
-                    ev = AgentEvent.model_validate(obj)
+                    try:
+                        obj = json.loads(line)
+                    except Exception as exc:
+                        logging.warning("WAL line is not valid JSON (path=%s line=%s): %s", self.path, line_no, exc)
+                        invalid_json_lines += 1
+                        continue
+
+                    # 前向兼容：允许未来 writer 增加未知顶层字段；读取时忽略未知字段，避免崩溃整段迭代。
+                    if not isinstance(obj, dict):
+                        logging.warning("WAL line is not a JSON object (path=%s line=%s)", self.path, line_no)
+                        non_object_lines += 1
+                        continue
+                    filtered = {
+                        k: obj[k]
+                        for k in (
+                            "type",
+                            "timestamp",
+                            "run_id",
+                            "turn_id",
+                            "step_id",
+                            "payload",
+                        )
+                        if k in obj
+                    }
+                    try:
+                        ev = AgentEvent.model_validate(filtered)
+                    except Exception as exc:
+                        logging.warning("WAL line failed to parse as AgentEvent (path=%s line=%s): %s", self.path, line_no, exc)
+                        invalid_event_lines += 1
+                        continue
+
                     if run_id is not None and ev.run_id != run_id:
                         continue
                     yield ev
+
+            # 可观测性：给出稳定的“跳过计数”汇总，便于 metrics/replay 排障。
+            skipped = invalid_json_lines + non_object_lines + invalid_event_lines
+            if skipped:
+                logging.warning(
+                    "WAL iter_events skipped unparseable lines (path=%s skipped=%s invalid_json=%s non_object=%s invalid_event=%s)",
+                    self.path,
+                    skipped,
+                    invalid_json_lines,
+                    non_object_lines,
+                    invalid_event_lines,
+                )
 
         return _iter()
 

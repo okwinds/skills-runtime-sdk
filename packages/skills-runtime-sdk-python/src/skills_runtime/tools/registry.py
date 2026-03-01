@@ -307,6 +307,7 @@ class ToolRegistry:
                 step_id=step_id,
                 payload={
                     "call_id": call.call_id,
+                    "tool": call.name,
                     "name": call.name,
                     "arguments": _sanitize_tool_call_arguments_for_event(
                         call.name, args=call.args, redaction_values=self._ctx.get_redaction_values()

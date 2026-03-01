@@ -109,6 +109,14 @@ SDK 运行时有效配置可来自四层（高到低）：
 
 - `skills.bundles.max_bytes`：bundle bytes 最大值（默认 `1048576`，即 1 MiB；超限 fail-closed）
 - `skills.bundles.cache_dir`：bundle 解压缓存目录（默认 `.skills_runtime_sdk/bundles`；runtime-owned，可安全删除并重建）
+- `skills.bundles.max_extracted_bytes`：解压后总字节预算（默认 `null`：由运行时按 `max_bytes * 16` 推导；超限 fail-closed）
+- `skills.bundles.max_files`：解压文件数预算（默认 `null`：运行时默认 `4096`；超限 fail-closed）
+- `skills.bundles.max_single_file_bytes`：单文件解压字节预算（默认 `null`：由运行时按 `max_bytes * 8` 推导；超限 fail-closed）
+
+推荐值（以默认 `max_bytes=1MiB` 为例）：
+- `max_extracted_bytes: 16777216`（16 MiB）
+- `max_single_file_bytes: 8388608`（8 MiB）
+- `max_files: 4096`
 
 ### `prompt`
 

@@ -25,6 +25,9 @@ from skills_runtime.core.errors import FrameworkError
 
 
 _ALLOWED_TOP_LEVEL_DIRS = {"actions", "references"}
+_DEFAULT_MAX_FILES = 4096
+_DEFAULT_MAX_EXTRACTED_BYTES_MULTIPLIER = 16
+_DEFAULT_MAX_SINGLE_FILE_BYTES_MULTIPLIER = 8
 
 
 @dataclass(frozen=True)
@@ -132,12 +135,52 @@ def _iter_safe_zip_members(zf: zipfile.ZipFile) -> Iterable[tuple[zipfile.ZipInf
         yield info, path
 
 
+def _copy_with_budget(
+    *,
+    src,  # zipfile.ZipExtFile
+    dst,  # BinaryIO
+    max_bytes: int,
+    budget_reason: str,
+) -> int:
+    """
+    将 src copy 到 dst，并强制限制最多写入 max_bytes。
+
+    说明：
+    - 这是对 zip header（ZipInfo.file_size）的防御性兜底：即使 header 被伪造也不会导致无上限落盘。
+    - 超限时 fail-closed；由上层调用方负责清理部分产物（通常为 tmp dir）。
+    """
+
+    max_bytes = max(1, int(max_bytes))
+    written = 0
+    while True:
+        remaining = max_bytes - written
+        if remaining <= 0:
+            # 尝试读 1 字节以确认是否还有内容；若有则判定超限。
+            if src.read(1):
+                raise FrameworkError(
+                    code="SKILL_BUNDLE_TOO_LARGE",
+                    message="Skill bundle exceeds configured size budget.",
+                    details={"reason": budget_reason, "max_bytes": max_bytes},
+                )
+            break
+
+        chunk = src.read(min(64 * 1024, remaining))
+        if not chunk:
+            break
+        dst.write(chunk)
+        written += len(chunk)
+    return written
+
+
 def extract_zip_bundle_to_dir(
     *,
     bundle_bytes: bytes,
     dest_dir: Path,
     expected_sha256: str,
     max_bytes: int,
+    max_extracted_bytes: Optional[int] = None,
+    max_files: Optional[int] = None,
+    max_single_file_bytes: Optional[int] = None,
     allowed_top_level_dirs: Sequence[str] = ("actions", "references"),
 ) -> None:
     """
@@ -148,6 +191,9 @@ def extract_zip_bundle_to_dir(
     - dest_dir：目标目录（绝对路径建议；由调用方保证 runtime-owned）
     - expected_sha256：期望的内容指纹（用于防止 TOCTOU/缓存错配）
     - max_bytes：bundle bytes 预算（>=1）
+    - max_extracted_bytes：解压后总字节预算（None 时按默认倍率从 max_bytes 推导）
+    - max_files：解压文件数预算（None 时使用默认值）
+    - max_single_file_bytes：单文件解压字节预算（None 时按默认倍率从 max_bytes 推导）
     - allowed_top_level_dirs：允许的顶层目录集合（最小集合默认 actions/references）
     """
 
@@ -166,6 +212,18 @@ def extract_zip_bundle_to_dir(
             message="Skill bundle exceeds configured size budget.",
             details={"bundle_bytes": len(data), "max_bytes": max_bytes},
         )
+
+    if max_extracted_bytes is None:
+        max_extracted_bytes = max_bytes * _DEFAULT_MAX_EXTRACTED_BYTES_MULTIPLIER
+    max_extracted_bytes = max(1, int(max_extracted_bytes))
+
+    if max_single_file_bytes is None:
+        max_single_file_bytes = max_bytes * _DEFAULT_MAX_SINGLE_FILE_BYTES_MULTIPLIER
+    max_single_file_bytes = max(1, int(max_single_file_bytes))
+
+    if max_files is None:
+        max_files = _DEFAULT_MAX_FILES
+    max_files = max(1, int(max_files))
 
     sha = hashlib.sha256(data).hexdigest()
     if not _is_sha256_hex(expected_sha256):
@@ -200,10 +258,34 @@ def extract_zip_bundle_to_dir(
         ) from exc
 
     with zf:
+        extracted_bytes = 0
+        extracted_files = 0
         for info, rel in _iter_safe_zip_members(zf):
             # skip pure directory entries (after validation)
             if info.is_dir():
                 continue
+
+            extracted_files += 1
+            if extracted_files > max_files:
+                raise FrameworkError(
+                    code="SKILL_BUNDLE_TOO_LARGE",
+                    message="Skill bundle exceeds configured size budget.",
+                    details={"reason": "max_files", "files": extracted_files, "max_files": max_files},
+                )
+
+            declared_size = int(getattr(info, "file_size", 0) or 0)
+            if declared_size > max_single_file_bytes:
+                raise FrameworkError(
+                    code="SKILL_BUNDLE_TOO_LARGE",
+                    message="Skill bundle exceeds configured size budget.",
+                    details={"reason": "max_single_file_bytes", "file_bytes": declared_size, "max_single_file_bytes": max_single_file_bytes, "name": info.filename},
+                )
+            if extracted_bytes + declared_size > max_extracted_bytes:
+                raise FrameworkError(
+                    code="SKILL_BUNDLE_TOO_LARGE",
+                    message="Skill bundle exceeds configured size budget.",
+                    details={"reason": "max_extracted_bytes", "extracted_bytes": extracted_bytes, "next_file_bytes": declared_size, "max_extracted_bytes": max_extracted_bytes, "name": info.filename},
+                )
 
             target = (dest_dir / Path(rel.as_posix())).resolve()
             root = dest_dir.resolve()
@@ -216,7 +298,17 @@ def extract_zip_bundle_to_dir(
 
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info, "r") as src, target.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
+                remaining_total = max_extracted_bytes - extracted_bytes
+                if remaining_total < 1:
+                    raise FrameworkError(
+                        code="SKILL_BUNDLE_TOO_LARGE",
+                        message="Skill bundle exceeds configured size budget.",
+                        details={"reason": "max_extracted_bytes", "extracted_bytes": extracted_bytes, "max_extracted_bytes": max_extracted_bytes},
+                    )
+                copy_budget = min(max_single_file_bytes, remaining_total)
+                budget_reason = "max_extracted_bytes" if remaining_total <= max_single_file_bytes else "max_single_file_bytes"
+                wrote = _copy_with_budget(src=src, dst=dst, max_bytes=copy_budget, budget_reason=budget_reason)
+                extracted_bytes += wrote
 
 
 def ensure_extracted_bundle(
@@ -225,6 +317,9 @@ def ensure_extracted_bundle(
     bundle_sha256: str,
     bundle_bytes: bytes,
     max_bytes: int,
+    max_extracted_bytes: Optional[int] = None,
+    max_files: Optional[int] = None,
+    max_single_file_bytes: Optional[int] = None,
 ) -> ExtractedBundle:
     """
     确保 bundle 已解压到 cache_root 下的 `<sha256>/`，并返回其路径。
@@ -258,6 +353,9 @@ def ensure_extracted_bundle(
             dest_dir=tmp_dir,
             expected_sha256=bundle_sha256,
             max_bytes=max_bytes,
+            max_extracted_bytes=max_extracted_bytes,
+            max_files=max_files,
+            max_single_file_bytes=max_single_file_bytes,
             allowed_top_level_dirs=("actions", "references"),
         )
 
@@ -279,4 +377,3 @@ def ensure_extracted_bundle(
         )
 
     return ExtractedBundle(bundle_sha256=bundle_sha256, bundle_root=final_dir)
-

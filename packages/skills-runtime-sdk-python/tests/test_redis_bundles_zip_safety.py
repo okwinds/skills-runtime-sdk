@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, Mapping
 
 import pytest
 
+from skills_runtime.core.errors import FrameworkError
 from skills_runtime.skills.manager import SkillsManager
 from skills_runtime.tools.protocol import ToolCall
 from skills_runtime.tools.registry import ToolExecutionContext
@@ -93,7 +94,15 @@ def _mk_zip_bytes_with_unexpected_top_level() -> bytes:
     return buf.getvalue()
 
 
-def _mk_manager(tmp_path: Path, *, bundle_bytes: bytes) -> SkillsManager:
+def _mk_zip_bytes(entries: Mapping[str, bytes]) -> bytes:
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name, data in entries.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+def _mk_manager(tmp_path: Path, *, bundle_bytes: bytes, bundles_cfg: Dict[str, Any] | None = None) -> SkillsManager:
     key_prefix = "skills:"
     namespace = "alice:engineering"
     skill_name = "python_testing"
@@ -118,7 +127,7 @@ def _mk_manager(tmp_path: Path, *, bundle_bytes: bytes) -> SkillsManager:
             "spaces": [{"id": "space-eng", "namespace": namespace, "sources": ["src-redis"]}],
             "sources": [{"id": "src-redis", "type": "redis", "options": {"dsn_env": "REDIS_URL", "key_prefix": key_prefix}}],
             "references": {"enabled": True, "allow_assets": False, "default_max_bytes": 65536},
-            "bundles": {"max_bytes": 1024 * 1024, "cache_dir": ".skills_runtime_sdk/bundles"},
+            "bundles": bundles_cfg or {"max_bytes": 1024 * 1024, "cache_dir": ".skills_runtime_sdk/bundles"},
         },
         source_clients={"src-redis": fake},
     )
@@ -152,4 +161,108 @@ def test_redis_bundle_zip_safety_rejects_zip_slip_and_symlink(tmp_path: Path, bu
     call = ToolCall(call_id="c1", name="skill_ref_read", args={"skill_mention": "$[alice:engineering].python_testing", "ref_path": "references/a.txt"})
     result = skill_ref_read(call, ctx)
     assert result.ok is False
+    _assert_framework_error_payload(result, code_prefix="SKILL_BUNDLE_")
+
+
+def test_extract_zip_bundle_rejects_max_single_file_bytes_budget(tmp_path: Path) -> None:
+    from skills_runtime.skills.bundles import extract_zip_bundle_to_dir
+
+    bundle_bytes = _mk_zip_bytes({"references/big.bin": b"x" * 20})
+    sha = hashlib.sha256(bundle_bytes).hexdigest()
+    dest_dir = tmp_path / "out"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(FrameworkError) as exc:
+        extract_zip_bundle_to_dir(
+            bundle_bytes=bundle_bytes,
+            dest_dir=dest_dir,
+            expected_sha256=sha,
+            max_bytes=1024 * 1024,
+            max_single_file_bytes=10,
+            max_extracted_bytes=1024,
+            max_files=100,
+        )
+    assert exc.value.code == "SKILL_BUNDLE_TOO_LARGE"
+    assert (exc.value.details or {}).get("reason") == "max_single_file_bytes"
+
+
+def test_extract_zip_bundle_rejects_max_extracted_bytes_budget(tmp_path: Path) -> None:
+    from skills_runtime.skills.bundles import extract_zip_bundle_to_dir
+
+    bundle_bytes = _mk_zip_bytes(
+        {
+            "references/a.bin": b"a" * 8,
+            "references/b.bin": b"b" * 8,
+        }
+    )
+    sha = hashlib.sha256(bundle_bytes).hexdigest()
+    dest_dir = tmp_path / "out"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(FrameworkError) as exc:
+        extract_zip_bundle_to_dir(
+            bundle_bytes=bundle_bytes,
+            dest_dir=dest_dir,
+            expected_sha256=sha,
+            max_bytes=1024 * 1024,
+            max_single_file_bytes=1024,
+            max_extracted_bytes=10,
+            max_files=100,
+        )
+    assert exc.value.code == "SKILL_BUNDLE_TOO_LARGE"
+    assert (exc.value.details or {}).get("reason") == "max_extracted_bytes"
+
+
+def test_extract_zip_bundle_rejects_max_files_budget(tmp_path: Path) -> None:
+    from skills_runtime.skills.bundles import extract_zip_bundle_to_dir
+
+    bundle_bytes = _mk_zip_bytes(
+        {
+            "references/a.txt": b"a",
+            "references/b.txt": b"b",
+            "references/c.txt": b"c",
+        }
+    )
+    sha = hashlib.sha256(bundle_bytes).hexdigest()
+    dest_dir = tmp_path / "out"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(FrameworkError) as exc:
+        extract_zip_bundle_to_dir(
+            bundle_bytes=bundle_bytes,
+            dest_dir=dest_dir,
+            expected_sha256=sha,
+            max_bytes=1024 * 1024,
+            max_single_file_bytes=1024,
+            max_extracted_bytes=1024,
+            max_files=2,
+        )
+    assert exc.value.code == "SKILL_BUNDLE_TOO_LARGE"
+    assert (exc.value.details or {}).get("reason") == "max_files"
+
+
+def test_redis_bundle_extraction_respects_configured_post_extraction_budgets(tmp_path: Path) -> None:
+    """
+    回归（harden-safety-redaction-and-runtime-bounds / 6.3）：
+    - post-extraction budgets 必须可通过 config 暴露并生效（而不是只在底层函数可用）。
+    """
+
+    bundle_bytes = _mk_zip_bytes({"references/big.bin": b"x" * 20})
+    mgr = _mk_manager(
+        tmp_path,
+        bundle_bytes=bundle_bytes,
+        bundles_cfg={
+            "max_bytes": 1024 * 1024,
+            "cache_dir": ".skills_runtime_sdk/bundles",
+            "max_single_file_bytes": 10,
+            "max_extracted_bytes": 1024,
+            "max_files": 100,
+        },
+    )
+    ctx = _mk_ctx(workspace_root=tmp_path, skills_manager=mgr)
+
+    from skills_runtime.tools.builtin.skill_ref_read import skill_ref_read
+
+    call = ToolCall(call_id="c1", name="skill_ref_read", args={"skill_mention": "$[alice:engineering].python_testing", "ref_path": "references/a.txt"})
+    result = skill_ref_read(call, ctx)
     _assert_framework_error_payload(result, code_prefix="SKILL_BUNDLE_")

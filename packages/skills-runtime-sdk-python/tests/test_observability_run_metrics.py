@@ -50,6 +50,26 @@ def test_run_metrics_completed_with_tool_aggregation(tmp_path: Path) -> None:
     assert m["tools"]["by_name"]["apply_patch"]["failed"] == 1
 
 
+def test_run_metrics_tool_aggregation_falls_back_to_name_field(tmp_path: Path) -> None:
+    """
+    回归（harden-safety-redaction-and-runtime-bounds / 3.2）：
+    - consumer 必须优先读取 payload.tool；旧 WAL 可能只有 payload.name；
+    - metrics 不得把 name-only 事件聚合到空字符串 bucket。
+    """
+
+    events_jsonl_path = tmp_path / "events.jsonl"
+    _write_events(
+        events_jsonl_path,
+        [
+            {"type": "run_started", "timestamp": "2026-02-09T00:00:00Z", "run_id": "r1", "payload": {}},
+            {"type": "tool_call_finished", "timestamp": "2026-02-09T00:00:01Z", "run_id": "r1", "payload": {"name": "legacy_tool", "result": {"ok": True, "duration_ms": 3}}},
+        ],
+    )
+    m = compute_run_metrics_summary(wal_locator=str(events_jsonl_path))
+    assert m["tools"]["by_name"]["legacy_tool"]["calls"] == 1
+    assert "" not in m["tools"]["by_name"]
+
+
 def test_run_metrics_failed_records_error(tmp_path: Path) -> None:
     events_jsonl_path = tmp_path / "events.jsonl"
     _write_events(
@@ -96,6 +116,33 @@ def test_run_metrics_invalid_json_line(tmp_path: Path) -> None:
     events_jsonl_path.write_text("{bad json}\n", encoding="utf-8")
     m = compute_run_metrics_summary(wal_locator=str(events_jsonl_path))
     assert m["status"] == "unknown"
+    assert any(e["kind"] == "invalid_wal" for e in m["errors"])
+
+
+def test_run_metrics_skips_invalid_json_lines_and_still_computes(tmp_path: Path) -> None:
+    """
+    回归（harden-safety-redaction-and-runtime-bounds / 7.2）：
+    - metrics 遇到坏行必须“可观测但不中断”（skip + stable error counter），而不是直接崩溃/return。
+    """
+
+    events_jsonl_path = tmp_path / "events.jsonl"
+    events_jsonl_path.write_text(
+        "\n".join(
+            [
+                "{bad json}",
+                json.dumps({"type": "run_started", "timestamp": "2026-02-09T00:00:00Z", "run_id": "r1", "payload": {}}, ensure_ascii=False),
+                json.dumps(
+                    {"type": "tool_call_finished", "timestamp": "2026-02-09T00:00:01Z", "run_id": "r1", "payload": {"tool": "list_dir", "result": {"ok": True, "duration_ms": 1}}},
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    m = compute_run_metrics_summary(wal_locator=str(events_jsonl_path))
+    assert m["run_id"] == "r1"
+    assert m["counts"]["tool_calls_total"] == 1
     assert any(e["kind"] == "invalid_wal" for e in m["errors"])
 
 

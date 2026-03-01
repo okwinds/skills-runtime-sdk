@@ -84,3 +84,9 @@ def test_tool_dispatch_writes_wal_events(tmp_path: Path) -> None:
     assert events[0].type == "tool_call_requested"
     assert events[1].type == "tool_call_started"
     assert events[2].type == "tool_call_finished"
+
+    # 回归（harden-safety-redaction-and-runtime-bounds / 1.10）：
+    # tool 相关事件 payload 必须包含 canonical 字段 `tool`；兼容字段（如 name）若存在必须一致。
+    requested = events[0]
+    assert (requested.payload or {}).get("tool") == "noop"
+    assert (requested.payload or {}).get("name") == "noop"

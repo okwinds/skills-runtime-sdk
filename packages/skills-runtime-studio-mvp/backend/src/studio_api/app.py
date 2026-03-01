@@ -247,7 +247,7 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
     events_jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     events_jsonl_path.touch(exist_ok=True)
 
-    def _append_run_failed(*, error_kind: str, message: str) -> None:
+    def _append_run_failed(*, error_kind: str, message: str, details: dict | None = None) -> None:
         """
         将 `run_failed` 事件追加到 events.jsonl（best-effort）。
 
@@ -265,6 +265,7 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
                 "message": str(message or ""),
                 "retryable": False,
                 "wal_locator": str(events_jsonl_path),
+                **({"details": dict(details)} if isinstance(details, dict) else {}),
             },
         }
         try:
@@ -281,7 +282,7 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
                 # Agent 已负责 events.jsonl 落盘；这里只需消费到结束，避免线程提前退出
                 pass
         except Exception as e:
-            _append_run_failed(error_kind=e.__class__.__name__, message=str(e))
+            _append_run_failed(error_kind="unknown", message=str(e), details={"exception_class": e.__class__.__name__})
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()

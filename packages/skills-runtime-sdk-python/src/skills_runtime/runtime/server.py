@@ -42,7 +42,14 @@ class RuntimeServer:
     - 当无 running sessions/children 且 idle 超过阈值时自动退出（避免测试/脚本泄露后台进程）。
     """
 
-    def __init__(self, *, workspace_root: Path, secret: str, idle_timeout_ms: int = 10_000) -> None:
+    def __init__(
+        self,
+        *,
+        workspace_root: Path,
+        secret: str,
+        idle_timeout_ms: int = 10_000,
+        max_request_bytes: int = 1 * 1024 * 1024,
+    ) -> None:
         """
         创建 workspace 级 runtime server。
 
@@ -50,11 +57,13 @@ class RuntimeServer:
         - workspace_root：工作区根目录（用于写入 server.json 与日志）
         - secret：本地鉴权 secret（客户端需携带；仅本机使用）
         - idle_timeout_ms：无运行资源时的空闲退出阈值（毫秒）
+        - max_request_bytes：单次 RPC 请求体最大字节数（用于防止内存 DoS；超限返回 validation 错误）
         """
 
         self._workspace_root = Path(workspace_root).resolve()
         self._secret = str(secret or "")
         self._idle_timeout_ms = int(idle_timeout_ms)
+        self._max_request_bytes = max(1, int(max_request_bytes))
         self._paths = get_runtime_paths(workspace_root=self._workspace_root)
 
         self._created_at_ms = int(time.time() * 1000)
@@ -82,6 +91,9 @@ class RuntimeServer:
             "created_at_ms": int(self._created_at_ms),
         }
         self._paths.server_info_path.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+        # best-effort：server.json 含本地 secret，尽力收紧权限（POSIX 0600）。
+        with contextlib.suppress(OSError, PermissionError):
+            self._paths.server_info_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     def _read_exec_registry(self) -> Dict[str, Any]:
         """
@@ -785,12 +797,14 @@ class RuntimeServer:
                     # 继续循环避免 server 崩溃。
                     continue
                 try:
-                    raw = b""
+                    raw = bytearray()
                     while True:
                         b = conn.recv(65536)
                         if not b:
                             break
-                        raw += b
+                        if len(raw) + len(b) > self._max_request_bytes:
+                            raise ValueError("request too large")
+                        raw.extend(b)
                     req = json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
                     if not isinstance(req, dict):
                         raise ValueError("invalid request")

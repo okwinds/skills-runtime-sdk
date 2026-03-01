@@ -91,6 +91,9 @@ class SkillsManager:
         bundles_cfg = getattr(self._skills_config, "bundles", None)
         self._bundle_max_bytes = int(getattr(bundles_cfg, "max_bytes", 1 * 1024 * 1024) or 1 * 1024 * 1024)
         self._bundle_cache_dir_raw = str(getattr(bundles_cfg, "cache_dir", ".skills_runtime_sdk/bundles") or ".skills_runtime_sdk/bundles")
+        self._bundle_max_extracted_bytes = getattr(bundles_cfg, "max_extracted_bytes", None)
+        self._bundle_max_files = getattr(bundles_cfg, "max_files", None)
+        self._bundle_max_single_file_bytes = getattr(bundles_cfg, "max_single_file_bytes", None)
 
     def _bundle_cache_root(self) -> Path:
         """bundle 解压缓存根目录（runtime-owned，可删可重建）。"""
@@ -115,6 +118,9 @@ class SkillsManager:
             get_redis_client_for_source=self._get_redis_client,
             bundle_cache_root=self._bundle_cache_root(),
             bundle_max_bytes=self._bundle_max_bytes,
+            bundle_max_extracted_bytes=int(self._bundle_max_extracted_bytes) if self._bundle_max_extracted_bytes is not None else None,
+            bundle_max_files=int(self._bundle_max_files) if self._bundle_max_files is not None else None,
+            bundle_max_single_file_bytes=int(self._bundle_max_single_file_bytes) if self._bundle_max_single_file_bytes is not None else None,
         )
 
     def get_bundle_root_for_tool(self, *, skill: Skill, purpose: str) -> tuple[Path, Optional[str]]:
