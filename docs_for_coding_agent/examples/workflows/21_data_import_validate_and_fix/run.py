@@ -305,7 +305,7 @@ def _build_backend(
                             ToolCall(
                                 call_id="tc_shell_qa",
                                 name="shell_exec",
-                                args={"argv": argv, "timeout_ms": 5000, "sandbox": "none"},
+                                args={"argv": argv, "timeout_ms": 5000, "sandbox": "inherit"},
                             )
                         ],
                         finish_reason="tool_calls",

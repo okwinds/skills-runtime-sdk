@@ -33,7 +33,7 @@ def _get_tool_finished_result(*, wal_path: Path, tool: str) -> dict:
 
 
 def test_agent_exec_sessions_injection_allows_exec_command(tmp_path: Path) -> None:
-    args = {"cmd": "echo INJECT_OK", "yield_time_ms": 200, "tty": True, "sandbox": "none"}
+    args = {"cmd": "echo INJECT_OK", "yield_time_ms": 200, "tty": True, "sandbox": "inherit"}
     call = ToolCall(call_id="c1", name="exec_command", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
 
     backend = FakeChatBackend(

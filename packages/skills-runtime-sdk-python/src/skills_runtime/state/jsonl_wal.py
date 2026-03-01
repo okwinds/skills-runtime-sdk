@@ -12,10 +12,11 @@ JSONL WAL（Write-Ahead Log）。
 from __future__ import annotations
 
 import json
+import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional, TextIO
 
 from skills_runtime.core.contracts import AgentEvent
 
@@ -44,6 +45,8 @@ class JsonlWal:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._next_index = self._scan_next_index()
+        # 复用同一文件句柄，避免每次 append 打开/关闭文件造成额外 syscalls。
+        self._fh: Optional[TextIO] = self.path.open("a", encoding="utf-8")
 
     def locator(self) -> str:
         """
@@ -83,9 +86,12 @@ class JsonlWal:
         line = json.dumps(payload, ensure_ascii=False)
         with self._lock:
             index = self._next_index
-            with self.path.open("a", encoding="utf-8") as f:
-                f.write(line)
-                f.write("\n")
+            if self._fh is None or self._fh.closed:
+                self._fh = self.path.open("a", encoding="utf-8")
+            self._fh.write(line)
+            self._fh.write("\n")
+            self._fh.flush()
+            os.fsync(self._fh.fileno())
             self._next_index += 1
         return index
 
@@ -107,3 +113,32 @@ class JsonlWal:
                     yield AgentEvent.model_validate(obj)
 
         return _iter()
+
+    def close(self) -> None:
+        """关闭 WAL 句柄（释放 fd）。"""
+
+        with self._lock:
+            if self._fh is None:
+                return
+            try:
+                self._fh.close()
+            except OSError:
+                pass
+            finally:
+                self._fh = None
+
+    def __enter__(self) -> "JsonlWal":
+        """上下文管理器入口：返回 self（便于 with 使用）。"""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
+        """上下文管理器退出：确保关闭文件句柄。"""
+        self.close()
+
+    def __del__(self) -> None:
+        """析构兜底：尽力 close，避免文件句柄泄漏。"""
+        # 防御性兜底：确保文件句柄不因忘记 close 而泄漏（CPython 下通常可及时回收）。
+        try:
+            self.close()
+        except Exception:
+            pass

@@ -6,7 +6,7 @@
  * - decideApproval: POST decision (approved/denied/etc.) for an approval
  */
 
-import { APIError } from './api';
+import { fetchJson } from './http';
 
 // ===== TYPES =====
 
@@ -30,35 +30,6 @@ export interface PendingApprovalsResponse {
 export interface DecideApprovalResponse {
   ok: boolean;
   [key: string]: unknown;
-}
-
-// ===== HELPERS =====
-
-async function readErrorBody(res: Response): Promise<unknown> {
-  const contentType = res.headers.get('content-type') ?? '';
-  try {
-    if (contentType.includes('application/json')) return await res.json();
-    return await res.text();
-  } catch {
-    return undefined;
-  }
-}
-
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  if (!res.ok) {
-    const details = await readErrorBody(res);
-    throw new APIError(res.status, `Request failed: ${res.status} ${res.statusText}`, details);
-  }
-
-  return (await res.json()) as T;
 }
 
 // ===== API FUNCTIONS =====

@@ -1,4 +1,6 @@
 import type { StreamRunEvent } from './api';
+import { generateId } from './id';
+import { isRecord } from './typeGuards';
 
 export type StatusItem = {
   id: string;
@@ -8,19 +10,6 @@ export type StatusItem = {
   always_open: boolean;
   source_event: string;
 };
-
-function generateId(): string {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cryptoAny: any = globalThis.crypto;
-  if (cryptoAny && typeof cryptoAny.randomUUID === 'function') {
-    return cryptoAny.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 function getStringField(obj: Record<string, unknown>, field: string): string | null {
   const value = obj[field];

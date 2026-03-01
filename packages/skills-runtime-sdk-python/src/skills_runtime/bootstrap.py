@@ -23,7 +23,7 @@ from skills_runtime.config.defaults import load_default_config_dict
 from skills_runtime.config.loader import AgentSdkConfig, load_config_dicts
 
 
-def _get_env_nonempty(key: str) -> Optional[str]:
+def _get_env_nonempty(key: str, *, env: Optional[Mapping[str, str]] = None) -> Optional[str]:
     """
     读取 env 并返回非空白字符串（否则视为未设置）。
 
@@ -31,7 +31,7 @@ def _get_env_nonempty(key: str) -> Optional[str]:
     - key：环境变量名
     """
 
-    v = os.environ.get(key)
+    v = (env or os.environ).get(key)
     if v is None:
         return None
     s = str(v).strip()
@@ -89,37 +89,42 @@ def _parse_env_text(text: str) -> Dict[str, str]:
     return out
 
 
-def _load_dotenv(*, path: Path, override: bool) -> int:
-    """将 `.env` 文件内容写入 `os.environ`。
+def _load_dotenv(*, path: Path, override: bool, base_env: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """
+    读取 `.env` 文件内容并返回“应注入”的 env 映射（不做全局副作用）。
 
     参数：
     - path：`.env` 文件路径。
-    - override：是否覆盖已存在的环境变量。
+    - override：是否覆盖 base_env 中已存在的环境变量。
+    - base_env：用于判断“已存在”的 env 映射（默认 os.environ）。
 
     返回：
-    - int：本次实际写入（或覆盖）到 `os.environ` 的键数量。
+    - dict[str, str]：应注入的键值（调用方可选择写入 os.environ 或 env_store）。
     """
     if not path.exists():
-        return 0
+        return {}
     data = _parse_env_text(path.read_text(encoding="utf-8"))
-    wrote = 0
-    for k, v in data.items():
-        if not override and k in os.environ:
-            continue
-        os.environ[k] = v
-        wrote += 1
-    return wrote
+    existing = base_env or os.environ
+    if not override:
+        data = {k: v for k, v in data.items() if k not in existing}
+    return data
 
 
-def load_dotenv_if_present(*, workspace_root: Path, override: bool = False) -> Optional[Path]:
+def load_dotenv_if_present(*, workspace_root: Path, override: bool = False) -> Tuple[Optional[Path], Dict[str, str]]:
     """
-    约定加载：
+    约定发现并解析 `.env`：
     1) 若设置 `SKILLS_RUNTIME_SDK_ENV_FILE`，加载其指向的文件（相对路径相对 workspace_root）
     2) 否则若 `<workspace_root>/.env` 存在，加载之
 
     参数：
     - workspace_root：工作区根目录（相对路径锚点）
     - override：是否覆盖已存在 env（默认 False）
+
+    返回：
+    - (env_file_path_or_none, env_vars_to_inject)
+
+    说明：
+    - 本函数不修改 `os.environ`；调用方决定注入目标（`os.environ` 或 session env_store）。
     """
 
     ws = Path(workspace_root).resolve()
@@ -130,14 +135,14 @@ def load_dotenv_if_present(*, workspace_root: Path, override: bool = False) -> O
             env_path = (ws / env_path).resolve()
         if not env_path.exists():
             raise ValueError(f"env file not found: {env_path}")
-        _load_dotenv(path=env_path, override=override)
-        return env_path
+        env_vars = _load_dotenv(path=env_path, override=override, base_env=os.environ)
+        return env_path, env_vars
 
     cwd_env = (ws / ".env").resolve()
     if cwd_env.exists():
-        _load_dotenv(path=cwd_env, override=override)
-        return cwd_env
-    return None
+        env_vars = _load_dotenv(path=cwd_env, override=override, base_env=os.environ)
+        return cwd_env, env_vars
+    return None, {}
 
 
 def _discover_default_overlay_path(*, workspace_root: Path) -> Optional[Path]:
@@ -162,7 +167,7 @@ def _discover_default_overlay_path(*, workspace_root: Path) -> Optional[Path]:
     return None
 
 
-def discover_overlay_paths(*, workspace_root: Path) -> list[Path]:
+def discover_overlay_paths(*, workspace_root: Path, env: Optional[Mapping[str, str]] = None) -> list[Path]:
     """
     overlay 路径发现规则（固定，顺序稳定）：
     1) 默认 overlay：`<workspace_root>/config/runtime.yaml`
@@ -176,7 +181,7 @@ def discover_overlay_paths(*, workspace_root: Path) -> list[Path]:
     if default_overlay is not None:
         overlays.append(default_overlay)
 
-    raw = _get_env_nonempty("SKILLS_RUNTIME_SDK_CONFIG_PATHS") or ""
+    raw = _get_env_nonempty("SKILLS_RUNTIME_SDK_CONFIG_PATHS", env=env) or ""
     for p in _split_paths(raw):
         pp = Path(p).expanduser()
         if not pp.is_absolute():
@@ -296,9 +301,11 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
     """
 
     ws = Path(workspace_root).resolve()
-    env_file = load_dotenv_if_present(workspace_root=ws, override=False)
+    env_file, dotenv_env = load_dotenv_if_present(workspace_root=ws, override=False)
+    effective_env: Dict[str, str] = dict(os.environ)
+    effective_env.update(dotenv_env)
 
-    overlay_paths = discover_overlay_paths(workspace_root=ws)
+    overlay_paths = discover_overlay_paths(workspace_root=ws, env=effective_env)
     entries: list[Tuple[str, Dict[str, Any]]] = [("embedded_default", load_default_config_dict())]
     for p in overlay_paths:
         entries.append((f"overlay:{p}", _load_yaml_mapping(p)))
@@ -320,7 +327,7 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         planner_model = str(models["planner"])
         sources["models.planner"] = "session_settings:models.planner"
     else:
-        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_PLANNER_MODEL")
+        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_PLANNER_MODEL", env=effective_env)
         if v is not None:
             planner_model = str(v)
             sources["models.planner"] = "env:SKILLS_RUNTIME_SDK_PLANNER_MODEL"
@@ -333,7 +340,7 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         executor_model = str(models["executor"])
         sources["models.executor"] = "session_settings:models.executor"
     else:
-        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_EXECUTOR_MODEL")
+        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_EXECUTOR_MODEL", env=effective_env)
         if v is not None:
             executor_model = str(v)
             sources["models.executor"] = "env:SKILLS_RUNTIME_SDK_EXECUTOR_MODEL"
@@ -346,7 +353,7 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         base_url = str(llm["base_url"])
         sources["llm.base_url"] = "session_settings:llm.base_url"
     else:
-        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_LLM_BASE_URL")
+        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_LLM_BASE_URL", env=effective_env)
         if v is not None:
             base_url = str(v)
             sources["llm.base_url"] = "env:SKILLS_RUNTIME_SDK_LLM_BASE_URL"
@@ -359,7 +366,7 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         api_key_env = str(llm["api_key_env"])
         sources["llm.api_key_env"] = "session_settings:llm.api_key_env"
     else:
-        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_LLM_API_KEY_ENV")
+        v = _get_env_nonempty("SKILLS_RUNTIME_SDK_LLM_API_KEY_ENV", env=effective_env)
         if v is not None:
             api_key_env = str(v)
             sources["llm.api_key_env"] = "env:SKILLS_RUNTIME_SDK_LLM_API_KEY_ENV"
@@ -376,3 +383,68 @@ def resolve_effective_run_config(*, workspace_root: Path, session_settings: Dict
         env_file=str(env_file) if env_file is not None else None,
         sources=sources,
     )
+
+
+def build_agent(
+    *,
+    workspace_root: Path,
+    config_paths: Optional[list[Path]] = None,
+    session_settings: Optional[Dict[str, Any]] = None,
+    backend: Optional["ChatBackend"] = None,
+    approval_provider: Optional["ApprovalProvider"] = None,
+    env_vars: Optional[Dict[str, str]] = None,
+) -> "Agent":
+    """
+    构造一个带 bootstrap 语义的 Agent（适配 CLI/Web/Studio 等上层）。
+
+    目标：
+    - 调用方不需要手动合并默认配置与 overlays；
+    - LLM 连接配置（base_url/api_key_env）遵循 bootstrap 优先级：session_settings > env > yaml；
+    - 若未显式提供 backend，则默认使用 OpenAI-compatible chat.completions backend。
+
+    参数：
+    - workspace_root：工作区根目录（会 resolve）
+    - config_paths：overlay YAML 路径（按顺序合并；后者覆盖前者）；缺省时会按 discover_overlay_paths 发现
+    - session_settings：用于覆盖模型与 llm 连接配置的 session 级设置（可选）
+    - backend：可选，显式注入 ChatBackend（例如 FakeChatBackend）；若为 None 则创建默认 OpenAI backend
+    - approval_provider：可选，注入 ApprovalProvider（由上层实现/管理）
+    - env_vars：可选，run-local env_store（不落盘）
+    """
+
+    from skills_runtime import AgentBuilder
+
+    ws = Path(workspace_root).resolve()
+    cfg_paths = [Path(p).resolve() for p in (config_paths or discover_overlay_paths(workspace_root=ws))]
+
+    resolved = resolve_effective_run_config(workspace_root=ws, session_settings=session_settings or {})
+    llm_overlay: Dict[str, Any] = {
+        "config_version": 1,
+        "llm": {
+            "base_url": str(resolved.base_url),
+            "api_key_env": str(resolved.api_key_env),
+        },
+    }
+
+    chosen_backend = backend
+    if chosen_backend is None:
+        from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
+
+        dicts: list[Dict[str, Any]] = [load_default_config_dict()]
+        for p in cfg_paths:
+            dicts.append(_load_yaml_mapping(Path(p)))
+        dicts.append(llm_overlay)
+        merged: AgentSdkConfig = load_config_dicts(dicts)
+        chosen_backend = OpenAIChatCompletionsBackend(merged.llm)
+
+    assert chosen_backend is not None
+
+    builder = (
+        AgentBuilder()
+        .workspace_root(ws)
+        .backend(chosen_backend)
+        .config_paths(cfg_paths)
+        .approval_provider(approval_provider)
+        .env_vars(env_vars or {})
+        .add_config_overlay(llm_overlay)
+    )
+    return builder.build()

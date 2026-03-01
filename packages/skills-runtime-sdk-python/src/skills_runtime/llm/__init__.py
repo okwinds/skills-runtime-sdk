@@ -12,7 +12,13 @@ Phase 2 目标：
 from __future__ import annotations
 
 from skills_runtime.llm.chat_sse import ChatCompletionsSseParser, ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
 from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
 
-__all__ = ["ChatCompletionsSseParser", "ChatStreamEvent", "OpenAIChatCompletionsBackend"]
-
+__all__ = [
+    "ChatCompletionsSseParser",
+    "ChatStreamEvent",
+    "FakeChatBackend",
+    "FakeChatCall",
+    "OpenAIChatCompletionsBackend",
+]

@@ -245,6 +245,22 @@ def _apply_update(path: Path, *, update_lines: List[str], ctx: ToolExecutionCont
     if path.is_dir():
         raise IsADirectoryError(f"path is a directory: {path}")
 
+    original_text = path.read_text(encoding="utf-8")
+    new_text, move_to, summaries = _apply_update_to_text(original_text, update_lines=update_lines, ctx=ctx)
+    path.write_text(new_text, encoding="utf-8")
+    return move_to, summaries
+
+
+def _apply_update_to_text(
+    original_text: str, *, update_lines: List[str], ctx: ToolExecutionContext
+) -> Tuple[str, Optional[Path], List[str]]:
+    """
+    将 Update File patch 作用到 original_text（纯函数，不写文件）。
+
+    返回：
+    - (new_text, move_to_path_or_none, applied_hunk_summaries)
+    """
+
     move_to: Optional[Path] = None
     hunks: List[List[str]] = []
     current_hunk: List[str] = []
@@ -270,16 +286,159 @@ def _apply_update(path: Path, *, update_lines: List[str], ctx: ToolExecutionCont
     if current_hunk:
         hunks.append(current_hunk)
 
-    original_text = path.read_text(encoding="utf-8")
-    file_lines = original_text.splitlines()
+    file_lines = (original_text or "").splitlines()
     search_from = 0
     for h in hunks:
         file_lines, search_from = _apply_hunk(file_lines=file_lines, hunk_lines=h, search_from=search_from)
         summaries.append(f"hunk_applied:{len(h)}")
 
-    new_text = "\n".join(file_lines) + ("\n" if original_text.endswith("\n") or file_lines else "")
-    path.write_text(new_text, encoding="utf-8")
-    return move_to, summaries
+    new_text = "\n".join(file_lines) + ("\n" if (original_text or "").endswith("\n") or file_lines else "")
+    return new_text, move_to, summaries
+
+
+def _render_add_file_text(*, content_lines: List[str]) -> str:
+    """把 Add File content_lines 渲染为文件文本（含末尾换行符）。"""
+
+    for raw in content_lines:
+        if not raw.startswith("+"):
+            raise ValueError("Add File content lines must start with '+'")
+    return "\n".join(line[1:] for line in content_lines) + "\n"
+
+
+@dataclass(frozen=True)
+class _PlannedOp:
+    """规划阶段的文件操作（用于 dry-run 模拟 apply 的副作用）。"""
+    kind: str  # write_new | write_update | delete | move
+    path: Path
+    text: Optional[str] = None
+    moved_to: Optional[Path] = None
+
+
+def _plan_multi_section_patch(
+    *, sections: List[Tuple[str, str, List[str]]], ctx: ToolExecutionContext
+) -> Tuple[List[_PlannedOp], List[_Change]]:
+    """
+    对 multi-section patch 做 dry-run 规划（不写盘）。
+
+    约束：
+    - 以 section 顺序模拟 apply，确保后续 section 能看到前序的虚拟变更；
+    - 若任何一个 section 无法通过校验，则整体失败（不产生写盘副作用）。
+    """
+
+    planned_ops: List[_PlannedOp] = []
+    changes: List[_Change] = []
+
+    virtual_text: Dict[Path, str] = {}
+    virtual_deleted: set[Path] = set()
+
+    def _v_exists(p: Path) -> bool:
+        """判断 virtual FS 中目标是否存在（考虑 planned add/delete）。"""
+        if p in virtual_deleted:
+            return False
+        if p in virtual_text:
+            return True
+        return p.exists()
+
+    def _v_is_dir(p: Path) -> bool:
+        """判断 virtual FS 中目标是否为目录（优先处理虚拟覆盖）。"""
+        if p in virtual_text:
+            return False
+        if p in virtual_deleted:
+            return False
+        return p.exists() and p.is_dir()
+
+    def _v_read_text(p: Path) -> str:
+        """读取 virtual FS 中的文本内容（优先读取虚拟覆盖）。"""
+        if p in virtual_text:
+            return virtual_text[p]
+        return p.read_text(encoding="utf-8")
+
+    for op, raw_path, body_lines in sections:
+        target = ctx.resolve_path(raw_path)
+
+        if op == "add":
+            if _v_exists(target):
+                raise FileExistsError(f"file already exists: {target}")
+            text = _render_add_file_text(content_lines=body_lines)
+            virtual_text[target] = text
+            virtual_deleted.discard(target)
+            planned_ops.append(_PlannedOp(kind="write_new", path=target, text=text))
+            changes.append(_Change(kind="add", path=raw_path))
+            continue
+
+        if op == "delete":
+            if body_lines:
+                raise ValueError("Delete File section must be empty")
+            if not _v_exists(target):
+                raise FileNotFoundError(f"file not found: {target}")
+            if _v_is_dir(target):
+                raise IsADirectoryError(f"path is a directory: {target}")
+            virtual_text.pop(target, None)
+            virtual_deleted.add(target)
+            planned_ops.append(_PlannedOp(kind="delete", path=target))
+            changes.append(_Change(kind="delete", path=raw_path))
+            continue
+
+        if op == "update":
+            if not _v_exists(target):
+                raise FileNotFoundError(f"file not found: {target}")
+            if _v_is_dir(target):
+                raise IsADirectoryError(f"path is a directory: {target}")
+            original_text = _v_read_text(target)
+            new_text, move_to, _summaries = _apply_update_to_text(original_text, update_lines=body_lines, ctx=ctx)
+            virtual_text[target] = new_text
+            virtual_deleted.discard(target)
+            planned_ops.append(_PlannedOp(kind="write_update", path=target, text=new_text))
+            changes.append(_Change(kind="update", path=raw_path, moved_to=str(move_to) if move_to else None))
+
+            if move_to is not None:
+                if _v_exists(move_to):
+                    raise FileExistsError(f"move target already exists: {move_to}")
+                virtual_text[move_to] = virtual_text[target]
+                virtual_text.pop(target, None)
+                virtual_deleted.add(target)
+                planned_ops.append(_PlannedOp(kind="move", path=target, moved_to=move_to))
+                changes.append(_Change(kind="move", path=raw_path, moved_to=str(move_to)))
+            continue
+
+        raise ValueError(f"unsupported op: {op}")
+
+    return planned_ops, changes
+
+
+def _apply_planned_ops(*, ops: List[_PlannedOp]) -> None:
+    """按规划写盘（假设已通过 dry-run 校验）。"""
+
+    for op in ops:
+        if op.kind == "write_new":
+            if op.text is None:
+                raise ValueError("invalid planned op: missing text")
+            if op.path.exists():
+                raise FileExistsError(f"file already exists: {op.path}")
+            op.path.parent.mkdir(parents=True, exist_ok=True)
+            op.path.write_text(op.text, encoding="utf-8")
+            continue
+        if op.kind == "write_update":
+            if op.text is None:
+                raise ValueError("invalid planned op: missing text")
+            if not op.path.exists():
+                raise FileNotFoundError(f"file not found: {op.path}")
+            if op.path.is_dir():
+                raise IsADirectoryError(f"path is a directory: {op.path}")
+            op.path.write_text(op.text, encoding="utf-8")
+            continue
+        if op.kind == "delete":
+            _delete_file(op.path)
+            continue
+        if op.kind == "move":
+            if op.moved_to is None:
+                raise ValueError("invalid planned op: missing moved_to")
+            if op.moved_to.exists():
+                raise FileExistsError(f"move target already exists: {op.moved_to}")
+            op.moved_to.parent.mkdir(parents=True, exist_ok=True)
+            op.path.rename(op.moved_to)
+            continue
+        raise ValueError(f"invalid planned op kind: {op.kind}")
 
 
 def apply_patch(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
@@ -307,31 +466,36 @@ def apply_patch(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     except (ValueError, IndexError) as e:
         return ToolResult.error_payload(error_kind="validation", stderr=str(e))
 
-    changes: List[_Change] = []
     try:
-        for op, raw_path, body_lines in sections:
-            target = ctx.resolve_path(raw_path)
-            if op == "add":
-                _write_new_file(target, content_lines=body_lines)
-                changes.append(_Change(kind="add", path=raw_path))
-                continue
-            if op == "delete":
-                if body_lines:
-                    raise ValueError("Delete File section must be empty")
-                _delete_file(target)
-                changes.append(_Change(kind="delete", path=raw_path))
-                continue
-            if op == "update":
-                move_to, _summaries = _apply_update(target, update_lines=body_lines, ctx=ctx)
-                changes.append(_Change(kind="update", path=raw_path, moved_to=str(move_to) if move_to else None))
-                if move_to is not None:
-                    if move_to.exists():
-                        raise FileExistsError(f"move target already exists: {move_to}")
-                    move_to.parent.mkdir(parents=True, exist_ok=True)
-                    target.rename(move_to)
-                    changes.append(_Change(kind="move", path=raw_path, moved_to=str(move_to)))
-                continue
-            raise ValueError(f"unsupported op: {op}")
+        changes: List[_Change] = []
+        if len(sections) > 1:
+            # multi-section patch：必须先对所有 section 做 dry-run 校验，成功后才允许写盘。
+            planned_ops, changes = _plan_multi_section_patch(sections=sections, ctx=ctx)
+            _apply_planned_ops(ops=planned_ops)
+        else:
+            for op, raw_path, body_lines in sections:
+                target = ctx.resolve_path(raw_path)
+                if op == "add":
+                    _write_new_file(target, content_lines=body_lines)
+                    changes.append(_Change(kind="add", path=raw_path))
+                    continue
+                if op == "delete":
+                    if body_lines:
+                        raise ValueError("Delete File section must be empty")
+                    _delete_file(target)
+                    changes.append(_Change(kind="delete", path=raw_path))
+                    continue
+                if op == "update":
+                    move_to, _summaries = _apply_update(target, update_lines=body_lines, ctx=ctx)
+                    changes.append(_Change(kind="update", path=raw_path, moved_to=str(move_to) if move_to else None))
+                    if move_to is not None:
+                        if move_to.exists():
+                            raise FileExistsError(f"move target already exists: {move_to}")
+                        move_to.parent.mkdir(parents=True, exist_ok=True)
+                        target.rename(move_to)
+                        changes.append(_Change(kind="move", path=raw_path, moved_to=str(move_to)))
+                    continue
+                raise ValueError(f"unsupported op: {op}")
     except FileNotFoundError as e:
         return ToolResult.error_payload(error_kind="not_found", stderr=str(e))
     except (PermissionError,) as e:

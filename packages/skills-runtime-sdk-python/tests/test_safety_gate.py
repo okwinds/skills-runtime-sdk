@@ -247,3 +247,15 @@ def test_sanitize_for_event_delegates_to_descriptor() -> None:
     event_args = gate.sanitize_for_event(_mk_call("shell_exec", {"argv": ["echo", "hi"]}))
     assert event_args == {"argv": ["echo", "hi"], "env_keys": ["OPENAI_API_KEY"]}
     assert descriptor.event_called == 1
+
+
+def test_descriptor_lookup_exception_is_fail_closed_deny() -> None:
+    safety = _mk_safety(mode="allow")
+
+    def _boom(_: str):
+        raise RuntimeError("boom")
+
+    gate = SafetyGate(safety_config=safety, get_descriptor=_boom)
+    decision = gate.evaluate(_mk_call("shell_exec", {"argv": ["echo", "hi"]}))
+    assert decision.action == "deny"
+    assert decision.matched_rule == "descriptor=deny"

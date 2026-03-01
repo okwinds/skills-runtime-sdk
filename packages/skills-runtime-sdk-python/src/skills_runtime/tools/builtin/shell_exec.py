@@ -26,7 +26,7 @@ class _ShellExecArgs(BaseModel):
     timeout_ms: Optional[int] = Field(default=None, ge=1, description="超时毫秒数（可选）")
     sandbox: Optional[str] = Field(
         default=None,
-        description="OS sandbox 执行策略（可选）：inherit|none|restricted；inherit 将使用 SDK 默认策略。",
+        description="OS sandbox 执行策略（可选）：inherit|restricted；inherit 将使用 SDK 默认策略。",
     )
     sandbox_permissions: Optional[str] = Field(
         default=None,
@@ -57,7 +57,8 @@ SHELL_EXEC_SPEC = ToolSpec(
             "timeout_ms": {"type": "integer", "minimum": 1, "description": "超时毫秒数（可选）"},
             "sandbox": {
                 "type": "string",
-                "description": "OS sandbox 执行策略（可选）：inherit|none|restricted；inherit 将使用 SDK 默认策略。",
+                "enum": ["inherit", "restricted"],
+                "description": "OS sandbox 执行策略（可选）：inherit|restricted；inherit 将使用 SDK 默认策略。",
             },
             "sandbox_permissions": {
                 "type": "string",
@@ -106,7 +107,7 @@ def shell_exec(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     timeout_ms = args.timeout_ms if args.timeout_ms is not None else ctx.default_timeout_ms
     merged_env = ctx.merged_env(args.env)
     sandbox = str(args.sandbox or "inherit").strip().lower()
-    if sandbox not in ("inherit", "none", "restricted"):
+    if sandbox not in ("inherit", "restricted"):
         return ToolResult.error_payload(error_kind="validation", stderr=f"invalid sandbox policy: {sandbox}")
 
     effective_sandbox = ctx.sandbox_policy_default if sandbox == "inherit" else sandbox

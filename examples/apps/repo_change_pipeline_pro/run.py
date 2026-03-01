@@ -161,12 +161,12 @@ def _build_qa_backend() -> FakeChatBackend:
                             ToolCall(
                                 call_id="tc_clear_pycache",
                                 name="shell_exec",
-                                args={"argv": clear_pycache_argv, "timeout_ms": 5000, "sandbox": "none"},
+                                args={"argv": clear_pycache_argv, "timeout_ms": 5000, "sandbox": "inherit"},
                             ),
                             ToolCall(
                                 call_id="tc_pytest",
                                 name="shell_exec",
-                                args={"argv": pytest_argv, "timeout_ms": 15000, "sandbox": "none"},
+                                args={"argv": pytest_argv, "timeout_ms": 15000, "sandbox": "inherit"},
                             ),
                         ],
                         finish_reason="tool_calls",
@@ -399,4 +399,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

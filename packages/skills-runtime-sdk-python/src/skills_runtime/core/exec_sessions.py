@@ -27,6 +27,9 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol, runtime_checkable
 
 
+_CLOSE_GRACE_SEC = 0.2
+
+
 @dataclass
 class ExecSession:
     """进程会话（PTY 模式）。"""
@@ -233,6 +236,22 @@ class ExecSessionManager:
                 os.killpg(pid, signal.SIGTERM)
             else:
                 session.proc.terminate()
+        except OSError:
+            pass
+        try:
+            session.proc.wait(timeout=_CLOSE_GRACE_SEC)
+        except subprocess.TimeoutExpired:
+            try:
+                if pid > 0:
+                    os.killpg(pid, signal.SIGKILL)
+                else:
+                    session.proc.kill()
+            except OSError:
+                pass
+            try:
+                session.proc.wait(timeout=_CLOSE_GRACE_SEC)
+            except subprocess.TimeoutExpired:
+                pass
         except OSError:
             pass
         self._cleanup_session(sid)

@@ -217,7 +217,7 @@ class Executor:
             while True:
                 try:
                     chunk = stream.read(4096)  # type: ignore[attr-defined]
-                except OSError:
+                except (OSError, ValueError):
                     return
                 if not chunk:
                     return
@@ -233,7 +233,8 @@ class Executor:
 
         # 让超时 kill 更可靠：尽量让子进程成为新的进程组 leader。
         if os.name != "nt":
-            popen_kwargs["preexec_fn"] = os.setsid  # type: ignore[assignment]
+            # Python 3.9+：用 `process_group=0` 替代 preexec_fn，避免多线程进程中 fork+preexec 的潜在死锁风险。
+            popen_kwargs["process_group"] = 0
         else:
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
 
@@ -269,6 +270,8 @@ class Executor:
         t_out.start()
         t_err.start()
 
+        reader_deadline = start + (timeout_ms / 1000.0) + (self._terminate_grace_ms / 1000.0)
+
         timeout = False
         cancelled = False
         try:
@@ -301,9 +304,6 @@ class Executor:
             timeout = True
             self._terminate_process(proc)
         finally:
-            t_out.join(timeout=1.0)
-            t_err.join(timeout=1.0)
-            # 若 reader thread 仍未退出，再关闭管道，避免阻塞。
             try:
                 if proc.stdout:
                     proc.stdout.close()
@@ -314,6 +314,13 @@ class Executor:
                     proc.stderr.close()
             except OSError:
                 pass
+            # reader thread 可能因平台/管道边界条件阻塞：确保 join 不会超过 timeout + grace。
+            remaining = max(0.0, reader_deadline - time.monotonic())
+            if remaining > 0:
+                t_out.join(timeout=remaining)
+                remaining = max(0.0, reader_deadline - time.monotonic())
+                if remaining > 0:
+                    t_err.join(timeout=remaining)
 
         duration_ms = int((time.monotonic() - start) * 1000)
         exit_code: Optional[int] = None if (timeout or cancelled) else proc.returncode
@@ -401,7 +408,7 @@ class Executor:
         超时终止子进程：SIGTERM → (grace) → SIGKILL。
 
         注意：
-        - 在 POSIX 下，优先终止进程组（preexec_fn=os.setsid）。
+        - 在 POSIX 下，优先终止进程组（process_group=0）。
         - 在 Windows 下，使用 terminate/kill。
         """
 

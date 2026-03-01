@@ -48,8 +48,8 @@ def _matches_prefixes(argv: List[str], prefixes: Iterable[str]) -> Optional[str]
     判断 argv 是否命中任意前缀规则。
 
     匹配策略（稳定、可复现）：
-    - 若 prefix 含空格：按完整命令串前缀匹配（`<cmd> <args...>`）。
-    - 否则：优先匹配 argv[0]（命令名），其次匹配完整命令串前缀。
+    - 若 prefix 含空格：按完整命令串匹配（精确或以空格为边界的前缀）。
+    - 否则：仅做 argv[0] 的精确匹配（避免 `git` 误匹配 `git-receive-pack`）。
 
     返回：
     - 命中的 prefix（字符串）；未命中返回 None。
@@ -62,10 +62,10 @@ def _matches_prefixes(argv: List[str], prefixes: Iterable[str]) -> Optional[str]
         if not pp:
             continue
         if " " in pp:
-            if full.startswith(pp):
+            if full == pp or full.startswith(pp + " "):
                 return pp
             continue
-        if cmd0 == pp or full.startswith(pp):
+        if cmd0 == pp:
             return pp
     return None
 

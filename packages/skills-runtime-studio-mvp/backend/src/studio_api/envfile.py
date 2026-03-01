@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -17,5 +18,6 @@ def load_dotenv_for_workspace(*, workspace_root: Path) -> Optional[Path]:
     - 实际加载的 env 文件路径（未加载则返回 None）
     """
 
-    return agent_bootstrap.load_dotenv_if_present(workspace_root=workspace_root, override=False)
-
+    env_file, dotenv_env = agent_bootstrap.load_dotenv_if_present(workspace_root=workspace_root, override=False)
+    os.environ.update(dotenv_env)
+    return env_file

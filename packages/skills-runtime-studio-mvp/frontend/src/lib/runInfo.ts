@@ -1,10 +1,6 @@
 import type { StreamRunEvent } from './api';
 
-type RecordLike = Record<string, unknown>;
-
-function isRecord(value: unknown): value is RecordLike {
-  return typeof value === 'object' && value !== null;
-}
+import { isRecord, type RecordLike } from './typeGuards';
 
 function readPayload(data: unknown): RecordLike | null {
   if (!isRecord(data)) return null;

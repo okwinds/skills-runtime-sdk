@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 import uuid
 from pathlib import Path
@@ -460,7 +461,8 @@ def _prepare_bootstrap_for_cli(args: argparse.Namespace) -> Tuple[Optional[Path]
 
     if not bool(args.no_dotenv):
         try:
-            env_file = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+            env_file, dotenv_env = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+            os.environ.update(dotenv_env)
         except (OSError, Exception) as exc:
             # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
             dotenv_error = str(exc)
@@ -1475,7 +1477,8 @@ def _handle_preflight(args: argparse.Namespace) -> int:
     if ws is not None:
         if not bool(args.no_dotenv):
             try:
-                env_file = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+                env_file, dotenv_env = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+                os.environ.update(dotenv_env)
             except Exception as exc:
                 # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
                 issues.append(
@@ -1538,7 +1541,8 @@ def _handle_scan(args: argparse.Namespace) -> int:
     if ws is not None:
         if not bool(args.no_dotenv):
             try:
-                bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+                _env_file, dotenv_env = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+                os.environ.update(dotenv_env)
             except Exception as exc:
                 # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
                 issues.append(

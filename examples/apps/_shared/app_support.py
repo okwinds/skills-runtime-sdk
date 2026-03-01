@@ -66,63 +66,56 @@ def write_overlay_for_app(
     """
 
     overlay = workspace_root / "runtime.yaml"
-    lines: List[str] = []
-    lines.extend(
-        [
-            "run:",
-            f"  max_steps: {int(max_steps)}",
-            "safety:",
-            f"  mode: {json.dumps(str(safety_mode))}",
-            "  approval_timeout_ms: 60000",
-            "  # 面向人类的应用示例：默认放行“只读/低风险”工具，降低交互成本；",
-            "  # 同时保留对高风险工具（file_write/shell_exec/apply_patch...）的审批体验。",
-            "  tool_allowlist:",
-            "    - \"read_file\"",
-            "    - \"grep_files\"",
-            "    - \"list_dir\"",
-            "sandbox:",
-            "  default_policy: none",
-            "skills:",
-            "  strictness:",
-            "    unknown_mention: error",
-            "    duplicate_name: error",
-            "    mention_format: strict",
-            "  references:",
-            f"    enabled: {str(bool(enable_references)).lower()}",
-            "  actions:",
-            f"    enabled: {str(bool(enable_actions)).lower()}",
-            "  spaces:",
-            "    - id: app-space",
-            "      namespace: \"examples:app\"",
-            "      sources: [app-fs]",
-            "      enabled: true",
-            "  sources:",
-            "    - id: app-fs",
-            "      type: filesystem",
-            "      options:",
-            f"        root: {json.dumps(str(skills_root.resolve()))}",
-        ]
-    )
+    cfg: Dict[str, Any] = {
+        "run": {"max_steps": int(max_steps)},
+        "safety": {
+            "mode": str(safety_mode),
+            "approval_timeout_ms": 60000,
+            "tool_allowlist": ["read_file", "grep_files", "list_dir"],
+        },
+        "sandbox": {"default_policy": "none"},
+        "skills": {
+            "strictness": {
+                "unknown_mention": "error",
+                "duplicate_name": "error",
+                "mention_format": "strict",
+            },
+            "references": {"enabled": bool(enable_references)},
+            "actions": {"enabled": bool(enable_actions)},
+            "spaces": [
+                {
+                    "id": "app-space",
+                    "namespace": "examples:app",
+                    "sources": ["app-fs"],
+                    "enabled": True,
+                }
+            ],
+            "sources": [
+                {
+                    "id": "app-fs",
+                    "type": "filesystem",
+                    "options": {"root": str(skills_root.resolve())},
+                }
+            ],
+        },
+    }
 
     if llm_base_url is not None:
-        lines.extend(
-            [
-                "llm:",
-                f"  base_url: {json.dumps(str(llm_base_url))}",
-                "  api_key_env: \"OPENAI_API_KEY\"",
-                "  timeout_sec: 60",
-                "  retry:",
-                "    max_retries: 2",
-            ]
-        )
+        cfg["llm"] = {
+            "base_url": str(llm_base_url),
+            "api_key_env": "OPENAI_API_KEY",
+            "timeout_sec": 60,
+            "retry": {"max_retries": 2},
+        }
     if planner_model is not None or executor_model is not None:
-        lines.append("models:")
+        models_cfg: Dict[str, str] = {}
         if planner_model is not None:
-            lines.append(f"  planner: {json.dumps(str(planner_model))}")
+            models_cfg["planner"] = str(planner_model)
         if executor_model is not None:
-            lines.append(f"  executor: {json.dumps(str(executor_model))}")
+            models_cfg["executor"] = str(executor_model)
+        cfg["models"] = models_cfg
 
-    overlay.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    overlay.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return overlay
 
 

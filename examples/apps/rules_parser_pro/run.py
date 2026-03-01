@@ -93,7 +93,7 @@ def _build_offline_backend(*, plan_json: str, result_json: str, report_md: str) 
                             ToolCall(call_id="tc_plan1", name="update_plan", args=plan_1),
                             ToolCall(call_id="tc_plan_write", name="file_write", args={"path": "plan.json", "content": plan_json}),
                             ToolCall(call_id="tc_result_write", name="file_write", args={"path": "result.json", "content": result_json}),
-                            ToolCall(call_id="tc_qa", name="shell_exec", args={"argv": qa_argv, "timeout_ms": 5000, "sandbox": "none"}),
+                            ToolCall(call_id="tc_qa", name="shell_exec", args={"argv": qa_argv, "timeout_ms": 5000, "sandbox": "inherit"}),
                             ToolCall(call_id="tc_plan2", name="update_plan", args=plan_2),
                             ToolCall(call_id="tc_report", name="file_write", args={"path": "report.md", "content": report_md}),
                         ],

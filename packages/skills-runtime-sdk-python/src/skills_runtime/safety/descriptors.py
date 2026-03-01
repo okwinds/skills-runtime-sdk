@@ -170,6 +170,33 @@ class ShellExecDescriptor:
         return self.sanitize_for_approval(args, **ctx)
 
 
+class DenyDescriptor:
+    """
+    Fail-closed descriptor：用于 descriptor 获取失败等异常场景。
+
+    说明：
+    - policy_category='deny' 由 SafetyGate 直接解释为拒绝执行。
+    - sanitize_* 仅返回最小可审计信息，避免泄露 args。
+    """
+
+    policy_category = "deny"
+
+    def extract_risk(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        """返回 fail-closed 的高风险占位信息（descriptor lookup 失败）。"""
+        _ = (args, ctx)
+        return {"argv": [], "risk_level": "high", "reason": "Descriptor lookup failed (fail-closed)."}
+
+    def sanitize_for_approval(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        """返回 approvals 侧最小错误信息（不泄露 args）。"""
+        _ = (args, ctx)
+        return {"error": "Descriptor lookup failed; denying tool execution."}
+
+    def sanitize_for_event(self, args: Dict[str, Any], **ctx: Any) -> Dict[str, Any]:
+        """返回事件侧最小错误信息（不泄露 args）。"""
+        _ = (args, ctx)
+        return {"error": "Descriptor lookup failed; denying tool execution."}
+
+
 class ShellDescriptor:
     """`shell` 的安全描述符（语义复用 shell_exec，但字段为 `command`）。"""
 
