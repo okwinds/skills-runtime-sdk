@@ -20,6 +20,17 @@ from skills_runtime.tools.protocol import ToolCall
 from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 
 
+def _find_repo_root() -> Path:
+    """从脚本文件路径向上查找 repo root（包含 `.git` 或 `pyproject.toml`）。"""
+
+    file_value = globals().get("__file__")
+    start = Path(file_value).resolve() if file_value else Path.cwd().resolve()
+    for parent in [start] + list(start.parents):
+        if (parent / ".git").exists() or (parent / "pyproject.toml").exists():
+            return parent
+    raise RuntimeError(f"repo root not found from {start}")
+
+
 def _run_tools_cli(*, repo_root: Path, workspace_root: Path, argv: list[str], timeout_sec: int = 20) -> dict:
     """
     通过子进程调用 tools CLI，并返回 JSON payload。
@@ -67,8 +78,7 @@ def main() -> int:
     parser.add_argument("--workspace-root", default=".", help="Workspace root path")
     args = parser.parse_args()
 
-    # repo_root = .../skills-runtime-sdk（本文件位于 docs_for_coding_agent/examples/tools/<example>/run.py）
-    repo_root = Path(__file__).resolve().parents[4]
+    repo_root = _find_repo_root()
     workspace_root = Path(args.workspace_root).resolve()
     workspace_root.mkdir(parents=True, exist_ok=True)
 

@@ -13,9 +13,22 @@ from pathlib import Path
 
 # 说明：用户可能用 `python examples/apps/<app>/run.py` 从任意 cwd 启动，
 # 此时 repo_root 未必在 sys.path，导致 `import examples.*` 失败。
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+def _find_repo_root() -> Path:
+    """从脚本文件路径向上查找 repo root（包含 `.git` 或 `pyproject.toml`）。"""
+
+    file_value = globals().get("__file__")
+    start = Path(file_value).resolve() if file_value else Path.cwd().resolve()
+    for parent in [start] + list(start.parents):
+        if (parent / ".git").exists() or (parent / "pyproject.toml").exists():
+            return parent
+    raise RuntimeError(f"repo root not found from {start}")
+
+
+_REPO_ROOT = _find_repo_root()
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+# main()
 
 from examples.apps._shared.app_support import (
     ScriptedApprovalProvider,

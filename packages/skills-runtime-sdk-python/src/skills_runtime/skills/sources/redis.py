@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, MutableMapping
+from typing import Any, Callable, Dict, Iterator, List, Mapping, MutableMapping
 
 from skills_runtime.config.loader import AgentSdkSkillsConfig
 from skills_runtime.core.errors import FrameworkError, FrameworkIssue
@@ -63,6 +64,18 @@ def get_redis_client(
         ) from exc
     runtime_source_clients[source.id] = client
     return client
+
+
+@contextlib.contextmanager
+def _redis_client_context(
+    *,
+    source: AgentSdkSkillsConfig.Source,
+    get_redis_client_for_source: Callable[[AgentSdkSkillsConfig.Source], Any],
+) -> Iterator[Any]:
+    """Context manager for getting a Redis client (factory indirection for reconnect/swapping)."""
+
+    client = get_redis_client_for_source(source)
+    yield client
 
 
 def ensure_redis_bundle_extracted(
@@ -400,9 +413,15 @@ def scan_redis_source(
                         details={"source_id": source.id, "locator": locator, "field": "bundle_format"},
                     )
 
-            def _load_body(client_ref: Any = client, body_key_ref: str = body_key) -> str:
+            def _load_body(
+                redis_client_context_ref=_redis_client_context,
+                get_redis_client_for_source_ref=get_redis_client_for_source,
+                source_ref: AgentSdkSkillsConfig.Source = source,
+                body_key_ref: str = body_key,
+            ) -> str:
                 """延迟加载 skill body（按 redis key 读取）。"""
-                body_raw = client_ref.get(body_key_ref)
+                with redis_client_context_ref(source=source_ref, get_redis_client_for_source=get_redis_client_for_source_ref) as client_ref:
+                    body_raw = client_ref.get(body_key_ref)
                 if body_raw is None:
                     raise FileNotFoundError(f"missing body key: {body_key_ref}")
                 if isinstance(body_raw, bytes):

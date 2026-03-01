@@ -10,10 +10,13 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+import logging
 from typing import Any, Dict, List, Optional, Set
 
 from skills_runtime.core.contracts import AgentEvent
 from skills_runtime.state.wal_protocol import WalBackend
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -32,7 +35,7 @@ class ResumeInfo:
 
 def _load_existing_run_events(*, wal: WalBackend, run_id: str) -> tuple[List[AgentEvent], int, List[AgentEvent]]:
     """从 WAL 读取指定 run_id 的历史事件，并返回全量/计数/尾部窗口。"""
-    existing_events_all = [ev for ev in wal.iter_events() if ev.run_id == run_id]
+    existing_events_all = list(wal.iter_events(run_id=run_id))
     existing_events_count = len(existing_events_all)
     existing_events_tail: List[AgentEvent] = list(deque(existing_events_all, maxlen=200))
     return existing_events_all, existing_events_count, existing_events_tail
@@ -133,6 +136,7 @@ def prepare_resume(
             resume_replay_approved = st.approved_for_session_keys
         except Exception:
             # 防御性兜底：回放失败时回退到 Phase 2 summary-based resume；可能因 WAL 损坏等原因。
+            logger.warning("Resume replay failed; falling back to summary-based resume", exc_info=True)
             resume_replay_history = None
             resume_replay_denied = {}
             resume_replay_approved = set()

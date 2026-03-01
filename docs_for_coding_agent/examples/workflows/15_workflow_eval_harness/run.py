@@ -35,6 +35,17 @@ class ArtifactSnapshot:
     sha256: str
 
 
+def _find_repo_root() -> Path:
+    """从脚本文件路径向上查找 repo root（包含 `.git` 或 `pyproject.toml`）。"""
+
+    file_value = globals().get("__file__")
+    start = Path(file_value).resolve() if file_value else Path.cwd().resolve()
+    for parent in [start] + list(start.parents):
+        if (parent / ".git").exists() or (parent / "pyproject.toml").exists():
+            return parent
+    raise RuntimeError(f"repo root not found from {start}")
+
+
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
@@ -186,7 +197,7 @@ def main() -> int:
         if wf_id not in WORKFLOWS:
             raise SystemExit(f"unknown workflow id: {wf_id} (supported: {sorted(WORKFLOWS.keys())})")
 
-    repo_root = Path(__file__).resolve().parents[4]
+    repo_root = _find_repo_root()
     workspace_root = Path(args.workspace_root).resolve()
     workspace_root.mkdir(parents=True, exist_ok=True)
 

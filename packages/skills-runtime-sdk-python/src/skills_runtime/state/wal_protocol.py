@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from typing import Iterator, List, Protocol, runtime_checkable
+from typing import Iterator, List, Optional, Protocol, runtime_checkable
 
 from skills_runtime.core.contracts import AgentEvent
 
@@ -32,8 +32,8 @@ class WalBackend(Protocol):
 
         ...
 
-    def iter_events(self) -> Iterator[AgentEvent]:
-        """按写入顺序迭代 WAL 中的事件。"""
+    def iter_events(self, *, run_id: Optional[str] = None) -> Iterator[AgentEvent]:
+        """按写入顺序迭代 WAL 中的事件（可选按 run_id 过滤）。"""
 
         ...
 
@@ -76,10 +76,11 @@ class InMemoryWal:
             self._events.append(event)
             return idx
 
-    def iter_events(self) -> Iterator[AgentEvent]:
-        """按写入顺序迭代 WAL 中的事件（返回快照）。"""
+    def iter_events(self, *, run_id: Optional[str] = None) -> Iterator[AgentEvent]:
+        """按写入顺序迭代 WAL 中的事件（返回快照，可选按 run_id 过滤）。"""
 
         with self._lock:
             snap = list(self._events)
-        return iter(snap)
-
+        if run_id is None:
+            return iter(snap)
+        return (ev for ev in snap if ev.run_id == run_id)

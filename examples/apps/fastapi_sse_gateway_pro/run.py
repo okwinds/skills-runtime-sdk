@@ -21,7 +21,18 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple
 
 # 说明：用户可能从任意 cwd 启动本脚本；为避免 `import examples.*` 依赖 cwd，显式注入 repo_root。
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+def _find_repo_root() -> Path:
+    """从脚本文件路径向上查找 repo root（包含 `.git` 或 `pyproject.toml`）。"""
+
+    file_value = globals().get("__file__")
+    start = Path(file_value).resolve() if file_value else Path.cwd().resolve()
+    for parent in [start] + list(start.parents):
+        if (parent / ".git").exists() or (parent / "pyproject.toml").exists():
+            return parent
+    raise RuntimeError(f"repo root not found from {start}")
+
+
+_REPO_ROOT = _find_repo_root()
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 

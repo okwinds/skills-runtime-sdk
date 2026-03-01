@@ -17,6 +17,7 @@ import json
 import os
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -87,6 +88,50 @@ def _resolve_overlay_path(workspace_root: Path, raw: str) -> Path:
     if not p.is_absolute():
         p = (workspace_root / p).resolve()
     return p.resolve()
+
+
+@dataclass
+class _BootstrapResult:
+    """workspace bootstrap 的返回结构（CLI 内部使用）。"""
+
+    ws: Optional[Path]
+    overlay_paths: List[Path]
+    issues: List[FrameworkIssue]
+    dotenv_env: Dict[str, str]
+    env_file: Optional[Path]
+    dotenv_error: Optional[str]
+
+
+def _bootstrap_workspace(args: argparse.Namespace, *, load_dotenv: bool = True) -> _BootstrapResult:
+    """通用 workspace bootstrap：解析 workspace_root、按需加载 dotenv、发现 overlays。"""
+
+    ws, ws_issue = _resolve_workspace_root(str(args.workspace_root))
+    issues: List[FrameworkIssue] = [ws_issue] if ws_issue is not None else []
+    overlay_paths: List[Path] = []
+    dotenv_env: Dict[str, str] = {}
+    env_file: Optional[Path] = None
+    dotenv_error: Optional[str] = None
+
+    if ws is not None:
+        if load_dotenv and not bool(getattr(args, "no_dotenv", False)):
+            try:
+                env_file, dotenv_env = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+                os.environ.update(dotenv_env)
+            except Exception as exc:
+                dotenv_error = str(exc)
+                issues.append(
+                    FrameworkIssue(
+                        code="CLI_DOTENV_LOAD_FAILED",
+                        message="Dotenv load failed.",
+                        details={"workspace_root": str(ws), "reason": str(exc)},
+                    )
+                )
+
+        overlay_paths.extend(bootstrap.discover_overlay_paths(workspace_root=ws))
+        for raw in list(getattr(args, "config", None) or []):
+            overlay_paths.append(_resolve_overlay_path(ws, str(raw)))
+
+    return _BootstrapResult(ws, overlay_paths, issues, dotenv_env, env_file, dotenv_error)
 
 
 def _load_yaml_mapping(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[FrameworkIssue]]:
@@ -448,30 +493,11 @@ def _prepare_bootstrap_for_cli(args: argparse.Namespace) -> Tuple[Optional[Path]
     - dotenv_error（若加载失败则为错误字符串；成功/未启用则 None）
     """
 
-    ws, ws_issue = _resolve_workspace_root(str(args.workspace_root))
-    if ws_issue is not None:
-        return None, [], None, ws_issue.message
-
-    overlay_paths: List[Path] = []
-    env_file: Optional[Path] = None
-    dotenv_error: Optional[str] = None
-
-    if ws is None:
-        return None, [], None, "workspace_root is invalid"
-
-    if not bool(args.no_dotenv):
-        try:
-            env_file, dotenv_env = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
-            os.environ.update(dotenv_env)
-        except (OSError, Exception) as exc:
-            # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
-            dotenv_error = str(exc)
-
-    overlay_paths.extend(bootstrap.discover_overlay_paths(workspace_root=ws))
-    for raw in list(getattr(args, "config", []) or []):
-        overlay_paths.append(_resolve_overlay_path(ws, str(raw)))
-
-    return ws, overlay_paths, env_file, dotenv_error
+    r = _bootstrap_workspace(args)
+    if r.ws is None:
+        ws_issue = r.issues[0] if r.issues else None
+        return None, [], None, ws_issue.message if ws_issue is not None else "workspace_root is invalid"
+    return r.ws, r.overlay_paths, r.env_file, r.dotenv_error
 
 
 def _dispatch_builtin_tool(
@@ -551,7 +577,9 @@ def _require_yes_or_human_required(tool_name: str) -> ToolResult:
 def _handle_tools_list_dir(args: argparse.Namespace) -> int:
     """执行 `tools list-dir`。"""
 
-    ws, overlays, env_file, dotenv_error = _prepare_bootstrap_for_cli(args)
+    r = _bootstrap_workspace(args)
+    ws, overlays, env_file = r.ws, r.overlay_paths, r.env_file
+    dotenv_error = r.dotenv_error or (r.issues[0].message if r.issues else None)
     if ws is None:
         result = ToolResult.error_payload(error_kind="validation", stderr="workspace_root is invalid")
         _dump_tools_cli_payload(
@@ -587,7 +615,9 @@ def _handle_tools_list_dir(args: argparse.Namespace) -> int:
 def _handle_tools_grep_files(args: argparse.Namespace) -> int:
     """执行 `tools grep-files`。"""
 
-    ws, overlays, env_file, dotenv_error = _prepare_bootstrap_for_cli(args)
+    r = _bootstrap_workspace(args)
+    ws, overlays, env_file = r.ws, r.overlay_paths, r.env_file
+    dotenv_error = r.dotenv_error or (r.issues[0].message if r.issues else None)
     if ws is None:
         result = ToolResult.error_payload(error_kind="validation", stderr="workspace_root is invalid")
         _dump_tools_cli_payload(
@@ -771,7 +801,9 @@ def _handle_tools_apply_patch(args: argparse.Namespace) -> int:
 def _handle_tools_read_file(args: argparse.Namespace) -> int:
     """执行 `tools read-file`。"""
 
-    ws, overlays, env_file, dotenv_error = _prepare_bootstrap_for_cli(args)
+    r = _bootstrap_workspace(args)
+    ws, overlays, env_file = r.ws, r.overlay_paths, r.env_file
+    dotenv_error = r.dotenv_error or (r.issues[0].message if r.issues else None)
     if ws is None:
         result = ToolResult.error_payload(error_kind="validation", stderr="workspace_root is invalid")
         _dump_tools_cli_payload(
@@ -1467,31 +1499,8 @@ def _handle_tools_resume_agent(args: argparse.Namespace) -> int:
 def _handle_preflight(args: argparse.Namespace) -> int:
     """执行 `skills preflight` 并输出 JSON。"""
 
-    ws, ws_issue = _resolve_workspace_root(str(args.workspace_root))
-    overlay_paths: List[Path] = []
-    env_file: Optional[Path] = None
-
-    issues: List[FrameworkIssue] = []
-    if ws_issue is not None:
-        issues.append(ws_issue)
-    if ws is not None:
-        if not bool(args.no_dotenv):
-            try:
-                env_file, dotenv_env = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
-                os.environ.update(dotenv_env)
-            except Exception as exc:
-                # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
-                issues.append(
-                    FrameworkIssue(
-                        code="CLI_DOTENV_LOAD_FAILED",
-                        message="Dotenv load failed.",
-                        details={"workspace_root": str(ws), "reason": str(exc)},
-                    )
-                )
-
-        overlay_paths.extend(bootstrap.discover_overlay_paths(workspace_root=ws))
-        for raw in list(args.config or []):
-            overlay_paths.append(_resolve_overlay_path(ws, str(raw)))
+    r = _bootstrap_workspace(args)
+    ws, overlay_paths, env_file, issues = r.ws, r.overlay_paths, r.env_file, r.issues
 
     overlay_paths_str = [str(p) for p in overlay_paths]
 
@@ -1531,31 +1540,8 @@ def _handle_preflight(args: argparse.Namespace) -> int:
 def _handle_scan(args: argparse.Namespace) -> int:
     """执行 `skills scan` 并输出 ScanReport JSON。"""
 
-    ws, ws_issue = _resolve_workspace_root(str(args.workspace_root))
-    overlay_paths: List[Path] = []
-    issues: List[FrameworkIssue] = []
-
-    if ws_issue is not None:
-        issues.append(ws_issue)
-
-    if ws is not None:
-        if not bool(args.no_dotenv):
-            try:
-                _env_file, dotenv_env = bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
-                os.environ.update(dotenv_env)
-            except Exception as exc:
-                # 防御性兜底：dotenv 加载可能因 IO 或解析错误失败。
-                issues.append(
-                    FrameworkIssue(
-                        code="CLI_DOTENV_LOAD_FAILED",
-                        message="Dotenv load failed.",
-                        details={"workspace_root": str(ws), "reason": str(exc)},
-                    )
-                )
-
-        overlay_paths.extend(bootstrap.discover_overlay_paths(workspace_root=ws))
-        for raw in list(args.config or []):
-            overlay_paths.append(_resolve_overlay_path(ws, str(raw)))
+    r = _bootstrap_workspace(args)
+    ws, overlay_paths, issues = r.ws, r.overlay_paths, r.issues
 
     report: ScanReport
     if ws is None or issues:

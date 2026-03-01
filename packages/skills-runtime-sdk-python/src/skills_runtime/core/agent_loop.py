@@ -1,10 +1,6 @@
 """AgentLoop（Phase 2）：对外入口与最小 run loop。"""
 from __future__ import annotations
-import asyncio
-import contextlib
-import inspect
-import time
-import uuid
+import asyncio, contextlib, inspect, time, uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
@@ -50,26 +46,12 @@ class AgentLoop:
     def __init__(
         self,
         *,
-        workspace_root: Path,
-        config: AgentSdkConfig,
-        config_overlay_paths: List[str],
-        planner_model: str,
-        executor_model: str,
-        backend: Optional[ChatBackend],
-        executor: Executor,
-        human_io: Optional[HumanIOProvider],
-        approval_provider: Optional[ApprovalProvider],
-        cancel_checker: Optional[Callable[[], bool]],
-        safety: Any,
-        approved_for_session_keys: set[str],
-        exec_sessions: Optional[ExecSessionsProvider],
-        collab_manager: Optional[object],
-        wal_backend: Optional[WalBackend],
-        event_hooks: Sequence[Callable[[AgentEvent], None]],
-        env_store: Dict[str, str],
-        skills_manager: SkillsManager,
-        prompt_manager: PromptManager,
-        extra_tools: List[Tuple[ToolSpec, Any, bool]],
+        workspace_root: Path, config: AgentSdkConfig, config_overlay_paths: List[str],
+        planner_model: str, executor_model: str, backend: Optional[ChatBackend], executor: Executor,
+        human_io: Optional[HumanIOProvider], approval_provider: Optional[ApprovalProvider], cancel_checker: Optional[Callable[[], bool]],
+        safety: Any, approved_for_session_keys: set[str], exec_sessions: Optional[ExecSessionsProvider], collab_manager: Optional[object],
+        wal_backend: Optional[WalBackend], event_hooks: Sequence[Callable[[AgentEvent], None]],
+        env_store: Dict[str, str], skills_manager: SkillsManager, prompt_manager: PromptManager, extra_tools: List[Tuple[ToolSpec, Any, bool]],
     ) -> None:
         """
         初始化 AgentLoop（由 Agent 负责配置装配后注入运行态依赖）。

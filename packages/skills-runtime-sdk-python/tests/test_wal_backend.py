@@ -35,6 +35,29 @@ def test_in_memory_wal_append_and_iter_events_order() -> None:
     assert list(wal.iter_events()) == [e1, e2]
 
 
+def test_wal_iter_events_run_id_filter(tmp_path: Path) -> None:
+    from skills_runtime.core.contracts import AgentEvent
+
+    e1 = AgentEvent(type="run_started", timestamp="2026-02-05T00:00:00Z", run_id="r1", payload={"n": 1})
+    e2 = AgentEvent(type="run_started", timestamp="2026-02-05T00:00:00Z", run_id="r2", payload={"n": 2})
+    e3 = AgentEvent(type="run_completed", timestamp="2026-02-05T00:00:01Z", run_id="r1", payload={"n": 3})
+
+    wal = InMemoryWal(locator_str="wal://in-memory/filter")
+    wal.append(e1)
+    wal.append(e2)
+    wal.append(e3)
+
+    assert list(wal.iter_events(run_id="r1")) == [e1, e3]
+    assert list(wal.iter_events(run_id="r2")) == [e2]
+
+    jsonl: WalBackend = JsonlWal(tmp_path / "events.jsonl")
+    jsonl.append(e1)
+    jsonl.append(e2)
+    jsonl.append(e3)
+    assert list(jsonl.iter_events(run_id="r1")) == [e1, e3]
+    assert list(jsonl.iter_events(run_id="r2")) == [e2]
+
+
 def test_jsonl_wal_satisfies_wal_backend(tmp_path: Path) -> None:
     wal: WalBackend = JsonlWal(tmp_path / "events.jsonl")
     assert isinstance(wal.locator(), str) and wal.locator()

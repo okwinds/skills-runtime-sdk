@@ -5,7 +5,6 @@ SkillsManager（配置驱动 scan + strict mentions + lazy-load 注入）。
 - `docs/specs/skills-runtime-sdk/docs/skills.md`
 - `docs/specs/skills-runtime-sdk/docs/configuration.md`
 """
-
 from __future__ import annotations
 
 import json
@@ -49,11 +48,8 @@ from skills_runtime.skills.sources.redis import (
     get_redis_client as _get_redis_client_impl,
     scan_redis_source as _scan_redis_source_impl,
 )
-
-
 class SkillsManager:
     """Skills 管理器。"""
-
     def __init__(
         self,
         *,
@@ -70,7 +66,6 @@ class SkillsManager:
         - `in_memory_registry`：in-memory source 注入注册表
         - `source_clients`：按 source_id 注入 redis/pgsql 客户端（用于离线测试/嵌入）
         """
-
         self._workspace_root = Path(workspace_root).resolve()
         self._in_memory_registry = in_memory_registry or {}
         self._source_clients = dict(source_clients or {})
@@ -99,12 +94,10 @@ class SkillsManager:
 
     def _bundle_cache_root(self) -> Path:
         """bundle 解压缓存根目录（runtime-owned，可删可重建）。"""
-
         return _bundle_cache_root(workspace_root=self._workspace_root, cache_dir_raw=self._bundle_cache_dir_raw)
 
     def _find_source_by_id(self, source_id: str) -> AgentSdkSkillsConfig.Source:
         """按 source_id 查找 source 配置，找不到则 fail-fast。"""
-
         for s in self._skills_config.sources:
             if s.id == source_id:
                 return s
@@ -135,13 +128,11 @@ class SkillsManager:
     @staticmethod
     def _now_monotonic() -> float:
         """返回单调时间（用于 TTL 计算；便于测试注入）。"""
-
         return time.monotonic()
 
     @property
     def workspace_root(self) -> Path:
         """返回 workspace 根目录。"""
-
         return self._workspace_root
 
     @property
@@ -153,7 +144,6 @@ class SkillsManager:
         - 当 `scan()` 因 `FrameworkError`（例如 duplicate）早失败抛错时，manager 仍会尽力在抛错前写入 `_scan_report`。
         - CLI 等上层可用该属性在失败时输出可观测报告，但不得修改 scan 的既有语义。
         """
-
         return self._scan_report
 
     def _scan_refresh_policy_from_config(self) -> tuple[str, int]:
@@ -164,13 +154,11 @@ class SkillsManager:
         - refresh_policy：always|ttl|manual
         - ttl_sec：int（仅 ttl 生效）
         """
-
         scan = self._skills_config.scan
         return str(scan.refresh_policy), int(scan.ttl_sec)
 
     def _scan_cache_key_for_current_config(self) -> str:
         """为 scan 缓存生成 key（绑定 skills 配置 + scan options）。"""
-
         payload = {
             "skills": self._skills_config.model_dump(mode="json"),
             "scan_options": dict(self._scan_options),
@@ -179,7 +167,6 @@ class SkillsManager:
 
     def _scan_refresh_failed_warning(self, *, refresh_policy: str, reason: str) -> FrameworkIssue:
         """构造 refresh 失败但回退缓存时的 warning。"""
-
         return FrameworkIssue(
             code="SKILL_SCAN_REFRESH_FAILED",
             message="Skill scan refresh failed; returning cached result.",
@@ -188,7 +175,6 @@ class SkillsManager:
 
     def _build_sources_map(self) -> Dict[str, AgentSdkSkillsConfig.Source]:
         """构建 source id -> source 的映射。"""
-
         out: Dict[str, AgentSdkSkillsConfig.Source] = {}
         for source in self._skills_config.sources:
             src = source
@@ -199,7 +185,6 @@ class SkillsManager:
 
     def _validate_config(self) -> List[FrameworkIssue]:
         """验证 skills 配置完整性。"""
-
         normalized, errors = _validate_and_normalize_config(self._skills_config)
         self._skills_config = normalized
         return errors
@@ -216,7 +201,6 @@ class SkillsManager:
         warnings: List[FrameworkIssue],
     ) -> ScanReport:
         """构建 scan 报告对象。"""
-
         enabled_spaces = [s for s in self._skills_config.spaces if s.enabled]
         return ScanReport(
             scan_id=f"scan_{uuid.uuid4().hex[:12]}",
@@ -280,7 +264,6 @@ class SkillsManager:
 
     def _get_pgsql_client(self, source: AgentSdkSkillsConfig.Source) -> Any:
         """获取 pgsql client（优先注入，其次按 dsn_env 初始化）。"""
-
         return _get_pgsql_client_impl(
             source=source,
             source_clients=self._source_clients,
@@ -289,7 +272,6 @@ class SkillsManager:
 
     def _parse_json_string_field(self, value: Any, *, field: str, source_id: str, locator: str) -> Any:
         """解析以 JSON 字符串编码的 metadata 字段。"""
-
         if value is None:
             return None
         if not isinstance(value, str):
@@ -342,7 +324,6 @@ class SkillsManager:
         errors: List[FrameworkIssue],
     ) -> None:
         """扫描 redis source（metadata-only）。"""
-
         _scan_redis_source_impl(
             space=space,
             source=source,
@@ -353,7 +334,6 @@ class SkillsManager:
 
     def _safe_identifier(self, raw: Any, *, field: str, source_id: str) -> str:
         """校验 SQL 标识符安全性。"""
-
         if not isinstance(raw, str) or not raw:
             raise FrameworkError(
                 code="SKILL_SCAN_METADATA_INVALID",

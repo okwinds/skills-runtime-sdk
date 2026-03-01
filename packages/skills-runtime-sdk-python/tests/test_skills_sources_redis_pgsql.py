@@ -293,6 +293,48 @@ def test_redis_source_scan_and_inject_success(tmp_path: Path) -> None:
     assert redis_client.get_calls == [body_key]
 
 
+def test_redis_source_body_loader_uses_client_factory(tmp_path: Path) -> None:
+    meta_key = "skills:meta:alice:engineering:python_testing"
+    body_key = "skills:body:alice:engineering:python_testing"
+
+    meta_hash = {
+        "skill_name": "python_testing",
+        "description": "pytest patterns",
+        "created_at": TS,
+        "required_env_vars": "[]",
+        "metadata": "{}",
+        "body_key": body_key,
+    }
+
+    old = FakeRedisClient(
+        scan_keys=[meta_key],
+        hashes={meta_key: meta_hash},
+        bodies={body_key: "# OLD BODY\n"},
+    )
+    new = FakeRedisClient(
+        scan_keys=[],
+        hashes={},
+        bodies={body_key: "# NEW BODY\n"},
+    )
+
+    mgr = _mk_manager(
+        tmp_path,
+        skills=_redis_skills_config({"key_prefix": "skills:"}),
+        source_clients={"src-redis": old},
+    )
+    mgr.scan()
+    skill, mention = mgr.resolve_mentions("$[alice:engineering].python_testing")[0]
+
+    mgr._source_clients["src-redis"] = new
+    old.get_calls.clear()
+    new.get_calls.clear()
+
+    rendered = mgr.render_injected_skill(skill, source="mention", mention_text=mention.mention_text)
+    assert "NEW BODY" in rendered
+    assert old.get_calls == []
+    assert new.get_calls == [body_key]
+
+
 def test_redis_source_default_body_key_success(tmp_path: Path) -> None:
     """Redis: body_key 缺失时使用默认 key 规则。"""
 

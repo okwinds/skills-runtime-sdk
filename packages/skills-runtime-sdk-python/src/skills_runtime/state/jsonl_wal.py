@@ -95,8 +95,8 @@ class JsonlWal:
             self._next_index += 1
         return index
 
-    def iter_events(self) -> Iterator[AgentEvent]:
-        """按文件顺序迭代 WAL 中的事件。"""
+    def iter_events(self, *, run_id: Optional[str] = None) -> Iterator[AgentEvent]:
+        """按文件顺序迭代 WAL 中的事件（可选按 run_id 过滤）。"""
 
         if not self.path.exists():
             return iter(())
@@ -110,7 +110,10 @@ class JsonlWal:
                     if not line:
                         continue
                     obj = json.loads(line)
-                    yield AgentEvent.model_validate(obj)
+                    ev = AgentEvent.model_validate(obj)
+                    if run_id is not None and ev.run_id != run_id:
+                        continue
+                    yield ev
 
         return _iter()
 
