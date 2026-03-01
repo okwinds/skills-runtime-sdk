@@ -4,6 +4,9 @@
 - FastAPI server 提供 **创建 run**、**订阅 SSE events stream**、**approvals decide** 三类端点；
 - `run.py` 作为离线回归脚本：启动 server（`127.0.0.1:<random_port>`）→ 创建 run → 订阅 SSE → 收到 `approval_requested` 后调用 approve → 等待 `run_completed` → 写 `report.md`。
 
+> 重要说明：本示例暴露的是 **自定义网关 API（非 Studio MVP API）**，端点以 `/runs...` 开头（不带 `/api/v1` 前缀）。  
+> 对照 Studio MVP 的 `/api/v1/...` 与 `/studio/api/v1/...` 端点口径：见 `help/07-studio-guide.md`。
+
 > 说明：本 workflow 只演示 HTTP/SSE 网关骨架与事件协议，不依赖真实 LLM/外网。
 
 ## 运行

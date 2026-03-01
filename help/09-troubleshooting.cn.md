@@ -139,7 +139,7 @@ bash scripts/integration/os_sandbox_bubblewrap_probe_docker.sh
 - 查看 session 当前 filesystem_sources
 
 修复：
-- 先 `PUT /skills/sources` 配置 sources，再创建 skill
+- 先 `PUT /api/v1/sessions/{session_id}/skills/sources` 配置 sources，再创建 skill
 
 ## 9.3 排障辅助命令
 

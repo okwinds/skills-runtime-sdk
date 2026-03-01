@@ -92,7 +92,7 @@ def write_skill(
     在 `root_dir` 下创建/写入一个 skill（`<root>/<skill_name>/SKILL.md`）。
 
     参数：
-    - root_dir：skills roots 之一（目录）
+    - root_dir：filesystem source roots 之一（目录）
     - overwrite：默认 false；若 SKILL.md 已存在则报错
     """
 
@@ -115,4 +115,3 @@ def write_skill(
     )
     skill_md.write_text(text, encoding="utf-8")
     return SkillScaffoldResult(skill_dir=skill_dir, skill_md=skill_md)
-

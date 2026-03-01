@@ -145,7 +145,7 @@ Diagnosis:
 - Check current session filesystem sources
 
 Fix:
-- `PUT /skills/sources` first, then create the skill
+- `PUT /api/v1/sessions/{session_id}/skills/sources` first, then create the skill
 
 ## 9.3 Helpful commands
 

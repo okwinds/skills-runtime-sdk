@@ -72,12 +72,16 @@
 
 目标：业务前端无需理解内核即可发起 run 与处理审批。
 
+说明：
+- Studio MVP 是**下游示例服务**，不定义 SDK/框架契约。
+- 本配方仅演示如何对接 Studio 的 REST+SSE API；完整端到端指南见 `help/07-studio-guide.cn.md`。
+
 最小交互：
-1. `POST /sessions`
-2. `PUT /skills/sources`
-3. `POST /runs`
-4. SSE 订阅 events
-5. 如有审批，调 `/approvals/{approval_key}` 提交决策
+1. `POST /api/v1/sessions`
+2. `PUT /api/v1/sessions/{session_id}/skills/sources`
+3. `POST /api/v1/sessions/{session_id}/runs`
+4. SSE 订阅 events：`GET /api/v1/runs/{run_id}/events/stream`
+5. 如有审批，先 `GET /api/v1/runs/{run_id}/approvals/pending`，再 `POST /api/v1/runs/{run_id}/approvals/{approval_key}` 提交决策
 
 ## 配方 5：CI 门禁
 

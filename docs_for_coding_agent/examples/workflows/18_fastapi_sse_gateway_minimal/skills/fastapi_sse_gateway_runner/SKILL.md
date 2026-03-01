@@ -38,8 +38,9 @@ SSE 消息格式（单条）：
 - `GET /runs/{run_id}/events/stream`：订阅 SSE
 - `POST /runs/{run_id}/approvals/{approval_key}`：decide approvals
 
+说明：以上为自定义网关示例端点（非 Studio 的 `/api/v1/...`）。
+
 ## 约束
 
 - 默认离线：不访问外网、不依赖真实 key。
 - 该示例的目的是“网关骨架与协议”，不是完整 run 引擎。
-

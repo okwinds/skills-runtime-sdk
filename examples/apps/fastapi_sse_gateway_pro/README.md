@@ -6,6 +6,21 @@
 3) 通过 SSE 订阅事件流（run_started / tool_calls / approvals / run_completed）
 4) 通过 HTTP 审批写操作
 
+> 重要说明：本示例暴露的是 **自定义网关 API（非 Studio MVP API）**，端点以 `/runs...` 开头（不带 `/api/v1` 前缀）。
+
+### 对照：Studio MVP API（`/api/v1/...`）
+
+Studio MVP 的官方端点口径以 `/api/v1/...` 为前缀（以及少量 `/studio/api/v1/...` 扩展），详见：`help/07-studio-guide.md`。
+
+关键端点（节选）：
+- `POST /api/v1/sessions`
+- `PUT /api/v1/sessions/{session_id}/skills/sources`
+- `GET /api/v1/sessions/{session_id}/skills`
+- `POST /api/v1/sessions/{session_id}/runs`
+- `GET /api/v1/runs/{run_id}/events/stream`
+- `GET /api/v1/runs/{run_id}/approvals/pending`
+- `POST /api/v1/runs/{run_id}/approvals/{approval_key}`
+
 ## 依赖
 
 本示例会尝试使用 `fastapi` + `uvicorn`。
@@ -63,5 +78,8 @@ curl -N http://127.0.0.1:8000/runs/<run_id>/events/stream
 ```bash
 curl -s -X POST http://127.0.0.1:8000/runs/<run_id>/approvals/<approval_key> \
   -H 'Content-Type: application/json' \
-  -d '{"decision":"approve"}'
+  -d '{"decision":"approved_for_session"}'
 ```
+
+说明：
+- `decision` 兼容别名：`approve` / `approved` / `y` / `yes`（示例优先展示 `approved_for_session`）。

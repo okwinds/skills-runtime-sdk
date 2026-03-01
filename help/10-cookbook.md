@@ -76,13 +76,17 @@ Suggestions:
 
 Goal: a product frontend can start runs and handle approvals without understanding internals.
 
+Note:
+- Studio MVP is a **downstream example server**; it does **not** define the SDK/framework contract.
+- This recipe documents integration with Studio's REST+SSE API. For the full end-to-end guide, see `help/07-studio-guide.md`.
+
 Minimal flow:
 
-1. `POST /sessions`
-2. `PUT /skills/sources`
-3. `POST /runs`
-4. Subscribe to SSE events
-5. If approvals appear, call `/approvals/{approval_key}` to submit decisions
+1. `POST /api/v1/sessions`
+2. `PUT /api/v1/sessions/{session_id}/skills/sources`
+3. `POST /api/v1/sessions/{session_id}/runs`
+4. Subscribe to SSE events: `GET /api/v1/runs/{run_id}/events/stream`
+5. If approvals appear, call `GET /api/v1/runs/{run_id}/approvals/pending`, then `POST /api/v1/runs/{run_id}/approvals/{approval_key}` to submit decisions
 
 ## Recipe 5: CI gate
 

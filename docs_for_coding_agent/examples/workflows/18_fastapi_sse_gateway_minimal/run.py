@@ -1,6 +1,8 @@
 """
 FastAPI/SSE 网关最小示例（离线可回归）。
 
+注意：这是网关骨架示例（非 Studio API，不带 `/api/v1`）。
+
 演示：
 - 启动 FastAPI + uvicorn（127.0.0.1 随机端口）
 - create run：POST /runs
@@ -403,4 +405,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

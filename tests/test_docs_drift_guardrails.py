@@ -282,3 +282,57 @@ def test_curated_docs_do_not_reference_nonexistent_examples_workflows_dir() -> N
                 offenders.append((str(fp.relative_to(repo_root)), t))
 
     assert not offenders, offenders
+
+
+def test_docs_gateway_examples_call_out_non_studio_and_include_studio_contrast() -> None:
+    """
+    最小 docs guardrail：
+    - 网关类示例必须明确声明“非 Studio API”，避免误导读者把 /runs... 当作 /api/v1/...
+    - pro README 需包含 /api/v1/ 作为 Studio API 对照入口
+    """
+
+    repo_root = Path(__file__).resolve().parents[1]
+
+    pro = (repo_root / "examples" / "apps" / "fastapi_sse_gateway_pro" / "README.md").read_text(encoding="utf-8")
+    assert "非 Studio" in pro
+    assert "/api/v1/" in pro
+
+    minimal = (
+        repo_root
+        / "docs_for_coding_agent"
+        / "examples"
+        / "workflows"
+        / "18_fastapi_sse_gateway_minimal"
+        / "README.md"
+    ).read_text(encoding="utf-8")
+    assert "非 Studio" in minimal
+
+
+def test_help_cookbook_studio_recipe_uses_full_studio_paths_and_marks_downstream() -> None:
+    """
+    Drift guardrail for help/10-cookbook.*:
+    - “via Studio API/通过 Studio API” 的配方不能使用无前缀/无参数的端点简写（例如 `POST /sessions`）。
+    - 必须使用 Studio canonical 的 `/api/v1/...` 路径形态，并明确“Studio 是下游示例，不定义框架契约”。
+    """
+
+    repo_root = Path(__file__).resolve().parents[1]
+
+    en = (repo_root / "help" / "10-cookbook.md").read_text(encoding="utf-8")
+    zh = (repo_root / "help" / "10-cookbook.cn.md").read_text(encoding="utf-8")
+
+    # Must not regress to shorthand endpoints.
+    for text, rel in ((en, "help/10-cookbook.md"), (zh, "help/10-cookbook.cn.md")):
+        tokens = _extract_backticked_tokens(text=text)
+        assert "POST /sessions" not in tokens, rel
+        assert "PUT /skills/sources" not in tokens, rel
+        assert "POST /runs" not in tokens, rel
+        assert "/approvals/{approval_key}" not in tokens, rel
+
+        # Must include canonical /api/v1 base and path parameters.
+        assert "/api/v1/" in text, rel
+        assert "/sessions/{session_id}/" in text, rel
+        assert "/runs/{run_id}/" in text, rel
+
+    # Must explicitly mark Studio as downstream (avoid treating it as framework contract).
+    assert "downstream example server" in en
+    assert "下游示例服务" in zh

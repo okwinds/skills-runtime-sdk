@@ -67,7 +67,7 @@ def bind_create_skill_router(*, storage: FileStorage) -> APIRouter:
     @router.post("/studio/api/v1/sessions/{session_id}/skills", status_code=201)
     async def create_skill(session_id: str, body: CreateSkillReq = Body(...)) -> dict[str, Any]:
         """
-        在 session 的某个 skills root 下创建一个文件级 Skill（落盘 SKILL.md）。
+        在 session 的某个 filesystem source root 下创建一个文件级 Skill（落盘 SKILL.md）。
         """
 
         try:
