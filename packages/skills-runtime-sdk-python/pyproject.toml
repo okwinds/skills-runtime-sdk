@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skills-runtime-sdk"
-version = "0.1.7"
+version = "0.1.8"
 description = "通用 Skills Runtime SDK（Python）最小可测骨架（M1）"
 readme = "README.md"
 requires-python = ">=3.10"
