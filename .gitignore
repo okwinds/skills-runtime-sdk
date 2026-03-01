@@ -75,3 +75,6 @@ packages/skills-runtime-sdk-python/config/runtime.yaml
 packages/skills-runtime-sdk-python/config/llm.yaml
 packages/skills-runtime-studio-mvp/backend/config/runtime.yaml
 packages/skills-runtime-studio-mvp/backend/config/llm.yaml
+
+# Git worktrees (temporary isolated branches)
+.worktrees/
