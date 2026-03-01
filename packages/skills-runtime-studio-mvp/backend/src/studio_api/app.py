@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from pathlib import Path
@@ -12,12 +13,9 @@ from pydantic import BaseModel, Field
 
 from skills_runtime.agent import Agent
 from skills_runtime import bootstrap as agent_bootstrap
-from skills_runtime.config.loader import load_config_dicts
-from skills_runtime.llm.chat_sse import ChatStreamEvent
-from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
-from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
-from skills_runtime.skills.manager import SkillsManager
-from skills_runtime.tools.protocol import ToolCall
+from skills_runtime.llm import ChatStreamEvent, FakeChatBackend, FakeChatCall
+from skills_runtime.skills import SkillsManager
+from skills_runtime.tools import ToolCall
 
 from studio_api.approvals import ApprovalHub
 from studio_api.envfile import load_dotenv_for_workspace
@@ -143,6 +141,18 @@ async def list_skills(session_id: str) -> Dict[str, Any]:
     disabled_paths = cfg.get("disabled_paths") or []
     disabled_paths = [str(p).strip() for p in disabled_paths if str(p).strip()]
 
+    disabled_set: set[Path] = set()
+    for raw in disabled_paths:
+        try:
+            p = Path(str(raw)).expanduser()
+            if not p.is_absolute():
+                p = (_WORKSPACE_ROOT / p).resolve()
+            else:
+                p = p.resolve()
+            disabled_set.add(p)
+        except OSError:
+            continue
+
     skills_cfg = skills_config_from_filesystem_sources(filesystem_sources=sources)
     mgr = SkillsManager(workspace_root=_WORKSPACE_ROOT, skills_config=skills_cfg)
     _ = mgr.scan()
@@ -150,11 +160,11 @@ async def list_skills(session_id: str) -> Dict[str, Any]:
     for s in mgr.list_skills(enabled_only=False):
         p = str(s.path or s.locator)
         enabled = True
-        try:
-            if s.path is not None and s.path in getattr(mgr, "_disabled_paths", set()):
-                enabled = False
-        except Exception:
-            enabled = True
+        if s.path is not None:
+            try:
+                enabled = s.path.resolve() not in disabled_set
+            except OSError:
+                enabled = True
         skills.append(
             {
                 "name": s.skill_name,
@@ -186,30 +196,10 @@ def _build_agent(*, session_id: str, run_id: str) -> Agent:
     skills_overlay = _STORAGE.skills_overlay_path(session_id)
     config_paths = list(overlay_paths) + [skills_overlay]
 
-    # 通过 bootstrap 得到有效 base_url/api_key_env（session_settings 先留空；后续可扩展）
-    resolved = agent_bootstrap.resolve_effective_run_config(workspace_root=_WORKSPACE_ROOT, session_settings={})
-
-    # 读取 overlay 合并后的默认 timeout/max_retries（best-effort）
-    merged_dicts: List[Dict[str, Any]] = []
-    from skills_runtime.config.defaults import load_default_config_dict
-    import yaml
-
-    merged_dicts.append(load_default_config_dict())
-    for p in config_paths:
-        obj = yaml.safe_load(Path(p).read_text(encoding="utf-8")) or {}
-        if isinstance(obj, dict):
-            merged_dicts.append(obj)
-    merged_cfg = load_config_dicts(merged_dicts)
-
-    # base_url/api_key_env 以 bootstrap 的 resolved 为准（支持 .env 与进程 env 覆盖）；
-    # 其它字段（timeout/retry 等）以合并后的配置为准（严格 schema）。
-    llm_cfg = merged_cfg.llm.model_copy(
-        update={"base_url": str(resolved.base_url), "api_key_env": str(resolved.api_key_env)}
-    )
-
     import os
 
     backend_kind = str(os.getenv("STUDIO_LLM_BACKEND") or "openai").strip().lower()
+    backend = None
     if backend_kind == "fake":
         # 离线回归夹具：用确定性的 tool_calls → tool → text 序列，覆盖 Run+Approvals 核心闭环。
         args = {"path": "studio_fake_llm_output.txt", "content": "hello from fake llm"}
@@ -231,12 +221,12 @@ def _build_agent(*, session_id: str, run_id: str) -> Agent:
                 ),
             ]
         )
-    else:
-        backend = OpenAIChatCompletionsBackend(llm_cfg)
-    return Agent(
+
+    return agent_bootstrap.build_agent(
         workspace_root=_WORKSPACE_ROOT,
-        backend=backend,
         config_paths=config_paths,
+        session_settings={},
+        backend=backend,
         approval_provider=_APPROVALS.provider_for_run(run_id=run_id),
     )
 
@@ -282,7 +272,7 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
                 f.write(json.dumps(obj, ensure_ascii=False) + "\n")
         except Exception:
             # best-effort：落盘失败时不再抛出，避免线程异常导致更难排查
-            pass
+            logging.exception("append run_failed event failed (run_id=%s path=%s)", run_id, events_jsonl_path)
 
     def _worker() -> None:
         try:

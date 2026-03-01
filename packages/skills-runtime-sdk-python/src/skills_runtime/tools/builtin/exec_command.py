@@ -31,7 +31,7 @@ class _ExecCommandArgs(BaseModel):
     yield_time_ms: int = Field(default=50, ge=0, description="等待输出的时间（毫秒）")
     max_output_tokens: Optional[int] = Field(default=None, ge=1, description="最大输出 tokens（近似；可选）")
     tty: bool = Field(default=True, description="是否分配 TTY（默认 true；本实现总是 PTY）")
-    sandbox: Optional[str] = Field(default=None, description="OS sandbox 执行策略（inherit|none|restricted）")
+    sandbox: Optional[str] = Field(default=None, description="OS sandbox 执行策略（inherit|restricted）")
     sandbox_permissions: Optional[str] = Field(
         default=None, description="框架层权限语义（restricted|require_escalated）"
     )
@@ -49,7 +49,11 @@ EXEC_COMMAND_SPEC = ToolSpec(
             "yield_time_ms": {"type": "integer", "minimum": 0, "description": "等待输出的时间（毫秒）"},
             "max_output_tokens": {"type": "integer", "minimum": 1, "description": "最大输出 tokens（近似；可选）"},
             "tty": {"type": "boolean", "description": "是否分配 TTY（默认 true）"},
-            "sandbox": {"type": "string", "description": "OS sandbox 执行策略（可选）"},
+            "sandbox": {
+                "type": "string",
+                "enum": ["inherit", "restricted"],
+                "description": "OS sandbox 执行策略（可选）",
+            },
             "sandbox_permissions": {"type": "string", "description": "sandbox 权限语义（可选）"},
             "justification": {"type": "string", "description": "需要审批时展示给用户的理由（可选）"},
         },
@@ -107,7 +111,7 @@ def exec_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             return ToolResult.error_payload(error_kind="validation", stderr=f"workdir is not a directory: {workdir}")
 
     sandbox = str(args.sandbox or "inherit").strip().lower()
-    if sandbox not in ("inherit", "none", "restricted"):
+    if sandbox not in ("inherit", "restricted"):
         return ToolResult.error_payload(error_kind="validation", stderr=f"invalid sandbox policy: {sandbox}")
     effective_sandbox = ctx.sandbox_policy_default if sandbox == "inherit" else sandbox
     adapter_name = type(ctx.sandbox_adapter).__name__ if ctx.sandbox_adapter is not None else None
@@ -193,4 +197,3 @@ def exec_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
         retry_after_ms=None,
     )
     return ToolResult.from_payload(payload2)
-

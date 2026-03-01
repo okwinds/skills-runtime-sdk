@@ -8,59 +8,51 @@ SkillsManager（配置驱动 scan + strict mentions + lazy-load 注入）。
 
 from __future__ import annotations
 
-import contextlib
-from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 import re
 import threading
 import time
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 import uuid
 
 from skills_runtime.config.loader import AgentSdkSkillsConfig
 from skills_runtime.core.errors import FrameworkError, FrameworkIssue, UserError
-from skills_runtime.skills.loader import SkillLoadError, load_skill_metadata_from_path, load_skill_from_path
-from skills_runtime.skills.mentions import (
-    SkillMention,
-    extract_skill_mentions,
-    is_valid_namespace,
-    is_valid_skill_name_slug,
-)
+from skills_runtime.skills.bundles import ExtractedBundle
 from skills_runtime.skills.models import ScanReport, Skill
-from skills_runtime.skills.bundles import ExtractedBundle, ensure_extracted_bundle
+from skills_runtime.skills.manager_ops import (
+    render_injected_skill as _render_injected_skill,
+    resolve_mentions as _resolve_mentions,
+    scan as _scan,
+)
 
-
-def utc_rfc3339_now() -> str:
-    """生成 UTC RFC3339 时间戳。"""
-
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _utc_from_timestamp_rfc3339(ts: float) -> str:
-    """把 UNIX timestamp（秒）转换为 UTC RFC3339 字符串（以 `Z` 结尾）。"""
-
-    return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _scan_options_from_config(skills_config: AgentSdkSkillsConfig) -> dict[str, int | bool]:
-    """从 skills 配置读取扫描参数（显式 schema；拒绝隐式扩展字段）。"""
-
-    scan = skills_config.scan
-    return {
-        "ignore_dot_entries": bool(scan.ignore_dot_entries),
-        "max_depth": int(scan.max_depth),
-        "max_dirs_per_root": int(scan.max_dirs_per_root),
-        "max_frontmatter_bytes": int(scan.max_frontmatter_bytes),
-    }
+from skills_runtime.skills.bundle_cache import (
+    bundle_cache_root as _bundle_cache_root,
+    get_bundle_root_for_tool as _get_bundle_root_for_tool,
+)
+from skills_runtime.skills.config_validator import (
+    preflight as _preflight_config,
+    scan_options_from_config as _scan_options_from_config,
+    validate_and_normalize_config as _validate_and_normalize_config,
+)
+from skills_runtime.skills.sources._utils import source_dsn_from_env as _source_dsn_from_env
+from skills_runtime.skills.sources.filesystem import scan_filesystem_source as _scan_filesystem_source_impl
+from skills_runtime.skills.sources.in_memory import scan_in_memory_source as _scan_in_memory_source_impl
+from skills_runtime.skills.sources.pgsql import (
+    get_pgsql_client as _get_pgsql_client_impl,
+    pgsql_client_context as _pgsql_client_context_impl,
+    scan_pgsql_source as _scan_pgsql_source_impl,
+)
+from skills_runtime.skills.sources.redis import (
+    ensure_redis_bundle_extracted as _ensure_redis_bundle_extracted_impl,
+    get_redis_client as _get_redis_client_impl,
+    scan_redis_source as _scan_redis_source_impl,
+)
 
 
 class SkillsManager:
     """Skills 管理器。"""
-
-    _PREFLIGHT_ENV_VAR_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
-    _PREFLIGHT_SUPPORTED_SOURCE_TYPES = {"filesystem", "in-memory", "redis", "pgsql"}
 
     def __init__(
         self,
@@ -105,30 +97,10 @@ class SkillsManager:
         self._bundle_max_bytes = int(getattr(bundles_cfg, "max_bytes", 1 * 1024 * 1024) or 1 * 1024 * 1024)
         self._bundle_cache_dir_raw = str(getattr(bundles_cfg, "cache_dir", ".skills_runtime_sdk/bundles") or ".skills_runtime_sdk/bundles")
 
-    def _resolve_under_workspace(self, raw: str) -> Path:
-        """将相对路径解析到 workspace_root 下并 resolve，确保语义稳定。"""
-
-        p = Path(raw)
-        if p.is_absolute():
-            return p.resolve()
-        return (self._workspace_root / p).resolve()
-
     def _bundle_cache_root(self) -> Path:
         """bundle 解压缓存根目录（runtime-owned，可删可重建）。"""
 
-        return self._resolve_under_workspace(self._bundle_cache_dir_raw)
-
-    @staticmethod
-    def _is_sha256_hex(value: Any) -> bool:
-        """判断 value 是否为 64 位 sha256 hex 字符串。"""
-
-        if not isinstance(value, str) or len(value) != 64:
-            return False
-        try:
-            int(value, 16)
-        except ValueError:
-            return False
-        return True
+        return _bundle_cache_root(workspace_root=self._workspace_root, cache_dir_raw=self._bundle_cache_dir_raw)
 
     def _find_source_by_id(self, source_id: str) -> AgentSdkSkillsConfig.Source:
         """按 source_id 查找 source 配置，找不到则 fail-fast。"""
@@ -143,116 +115,22 @@ class SkillsManager:
         )
 
     def _ensure_redis_bundle_extracted(self, *, skill: Skill) -> ExtractedBundle:
-        """
-        为 Redis skill 获取并解压 bundle（lazy；仅工具路径调用）。
-
-        约束：
-        - scan 阶段不得调用；
-        - 缓存按 `bundle_sha256` content-addressed 复用；
-        - 缺失/无效契约必须 fail-closed（结构化 FrameworkError）。
-        """
-
-        source = self._find_source_by_id(skill.source_id)
-        if str(source.type or "").strip().lower() != "redis":
-            raise FrameworkError(
-                code="SKILL_BUNDLE_SOURCE_UNSUPPORTED",
-                message="Skill bundle is not supported for this source type in current version.",
-                details={"source_id": skill.source_id, "source_type": source.type, "locator": skill.locator},
-            )
-
-        key_prefix = source.options.get("key_prefix")
-        if not isinstance(key_prefix, str) or not key_prefix:
-            raise FrameworkError(
-                code="SKILL_BUNDLE_CONTRACT_INVALID",
-                message="Skill bundle contract is invalid.",
-                details={"source_id": source.id, "field": "key_prefix"},
-            )
-
-        meta = skill.metadata or {}
-        bundle_sha256 = meta.get("bundle_sha256")
-        if not isinstance(bundle_sha256, str) or not bundle_sha256:
-            raise FrameworkError(
-                code="SKILL_BUNDLE_FINGERPRINT_MISSING",
-                message="Skill bundle fingerprint is missing in metadata.",
-                details={"source_id": source.id, "locator": skill.locator, "field": "bundle_sha256"},
-            )
-        if not self._is_sha256_hex(bundle_sha256):
-            raise FrameworkError(
-                code="SKILL_BUNDLE_CONTRACT_INVALID",
-                message="Skill bundle contract is invalid.",
-                details={"source_id": source.id, "locator": skill.locator, "field": "bundle_sha256"},
-            )
-
-        bundle_format = meta.get("bundle_format", "zip")
-        if bundle_format is not None:
-            if not isinstance(bundle_format, str) or str(bundle_format).strip().lower() != "zip":
-                raise FrameworkError(
-                    code="SKILL_BUNDLE_CONTRACT_INVALID",
-                    message="Skill bundle contract is invalid.",
-                    details={"source_id": source.id, "locator": skill.locator, "field": "bundle_format"},
-                )
-
-        bundle_key = meta.get("bundle_key")
-        if bundle_key is None:
-            bundle_key = f"{key_prefix}bundle:{skill.namespace}:{skill.skill_name}"
-        if not isinstance(bundle_key, str) or not bundle_key:
-            raise FrameworkError(
-                code="SKILL_BUNDLE_CONTRACT_INVALID",
-                message="Skill bundle contract is invalid.",
-                details={"source_id": source.id, "locator": skill.locator, "field": "bundle_key"},
-            )
-
-        # fast path：若 cache 已存在，直接复用（避免重复读 Redis）
-        cache_root = self._bundle_cache_root()
-        final_dir = (cache_root / bundle_sha256).resolve()
-        if final_dir.exists() and final_dir.is_dir():
-            return ExtractedBundle(bundle_sha256=bundle_sha256, bundle_root=final_dir)
-
-        client = self._get_redis_client(source)
-        bundle_raw = client.get(bundle_key)
-        if bundle_raw is None:
-            raise FrameworkError(
-                code="SKILL_BUNDLE_NOT_FOUND",
-                message="Skill bundle is not found in source store.",
-                details={"source_id": source.id, "locator": skill.locator, "bundle_key": bundle_key},
-            )
-        if isinstance(bundle_raw, bytes):
-            bundle_bytes = bundle_raw
-        elif isinstance(bundle_raw, bytearray):
-            bundle_bytes = bytes(bundle_raw)
-        else:
-            raise FrameworkError(
-                code="SKILL_BUNDLE_INVALID",
-                message="Skill bundle bytes are invalid.",
-                details={"source_id": source.id, "locator": skill.locator, "bundle_key": bundle_key, "actual_type": type(bundle_raw).__name__},
-            )
-
-        # 缓存写入：ensure_extracted_bundle 内部会做 budget 与 sha 校验
-        return ensure_extracted_bundle(
-            cache_root=cache_root,
-            bundle_sha256=bundle_sha256,
-            bundle_bytes=bundle_bytes,
-            max_bytes=self._bundle_max_bytes,
+        """确保 redis bundle 已解压到本地缓存（供正文/工具执行使用）。"""
+        return _ensure_redis_bundle_extracted_impl(
+            skill=skill,
+            find_source_by_id=self._find_source_by_id,
+            get_redis_client_for_source=self._get_redis_client,
+            bundle_cache_root=self._bundle_cache_root(),
+            bundle_max_bytes=self._bundle_max_bytes,
         )
 
     def get_bundle_root_for_tool(self, *, skill: Skill, purpose: str) -> tuple[Path, Optional[str]]:
-        """
-        为 Phase 3 工具返回 bundle_root。
-
-        参数：
-        - skill：已 resolve 的 Skill
-        - purpose：用途字符串（actions/references；仅用于 details 辅助）
-
-        返回：
-        - (bundle_root, bundle_sha256)
-        """
-
-        _ = purpose
-        if skill.path is not None:
-            return Path(skill.path).parent.resolve(), None
-
-        extracted = self._ensure_redis_bundle_extracted(skill=skill)
-        return extracted.bundle_root.resolve(), extracted.bundle_sha256
+        """为某个 skill/tool purpose 返回 bundle root（必要时触发解压）。"""
+        return _get_bundle_root_for_tool(
+            skill=skill,
+            purpose=purpose,
+            ensure_redis_bundle_extracted=self._ensure_redis_bundle_extracted,
+        )
 
     @staticmethod
     def _now_monotonic() -> float:
@@ -308,64 +186,6 @@ class SkillsManager:
             details={"refresh_policy": refresh_policy, "reason": reason},
         )
 
-    def _perform_full_scan(self) -> tuple[ScanReport, Dict[Tuple[str, str], Skill], Dict[Path, Skill], Dict[str, List[Skill]], FrameworkError | None]:
-        """
-        执行一次完整 scan（不考虑 refresh_policy 缓存语义），并返回本次扫描快照。
-
-        返回：
-        - report：ScanReport（metadata-only）
-        - skills_by_key/path/name：本次扫描构建的索引
-        - fatal_exc：仅用于 duplicate 等“必须早失败”的异常（为 FrameworkError；否则为 None）
-        """
-
-        errors = self._validate_config()
-        warnings: List[FrameworkIssue] = []
-
-        if errors:
-            report = self._make_scan_report(skills=[], errors=errors, warnings=warnings)
-            return report, {}, {}, {}, None
-
-        sources_map = self._build_sources_map()
-        scanned: List[Skill] = []
-
-        for space in self._skills_config.spaces:
-            if not space.enabled:
-                continue
-            for source_id in space.sources:
-                source = sources_map[source_id]
-                if source.type == "filesystem":
-                    self._scan_filesystem_source(space=space, source=source, sink=scanned, errors=errors)
-                elif source.type == "in-memory":
-                    self._scan_in_memory_source(space=space, source=source, sink=scanned, errors=errors)
-                elif source.type == "redis":
-                    self._scan_redis_source(space=space, source=source, sink=scanned, errors=errors)
-                elif source.type == "pgsql":
-                    self._scan_pgsql_source(space=space, source=source, sink=scanned, errors=errors)
-                else:
-                    errors.append(
-                        FrameworkIssue(
-                            code="SKILL_SCAN_METADATA_INVALID",
-                            message="Skill source type is invalid.",
-                            details={"source_id": source.id, "source_type": source.type},
-                        )
-                    )
-
-        scanned = sorted(scanned, key=lambda s: (s.skill_name, s.space_id, s.source_id, s.locator))
-        try:
-            self._check_duplicates_or_raise(scanned)
-        except FrameworkError as exc:
-            report = self._make_scan_report(skills=[], errors=[exc.to_issue(), *errors], warnings=warnings)
-            return report, {}, {}, {}, exc
-
-        skills_by_key = {(s.namespace, s.skill_name): s for s in scanned}
-        skills_by_path = {s.path: s for s in scanned if s.path is not None}
-        by_name: Dict[str, List[Skill]] = {}
-        for s in scanned:
-            by_name.setdefault(s.skill_name, []).append(s)
-
-        report = self._make_scan_report(skills=scanned, errors=errors, warnings=warnings)
-        return report, skills_by_key, skills_by_path, by_name, None
-
     def _build_sources_map(self) -> Dict[str, AgentSdkSkillsConfig.Source]:
         """构建 source id -> source 的映射。"""
 
@@ -380,283 +200,13 @@ class SkillsManager:
     def _validate_config(self) -> List[FrameworkIssue]:
         """验证 skills 配置完整性。"""
 
-        errors: List[FrameworkIssue] = []
-
-        sources_map = self._build_sources_map()
-        spaces: List[AgentSdkSkillsConfig.Space] = []
-        for space in self._skills_config.spaces:
-            if isinstance(space, dict):
-                spaces.append(AgentSdkSkillsConfig.Space.model_validate(space))
-            else:
-                spaces.append(space)
-        self._skills_config = self._skills_config.model_copy(update={"spaces": spaces, "sources": list(sources_map.values())})
-
-        valid_types = {"filesystem", "in-memory", "redis", "pgsql"}
-        for source in self._skills_config.sources:
-            if source.type not in valid_types:
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill source type is invalid.",
-                        details={"source_id": source.id, "source_type": source.type},
-                    )
-                )
-
-        for space in self._skills_config.spaces:
-            if not is_valid_namespace(space.namespace):
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={
-                            "field": "skills.spaces[].namespace",
-                            "space_id": space.id,
-                            "actual": space.namespace,
-                            "reason": "invalid_namespace",
-                        },
-                    )
-                )
-            for source_id in space.sources:
-                if source_id not in sources_map:
-                    errors.append(
-                        FrameworkIssue(
-                            code="SKILL_SCAN_METADATA_INVALID",
-                            message="Space references an unknown source id.",
-                            details={"space_id": space.id, "source_id": source_id},
-                        )
-                    )
-
+        normalized, errors = _validate_and_normalize_config(self._skills_config)
+        self._skills_config = normalized
         return errors
 
     def preflight(self) -> List[FrameworkIssue]:
-        """
-        对 Skills 配置做零 I/O 的静态预检，返回 `FrameworkIssue` 列表（errors + warnings）。
-
-        约束：
-        - 不访问文件系统/redis/pgsql
-        - 不读取环境变量内容（不访问 `os.environ`）
-
-        返回：
-        - issues：每条问题为英文结构化 `code/message/details`，其中 `details.path` 为点路径/索引路径
-        """
-
-        def _issue(*, code: str, message: str, path: str, details: Dict[str, Any] | None = None) -> FrameworkIssue:
-            """
-            构造一条 `FrameworkIssue`，并确保 `details.path` 存在。
-
-            参数：
-            - code：英文结构化错误码（例如 `SKILL_CONFIG_*`）。
-            - message：英文可读说明（供日志/提示）。
-            - path：点路径/索引路径（用于定位配置字段）。
-            - details：额外结构化字段；会与 `{"path": path}` 合并。
-
-            返回：
-            - `FrameworkIssue` 实例（`details` 一定包含 `path` 字段）。
-
-            异常：
-            - TypeError：当 `details` 不是 dict（映射）类型时，`payload.update(details)` 可能触发。
-            """
-            payload: Dict[str, Any] = {"path": path}
-            if details:
-                payload.update(details)
-            return FrameworkIssue(code=code, message=message, details=payload)
-
-        issues: List[FrameworkIssue] = []
-        spaces = list(self._skills_config.spaces)
-        sources = list(self._skills_config.sources)
-
-        # versioning 目前仅占位：当显式启用（或填写非默认 strategy）时给出 warning，
-        # 避免用户误以为该配置会影响运行时行为。
-        try:
-            versioning_enabled = bool(getattr(self._skills_config.versioning, "enabled", False))
-            versioning_strategy = str(getattr(self._skills_config.versioning, "strategy", "TODO") or "TODO")
-        except AttributeError:
-            versioning_enabled = False
-            versioning_strategy = "TODO"
-        if versioning_enabled or versioning_strategy != "TODO":
-            issues.append(
-                _issue(
-                    code="SKILL_CONFIG_VERSIONING_IGNORED",
-                    message="skills.versioning is currently a placeholder and has no runtime effect.",
-                    path="skills.versioning",
-                    details={"level": "warning", "enabled": versioning_enabled, "strategy": versioning_strategy},
-                )
-            )
-
-        # versioning 允许额外字段用于前向兼容，但 preflight 必须 fail-fast 提示误配置（未知字段不会生效）。
-        try:
-            extra = dict(getattr(self._skills_config.versioning, "model_extra", None) or {})
-        except AttributeError:
-            extra = {}
-        if extra:
-            issues.append(
-                _issue(
-                    code="SKILL_CONFIG_VERSIONING_UNKNOWN_KEYS",
-                    message="Unknown keys under skills.versioning are not supported.",
-                    path="skills.versioning",
-                    details={"unknown_keys": sorted(list(extra.keys()))},
-                )
-            )
-
-        seen_space_ids: Dict[str, int] = {}
-        for idx, space in enumerate(spaces):
-            if space.id in seen_space_ids:
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_DUPLICATE_SPACE_ID",
-                        message="Duplicate skills space id found.",
-                        path=f"skills.spaces[{idx}].id",
-                        details={"space_id": space.id, "first_index": seen_space_ids[space.id]},
-                    )
-                )
-            else:
-                seen_space_ids[space.id] = idx
-
-        for idx, space in enumerate(spaces):
-            if not is_valid_namespace(space.namespace):
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_INVALID_SPACE_NAMESPACE",
-                        message="Invalid skills space namespace.",
-                        path=f"skills.spaces[{idx}].namespace",
-                        details={
-                            "space_id": space.id,
-                            "field": "namespace",
-                            "actual": space.namespace,
-                            "expected": "namespace: 1..7 segments joined by ':'; each segment lowercase slug 2~64 ([a-z0-9-], start/end with [a-z0-9])",
-                        },
-                    )
-                )
-
-        seen_source_ids: Dict[str, int] = {}
-        source_id_set: set[str] = set()
-        for idx, source in enumerate(sources):
-            if source.id in seen_source_ids:
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_DUPLICATE_SOURCE_ID",
-                        message="Duplicate skills source id found.",
-                        path=f"skills.sources[{idx}].id",
-                        details={"source_id": source.id, "first_index": seen_source_ids[source.id]},
-                    )
-                )
-            else:
-                seen_source_ids[source.id] = idx
-            source_id_set.add(source.id)
-
-        for sidx, space in enumerate(spaces):
-            for ridx, ref in enumerate(space.sources):
-                if ref not in source_id_set:
-                    issues.append(
-                        _issue(
-                            code="SKILL_CONFIG_SPACE_SOURCE_NOT_FOUND",
-                            message="Skills space references an unknown source id.",
-                            path=f"skills.spaces[{sidx}].sources[{ridx}]",
-                            details={"space_id": space.id, "source_id": ref},
-                        )
-                    )
-
-        for idx, source in enumerate(sources):
-            stype = source.type
-            if stype not in self._PREFLIGHT_SUPPORTED_SOURCE_TYPES:
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_UNKNOWN_SOURCE_TYPE",
-                        message="Unknown skills source type.",
-                        path=f"skills.sources[{idx}].type",
-                        details={
-                            "source_id": source.id,
-                            "actual": stype,
-                            "supported": sorted(self._PREFLIGHT_SUPPORTED_SOURCE_TYPES),
-                        },
-                    )
-                )
-                continue
-
-            if not isinstance(source.options, dict):
-                issues.append(
-                    _issue(
-                        code="SKILL_CONFIG_INVALID_OPTION",
-                        message="Skills source options must be an object.",
-                        path=f"skills.sources[{idx}].options",
-                        details={"source_id": source.id, "expected": "object", "actual": type(source.options).__name__},
-                    )
-                )
-                continue
-
-            def _required_non_empty_str(option_key: str) -> None:
-                """
-                断言指定的 source option 必须为非空字符串，否则追加一条 `FrameworkIssue`。
-
-                参数：
-                - option_key：`source.options` 中的字段名（例如 `dsn_env`、`root`）。
-
-                返回：
-                - 无（校验失败时以追加 issue 的方式报告，不抛出异常）。
-
-                异常：
-                - 无（不会主动抛出）。
-                """
-                value = source.options.get(option_key)
-                opt_path = f"skills.sources[{idx}].options.{option_key}"
-                if value is None:
-                    issues.append(
-                        _issue(
-                            code="SKILL_CONFIG_MISSING_REQUIRED_OPTION",
-                            message="Missing required skills source option.",
-                            path=opt_path,
-                            details={"source_id": source.id, "source_type": stype, "option": option_key},
-                        )
-                    )
-                    return
-                if not isinstance(value, str) or not value.strip():
-                    issues.append(
-                        _issue(
-                            code="SKILL_CONFIG_INVALID_OPTION",
-                            message="Invalid skills source option.",
-                            path=opt_path,
-                            details={
-                                "source_id": source.id,
-                                "source_type": stype,
-                                "option": option_key,
-                                "expected": "non-empty string",
-                                "actual": type(value).__name__,
-                            },
-                        )
-                    )
-
-            if stype == "filesystem":
-                _required_non_empty_str("root")
-            elif stype == "in-memory":
-                _required_non_empty_str("namespace")
-            elif stype == "redis":
-                _required_non_empty_str("dsn_env")
-                _required_non_empty_str("key_prefix")
-            elif stype == "pgsql":
-                _required_non_empty_str("dsn_env")
-                _required_non_empty_str("schema")
-                _required_non_empty_str("table")
-
-            dsn_env = source.options.get("dsn_env")
-            if dsn_env is not None:
-                opt_path = f"skills.sources[{idx}].options.dsn_env"
-                if isinstance(dsn_env, str) and dsn_env.strip() and not self._PREFLIGHT_ENV_VAR_NAME_RE.match(dsn_env):
-                    issues.append(
-                        _issue(
-                            code="SKILL_CONFIG_INVALID_ENV_VAR_NAME",
-                            message="Invalid environment variable name in skills source option.",
-                            path=opt_path,
-                            details={
-                                "source_id": source.id,
-                                "source_type": stype,
-                                "option": "dsn_env",
-                                "actual": dsn_env,
-                                "expected": r"^[A-Z_][A-Z0-9_]*$",
-                            },
-                        )
-                    )
-
-        return issues
+        """对 skills 配置做零 I/O 预检（不触碰外部系统）。"""
+        return _preflight_config(self._skills_config)
 
     def _make_scan_report(
         self,
@@ -689,107 +239,14 @@ class SkillsManager:
         errors: List[FrameworkIssue],
     ) -> None:
         """扫描 filesystem source（metadata-only，不读取正文）。"""
-
-        root = source.options.get("root")
-        if not isinstance(root, str) or not root.strip():
-            errors.append(
-                FrameworkIssue(
-                    code="SKILL_SCAN_METADATA_INVALID",
-                    message="Filesystem source root is required.",
-                    details={"source_id": source.id},
-                )
-            )
-            return
-
-        fs_root = Path(root)
-        if not fs_root.is_absolute():
-            fs_root = (self._workspace_root / fs_root).resolve()
-        if not fs_root.exists() or not fs_root.is_dir():
-            return
-
-        ignore_dot_entries = bool(self._scan_options["ignore_dot_entries"])
-        max_depth = int(self._scan_options["max_depth"])
-        max_dirs_per_root = int(self._scan_options["max_dirs_per_root"])
-
-        visited_dirs = 0
-        queue: List[tuple[Path, int]] = [(fs_root, 0)]
-        while queue:
-            cur, depth = queue.pop(0)
-            visited_dirs += 1
-            if max_dirs_per_root >= 1 and visited_dirs > max_dirs_per_root:
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill scan exceeded max directories per root.",
-                        details={"source_id": source.id, "root": str(fs_root), "max_dirs_per_root": max_dirs_per_root},
-                    )
-                )
-                break
-            if depth > max_depth:
-                continue
-
-            entries = sorted(cur.iterdir(), key=lambda p: p.name)
-            for entry in entries:
-                if ignore_dot_entries and entry.name.startswith("."):
-                    continue
-                if entry.is_dir():
-                    queue.append((entry, depth + 1))
-                    continue
-                if not entry.is_file() or entry.name != "SKILL.md":
-                    continue
-
-                skill_md = entry
-                try:
-                    loaded = load_skill_metadata_from_path(
-                        skill_md,
-                        max_frontmatter_bytes=int(self._scan_options["max_frontmatter_bytes"]),
-                    )
-                except SkillLoadError as exc:
-                    errors.append(
-                        FrameworkIssue(
-                            code="SKILL_SCAN_METADATA_INVALID",
-                            message="Skill metadata is invalid.",
-                            details={
-                                "source_id": source.id,
-                                "path": str(skill_md),
-                                "reason": exc.message,
-                            },
-                        )
-                    )
-                    continue
-
-                stat = skill_md.stat()
-                if not is_valid_skill_name_slug(loaded.skill_name):
-                    errors.append(
-                        FrameworkIssue(
-                            code="SKILL_SCAN_METADATA_INVALID",
-                            message="Skill metadata is invalid.",
-                            details={
-                                "source_id": source.id,
-                                "path": str(skill_md),
-                                "field": "skill_name",
-                                "actual": loaded.skill_name,
-                                "reason": "invalid_skill_name_slug",
-                            },
-                        )
-                    )
-                    continue
-                sink.append(
-                    Skill(
-                        space_id=space.id,
-                        source_id=source.id,
-                        namespace=space.namespace,
-                        skill_name=loaded.skill_name,
-                        description=loaded.description,
-                        locator=str(skill_md),
-                        path=skill_md.resolve(),
-                        body_size=int(stat.st_size),
-                        body_loader=lambda p=skill_md.resolve(): p.read_text(encoding="utf-8"),
-                        required_env_vars=list(loaded.required_env_vars),
-                        metadata={**dict(loaded.metadata), "updated_at": _utc_from_timestamp_rfc3339(stat.st_mtime)},
-                        scope=loaded.scope,
-                    )
-                )
+        _scan_filesystem_source_impl(
+            workspace_root=self._workspace_root,
+            scan_options=dict(self._scan_options),
+            space=space,
+            source=source,
+            sink=sink,
+            errors=errors,
+        )
 
     def _scan_in_memory_source(
         self,
@@ -800,292 +257,35 @@ class SkillsManager:
         errors: List[FrameworkIssue],
     ) -> None:
         """扫描 in-memory source。"""
-
-        namespace = source.options.get("namespace")
-        if not isinstance(namespace, str) or not namespace.strip():
-            errors.append(
-                FrameworkIssue(
-                    code="SKILL_SCAN_METADATA_INVALID",
-                    message="In-memory source namespace is required.",
-                    details={"source_id": source.id},
-                )
-            )
-            return
-
-        rows = self._in_memory_registry.get(namespace, [])
-        for idx, row in enumerate(rows):
-            if not isinstance(row, dict):
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="In-memory skill metadata must be an object.",
-                        details={"source_id": source.id, "index": idx},
-                    )
-                )
-                continue
-
-            skill_name = row.get("skill_name")
-            desc = row.get("description")
-            body_loader = row.get("body_loader")
-            body_value = row.get("body")
-            if not isinstance(skill_name, str) or not skill_name:
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "index": idx, "field": "skill_name"},
-                    )
-                )
-                continue
-            if not is_valid_skill_name_slug(skill_name):
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={
-                            "source_id": source.id,
-                            "index": idx,
-                            "field": "skill_name",
-                            "actual": skill_name,
-                            "reason": "invalid_skill_name_slug",
-                        },
-                    )
-                )
-                continue
-            if not isinstance(desc, str) or not desc:
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "index": idx, "field": "description"},
-                    )
-                )
-                continue
-
-            if body_loader is None:
-                if isinstance(body_value, str):
-                    body_loader = lambda v=body_value: v
-                else:
-                    errors.append(
-                        FrameworkIssue(
-                            code="SKILL_SCAN_METADATA_INVALID",
-                            message="Skill metadata is invalid.",
-                            details={"source_id": source.id, "index": idx, "field": "body/body_loader"},
-                        )
-                    )
-                    continue
-
-            if not callable(body_loader):
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "index": idx, "field": "body_loader"},
-                    )
-                )
-                continue
-
-            locator = row.get("locator")
-            if not isinstance(locator, str) or not locator:
-                locator = f"mem://{namespace}/{skill_name}"
-
-            body_size = row.get("body_size")
-            if body_size is not None and not isinstance(body_size, int):
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "index": idx, "field": "body_size"},
-                    )
-                )
-                continue
-
-            sink.append(
-                Skill(
-                    space_id=space.id,
-                    source_id=source.id,
-                    namespace=space.namespace,
-                    skill_name=skill_name,
-                    description=desc,
-                    locator=locator,
-                    path=None,
-                    body_size=body_size,
-                    body_loader=body_loader,
-                    required_env_vars=list(row.get("required_env_vars") or []),
-                    metadata={k: v for k, v in row.items() if k not in {"skill_name", "description", "body", "body_loader"}},
-                    scope="in-memory",
-                )
-            )
+        _scan_in_memory_source_impl(
+            in_memory_registry=self._in_memory_registry,
+            space=space,
+            source=source,
+            sink=sink,
+            errors=errors,
+        )
 
     def _source_dsn_from_env(self, source: AgentSdkSkillsConfig.Source) -> str:
         """从环境变量读取 source dsn。"""
-
-        dsn_env = source.options.get("dsn_env")
-        if not isinstance(dsn_env, str) or not dsn_env:
-            raise FrameworkError(
-                code="SKILL_SCAN_METADATA_INVALID",
-                message="Skill source dsn_env is required.",
-                details={"source_id": source.id, "source_type": source.type, "field": "dsn_env"},
-            )
-
-        dsn = os.environ.get(dsn_env)
-        if not dsn:
-            raise FrameworkError(
-                code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                message="Skill source is unavailable in current runtime.",
-                details={
-                    "source_id": source.id,
-                    "source_type": source.type,
-                    "dsn_env": dsn_env,
-                    "env_present": False,
-                },
-            )
-        return dsn
+        return _source_dsn_from_env(source)
 
     def _get_redis_client(self, source: AgentSdkSkillsConfig.Source) -> Any:
         """获取 redis client（优先注入，其次按 dsn_env 初始化）。"""
-
-        injected = self._source_clients.get(source.id)
-        if injected is not None:
-            return injected
-        cached = self._runtime_source_clients.get(source.id)
-        if cached is not None:
-            return cached
-
-        dsn = self._source_dsn_from_env(source)
-        try:
-            import redis  # type: ignore[import-not-found]
-        except ImportError as exc:
-            dsn_env = source.options.get("dsn_env")
-            raise FrameworkError(
-                code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                message="Skill source is unavailable in current runtime.",
-                details={
-                    "source_id": source.id,
-                    "source_type": source.type,
-                    "dsn_env": dsn_env,
-                    "env_present": True,
-                    "reason": f"redis dependency unavailable: {exc}",
-                },
-            ) from exc
-
-        try:
-            client = redis.from_url(dsn)
-        except Exception as exc:
-            # 防御性兜底：redis 连接失败可能抛出 redis.exceptions.ConnectionError 等各种异常。
-            dsn_env = source.options.get("dsn_env")
-            raise FrameworkError(
-                code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                message="Skill source is unavailable in current runtime.",
-                details={
-                    "source_id": source.id,
-                    "source_type": source.type,
-                    "dsn_env": dsn_env,
-                    "env_present": True,
-                    "reason": f"redis connect failed: {exc}",
-                },
-            ) from exc
-        self._runtime_source_clients[source.id] = client
-        return client
+        return _get_redis_client_impl(
+            source=source,
+            source_clients=self._source_clients,
+            runtime_source_clients=self._runtime_source_clients,
+            source_dsn_from_env=self._source_dsn_from_env,
+        )
 
     def _get_pgsql_client(self, source: AgentSdkSkillsConfig.Source) -> Any:
-        """
-        获取 pgsql client（优先注入，其次按 dsn_env 初始化）。
+        """获取 pgsql client（优先注入，其次按 dsn_env 初始化）。"""
 
-        注意：
-        - 本方法不再默认缓存单 connection（避免假设并发安全）；
-        - 推荐通过 `_pgsql_client_context` 获取并在使用后释放。
-        """
-
-        injected = self._source_clients.get(source.id)
-        if injected is not None:
-            return injected
-
-        dsn = self._source_dsn_from_env(source)
-        try:
-            import psycopg  # type: ignore[import-not-found]
-        except ImportError as exc:
-            dsn_env = source.options.get("dsn_env")
-            raise FrameworkError(
-                code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                message="Skill source is unavailable in current runtime.",
-                details={
-                    "source_id": source.id,
-                    "source_type": source.type,
-                    "dsn_env": dsn_env,
-                    "env_present": True,
-                    "reason": f"psycopg dependency unavailable: {exc}",
-                },
-            ) from exc
-
-        try:
-            client = psycopg.connect(dsn)
-        except Exception as exc:
-            # 防御性兜底：psycopg 连接失败可能抛出 psycopg.OperationalError 等各种异常。
-            dsn_env = source.options.get("dsn_env")
-            raise FrameworkError(
-                code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                message="Skill source is unavailable in current runtime.",
-                details={
-                    "source_id": source.id,
-                    "source_type": source.type,
-                    "dsn_env": dsn_env,
-                    "env_present": True,
-                    "reason": f"pgsql connect failed: {exc}",
-                },
-            ) from exc
-        return client
-
-    @contextlib.contextmanager
-    def _pgsql_client_context(self, source: AgentSdkSkillsConfig.Source):  # type: ignore[no-untyped-def]
-        """
-        获取 pgsql client 的上下文管理器（支持 injected factory/pool）。
-
-        行为（对齐 OpenSpec：skills-sources-hardening）：
-        - 默认不缓存单 connection：每次使用（scan/body_loader）都获取独立 client 并释放；
-        - 支持注入：
-          - factory：callable，每次调用返回 client/connection（本方法负责 close）；
-          - pool：提供 `connection()` 上下文管理器（本方法负责 enter/exit）；
-          - direct client：直接注入连接对象（不由本方法关闭；集成方自行管理生命周期）。
-        """
-
-        injected = self._source_clients.get(source.id)
-        if injected is not None:
-            # pool 形态：优先识别 connection() 上下文管理器
-            conn_cm = getattr(injected, "connection", None)
-            if callable(conn_cm):
-                with conn_cm() as client:
-                    yield client
-                return
-
-            # factory 形态：每次调用获取新 client，并在退出时释放（若可 close）
-            if callable(injected):
-                client = injected()
-                try:
-                    if hasattr(client, "__enter__") and hasattr(client, "__exit__"):
-                        with client as inner:
-                            yield inner
-                    else:
-                        yield client
-                finally:
-                    close = getattr(client, "close", None)
-                    if callable(close):
-                        with contextlib.suppress(Exception):
-                            close()
-                return
-
-            # direct client：生命周期由注入方管理（不在此处 close）
-            yield injected
-            return
-
-        client = self._get_pgsql_client(source)
-        try:
-            yield client
-        finally:
-            close = getattr(client, "close", None)
-            if callable(close):
-                with contextlib.suppress(Exception):
-                    close()
+        return _get_pgsql_client_impl(
+            source=source,
+            source_clients=self._source_clients,
+            source_dsn_from_env=self._source_dsn_from_env,
+        )
 
     def _parse_json_string_field(self, value: Any, *, field: str, source_id: str, locator: str) -> Any:
         """解析以 JSON 字符串编码的 metadata 字段。"""
@@ -1143,293 +343,13 @@ class SkillsManager:
     ) -> None:
         """扫描 redis source（metadata-only）。"""
 
-        key_prefix = source.options.get("key_prefix")
-        if not isinstance(key_prefix, str) or not key_prefix:
-            errors.append(
-                FrameworkIssue(
-                    code="SKILL_SCAN_METADATA_INVALID",
-                    message="Redis source key_prefix is required.",
-                    details={"source_id": source.id, "field": "key_prefix"},
-                )
-            )
-            return
-
-        try:
-            client = self._get_redis_client(source)
-        except FrameworkError as exc:
-            errors.append(exc.to_issue())
-            return
-
-        pattern = f"{key_prefix}meta:{space.namespace}:*"
-        try:
-            keys_iter = client.scan_iter(match=pattern)
-        except Exception as exc:
-            # 防御性兜底：redis scan_iter 可能抛出 redis.exceptions.* 等各种异常。
-            dsn_env = source.options.get("dsn_env")
-            errors.append(
-                FrameworkIssue(
-                    code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                    message="Skill source is unavailable in current runtime.",
-                    details={
-                        "source_id": source.id,
-                        "source_type": source.type,
-                        "dsn_env": dsn_env,
-                        "env_present": bool(os.environ.get(dsn_env)) if isinstance(dsn_env, str) else False,
-                        "reason": f"redis scan failed: {exc}",
-                    },
-                )
-            )
-            return
-
-        keys_iter = iter(keys_iter)
-        while True:
-            try:
-                raw_key = next(keys_iter)
-            except StopIteration:
-                break
-            except Exception as exc:
-                # 防御性兜底：redis 迭代可能抛出 redis.exceptions.* 等各种异常。
-                dsn_env = source.options.get("dsn_env")
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                        message="Skill source is unavailable in current runtime.",
-                        details={
-                            "source_id": source.id,
-                            "source_type": source.type,
-                            "dsn_env": dsn_env,
-                            "env_present": bool(os.environ.get(dsn_env)) if isinstance(dsn_env, str) else False,
-                            "reason": f"redis scan failed: {exc}",
-                        },
-                    )
-                )
-                break
-
-            key = raw_key.decode("utf-8") if isinstance(raw_key, bytes) else str(raw_key)
-            locator = f"redis://{key}"
-            try:
-                meta = client.hgetall(raw_key)
-            except Exception as exc:
-                # 防御性兜底：redis hgetall 可能抛出 redis.exceptions.* 等各种异常。
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                        message="Skill source is unavailable in current runtime.",
-                        details={
-                            "source_id": source.id,
-                            "source_type": source.type,
-                            "locator": locator,
-                            "reason": f"redis hgetall failed: {exc}",
-                        },
-                    )
-                )
-                continue
-
-            if not isinstance(meta, Mapping):
-                errors.append(
-                    FrameworkIssue(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "reason": "metadata row is not a mapping"},
-                    )
-                )
-                continue
-
-            normalized: Dict[str, Any] = {}
-            for mk, mv in meta.items():
-                key_name = mk.decode("utf-8") if isinstance(mk, bytes) else str(mk)
-                if isinstance(mv, bytes):
-                    normalized[key_name] = mv.decode("utf-8")
-                else:
-                    normalized[key_name] = mv
-
-            try:
-                skill_name = self._ensure_metadata_string(
-                    normalized.get("skill_name"),
-                    field="skill_name",
-                    source_id=source.id,
-                    locator=locator,
-                )
-                if not is_valid_skill_name_slug(skill_name):
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "skill_name", "actual": skill_name},
-                    )
-                description = self._ensure_metadata_string(
-                    normalized.get("description"),
-                    field="description",
-                    source_id=source.id,
-                    locator=locator,
-                )
-                created_at = self._ensure_metadata_string(
-                    normalized.get("created_at"),
-                    field="created_at",
-                    source_id=source.id,
-                    locator=locator,
-                )
-                body_size = self._normalize_optional_int(
-                    normalized.get("body_size"),
-                    field="body_size",
-                    source_id=source.id,
-                    locator=locator,
-                )
-
-                required_env_vars_parsed = self._parse_json_string_field(
-                    normalized.get("required_env_vars"),
-                    field="required_env_vars",
-                    source_id=source.id,
-                    locator=locator,
-                )
-                required_env_vars: List[str]
-                if required_env_vars_parsed is None:
-                    required_env_vars = []
-                elif (
-                    isinstance(required_env_vars_parsed, list)
-                    and all(isinstance(v, str) for v in required_env_vars_parsed)
-                ):
-                    required_env_vars = list(required_env_vars_parsed)
-                else:
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "required_env_vars"},
-                    )
-
-                metadata_parsed = self._parse_json_string_field(
-                    normalized.get("metadata"),
-                    field="metadata",
-                    source_id=source.id,
-                    locator=locator,
-                )
-                metadata_obj: Dict[str, Any]
-                if metadata_parsed is None:
-                    metadata_obj = {}
-                elif isinstance(metadata_parsed, dict):
-                    metadata_obj = dict(metadata_parsed)
-                else:
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "metadata"},
-                    )
-
-                body_key = normalized.get("body_key")
-                if body_key is None:
-                    body_key = f"{key_prefix}body:{space.namespace}:{skill_name}"
-                if not isinstance(body_key, str) or not body_key:
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "body_key"},
-                    )
-
-                etag = normalized.get("etag")
-                if etag is not None and not isinstance(etag, str):
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "etag"},
-                    )
-                updated_at = normalized.get("updated_at")
-                if updated_at is not None and not isinstance(updated_at, str):
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "updated_at"},
-                    )
-                scope = normalized.get("scope")
-                if scope is not None and not isinstance(scope, str):
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "scope"},
-                    )
-
-                # Phase 3 bundles (optional metadata-only contract; actual bytes are fetched lazily by tools)
-                bundle_sha256 = normalized.get("bundle_sha256")
-                if bundle_sha256 is not None:
-                    if not isinstance(bundle_sha256, str) or not self._is_sha256_hex(bundle_sha256):
-                        raise FrameworkError(
-                            code="SKILL_SCAN_METADATA_INVALID",
-                            message="Skill metadata is invalid.",
-                            details={"source_id": source.id, "locator": locator, "field": "bundle_sha256"},
-                        )
-
-                bundle_key = normalized.get("bundle_key")
-                if bundle_key is not None and (not isinstance(bundle_key, str) or not bundle_key):
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "bundle_key"},
-                    )
-
-                bundle_size = normalized.get("bundle_size")
-                if bundle_size is not None:
-                    bundle_size = self._normalize_optional_int(bundle_size, field="bundle_size", source_id=source.id, locator=locator)
-
-                bundle_format = normalized.get("bundle_format")
-                if bundle_format is not None:
-                    if not isinstance(bundle_format, str) or str(bundle_format).strip().lower() != "zip":
-                        raise FrameworkError(
-                            code="SKILL_SCAN_METADATA_INVALID",
-                            message="Skill metadata is invalid.",
-                            details={"source_id": source.id, "locator": locator, "field": "bundle_format"},
-                        )
-
-                def _load_body(client_ref: Any = client, body_key_ref: str = body_key) -> str:
-                    """
-                    从 Redis 读取 skill body（作为 `Skill.body_loader` 的延迟加载回调）。
-
-                    参数：
-                    - client_ref：Redis 客户端引用（闭包默认捕获外层 `client`）。
-                    - body_key_ref：Redis key（闭包默认捕获外层 `body_key`）。
-
-                    返回：
-                    - body 文本内容（`str`）；当底层存储为 `bytes` 时按 UTF-8 解码。
-
-                    异常：
-                    - FileNotFoundError：当 `body_key_ref` 不存在时。
-                    - UnicodeDecodeError：当 `bytes` 无法按 UTF-8 解码时。
-                    - TypeError：当读取到的 body 既不是 `bytes` 也不是 `str` 时。
-                    """
-                    body_raw = client_ref.get(body_key_ref)
-                    if body_raw is None:
-                        raise FileNotFoundError(f"missing body key: {body_key_ref}")
-                    if isinstance(body_raw, bytes):
-                        return body_raw.decode("utf-8")
-                    if isinstance(body_raw, str):
-                        return body_raw
-                    raise TypeError(f"invalid body type: {type(body_raw)!r}")
-
-                sink.append(
-                    Skill(
-                        space_id=space.id,
-                        source_id=source.id,
-                        namespace=space.namespace,
-                        skill_name=skill_name,
-                        description=description,
-                        locator=locator,
-                        path=None,
-                        body_size=body_size,
-                        body_loader=_load_body,
-                        required_env_vars=required_env_vars,
-                        metadata={
-                            **metadata_obj,
-                            "etag": etag,
-                            "created_at": created_at,
-                            "updated_at": updated_at,
-                            "body_key": body_key,
-                            "bundle_sha256": bundle_sha256,
-                            "bundle_key": bundle_key,
-                            "bundle_size": bundle_size,
-                            "bundle_format": bundle_format,
-                        },
-                        scope=scope,
-                    )
-                )
-            except FrameworkError as exc:
-                errors.append(exc.to_issue())
+        _scan_redis_source_impl(
+            space=space,
+            source=source,
+            sink=sink,
+            errors=errors,
+            get_redis_client_for_source=self._get_redis_client,
+        )
 
     def _safe_identifier(self, raw: Any, *, field: str, source_id: str) -> str:
         """校验 SQL 标识符安全性。"""
@@ -1480,230 +400,20 @@ class SkillsManager:
     ) -> None:
         """扫描 pgsql source（metadata-only）。"""
 
-        try:
-            schema = self._safe_identifier(source.options.get("schema"), field="schema", source_id=source.id)
-            table = self._safe_identifier(source.options.get("table"), field="table", source_id=source.id)
-        except FrameworkError as exc:
-            errors.append(exc.to_issue())
-            return
-
-        # 防御性兜底：f-string 格式化在极少数情况下可能失败（schema/table 含特殊字符）。
-        try:
-            # 注意：使用上下文管理器获取 client，避免默认缓存单 connection（并发安全不作假设）。
-            table_ref = f'"{schema}"."{table}"'
-        except Exception:
-            table_ref = f'"{schema}"."{table}"'
-        sql = (
-            "SELECT id, namespace, skill_name, description, body_size, body_etag, created_at, updated_at, "
-            "required_env_vars, metadata, scope "
-            f"FROM {table_ref} "
-            "WHERE enabled = TRUE AND namespace = %s"
-        )
-
-        try:
-            with self._pgsql_client_context(source) as client:
-                with client.cursor() as cursor:
-                    cursor.execute(sql, (space.namespace,))
-                    rows = self._fetchall_as_rows(cursor)
-        except FrameworkError as exc:
-            errors.append(exc.to_issue())
-            return
-        except Exception as exc:
-            # 防御性兜底：psycopg 查询可能抛出 psycopg.OperationalError 等各种异常。
-            errors.append(
-                FrameworkIssue(
-                    code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                    message="Skill source is unavailable in current runtime.",
-                    details={
-                        "source_id": source.id,
-                        "source_type": source.type,
-                        "reason": f"pgsql query failed: {exc}",
-                    },
-                )
+        def _client_ctx(src: AgentSdkSkillsConfig.Source):
+            """为 pgsql source 提供 client 上下文管理器（支持注入 client）。"""
+            return _pgsql_client_context_impl(
+                source=src,
+                source_clients=self._source_clients,
+                get_pgsql_client_for_source=lambda s: self._get_pgsql_client(s),
             )
-            return
 
-        for row in rows:
-            locator = f"{schema}.{table}#{row.get('id')}"
-            try:
-                skill_name = self._ensure_metadata_string(
-                    row.get("skill_name"), field="skill_name", source_id=source.id, locator=locator
-                )
-                if not is_valid_skill_name_slug(skill_name):
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "skill_name", "actual": skill_name},
-                    )
-                description = self._ensure_metadata_string(
-                    row.get("description"), field="description", source_id=source.id, locator=locator
-                )
-                body_size = self._normalize_optional_int(
-                    row.get("body_size"), field="body_size", source_id=source.id, locator=locator
-                )
-
-                created_at_raw = row.get("created_at")
-                if created_at_raw is None:
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "created_at"},
-                    )
-                if isinstance(created_at_raw, datetime):
-                    created_at = created_at_raw.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-                elif isinstance(created_at_raw, str) and created_at_raw:
-                    created_at = created_at_raw
-                else:
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "created_at"},
-                    )
-
-                required_env_vars_raw = row.get("required_env_vars")
-                required_env_vars: List[str]
-                if required_env_vars_raw is None:
-                    required_env_vars = []
-                elif isinstance(required_env_vars_raw, list) and all(isinstance(v, str) for v in required_env_vars_raw):
-                    required_env_vars = list(required_env_vars_raw)
-                else:
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "required_env_vars"},
-                    )
-
-                metadata_raw = row.get("metadata")
-                metadata_obj: Dict[str, Any]
-                if metadata_raw is None:
-                    metadata_obj = {}
-                elif isinstance(metadata_raw, dict):
-                    metadata_obj = dict(metadata_raw)
-                else:
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "metadata"},
-                    )
-
-                row_id = row.get("id")
-                if row_id is None:
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "id"},
-                    )
-
-                scope = row.get("scope")
-                if scope is not None and not isinstance(scope, str):
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "scope"},
-                    )
-
-                body_etag = row.get("body_etag")
-                if body_etag is not None and not isinstance(body_etag, str):
-                    raise FrameworkError(
-                        code="SKILL_SCAN_METADATA_INVALID",
-                        message="Skill metadata is invalid.",
-                        details={"source_id": source.id, "locator": locator, "field": "body_etag"},
-                    )
-
-                updated_at = row.get("updated_at")
-                if updated_at is not None and not isinstance(updated_at, str):
-                    updated_at = str(updated_at)
-
-                def _load_body(
-                    mgr_ref: "SkillsManager" = self,
-                    source_ref: AgentSdkSkillsConfig.Source = source,
-                    schema_ref: str = schema,
-                    table_ref_inner: str = table,
-                    row_id_ref: Any = row_id,
-                    namespace_ref: str = space.namespace,
-                ) -> str:
-                    """
-                    从 PostgreSQL 读取 skill body（作为 `Skill.body_loader` 的延迟加载回调）。
-
-                    参数：
-                    - client_ref：DB 连接（需提供 `cursor()` 上下文管理器）。
-                    - schema_ref：schema 名称（已通过上层校验为安全标识符）。
-                    - table_ref_inner：table 名称（已通过上层校验为安全标识符）。
-                    - row_id_ref：记录主键/唯一标识（用于 `WHERE id = %s`）。
-                    - namespace_ref：namespace 过滤条件。
-
-                    返回：
-                    - body 文本内容（`str`）。
-
-                    异常：
-                    - FileNotFoundError：当找不到匹配记录时。
-                    - TypeError：当读取到的 `body` 字段不是 `str` 时。
-                    - Exception：数据库驱动在 `cursor/execute/fetchone` 过程中可能抛出连接/语法等异常。
-                    """
-                    sql_body = (
-                        f'SELECT body FROM "{schema_ref}"."{table_ref_inner}" '
-                        "WHERE id = %s AND namespace = %s"
-                    )
-                    with mgr_ref._pgsql_client_context(source_ref) as client:
-                        with client.cursor() as body_cursor:
-                            body_cursor.execute(sql_body, (row_id_ref, namespace_ref))
-                            rec = body_cursor.fetchone()
-                    if rec is None:
-                        raise FileNotFoundError(f"missing body row: {schema_ref}.{table_ref_inner}#{row_id_ref}")
-                    if isinstance(rec, Mapping):
-                        body_val = rec.get("body")
-                    elif isinstance(rec, (tuple, list)):
-                        body_val = rec[0] if rec else None
-                    else:
-                        body_val = rec
-                    if not isinstance(body_val, str):
-                        raise TypeError(f"invalid body type: {type(body_val)!r}")
-                    return body_val
-
-                sink.append(
-                    Skill(
-                        space_id=space.id,
-                        source_id=source.id,
-                        namespace=space.namespace,
-                        skill_name=skill_name,
-                        description=description,
-                        locator=locator,
-                        path=None,
-                        body_size=body_size,
-                        body_loader=_load_body,
-                        required_env_vars=required_env_vars,
-                        metadata={
-                            **metadata_obj,
-                            "etag": body_etag,
-                            "created_at": created_at,
-                            "updated_at": updated_at,
-                            "row_id": row_id,
-                        },
-                        scope=scope,
-                    )
-                )
-            except FrameworkError as exc:
-                errors.append(exc.to_issue())
-
-    def _scan_unavailable_source(
-        self,
-        *,
-        source: AgentSdkSkillsConfig.Source,
-        errors: List[FrameworkIssue],
-    ) -> None:
-        """记录当前阶段未实现 source 的可观测错误。"""
-
-        required_env = source.options.get("dsn_env")
-        details: Dict[str, Any] = {"source_id": source.id, "source_type": source.type}
-        if isinstance(required_env, str) and required_env:
-            details["dsn_env"] = required_env
-            details["env_present"] = bool(os.environ.get(required_env))
-        errors.append(
-            FrameworkIssue(
-                code="SKILL_SCAN_SOURCE_UNAVAILABLE",
-                message="Skill source is unavailable in current runtime.",
-                details=details,
-            )
+        _scan_pgsql_source_impl(
+            space=space,
+            source=source,
+            sink=sink,
+            errors=errors,
+            pgsql_client_context_for_source=_client_ctx,
         )
 
     def _check_duplicates_or_raise(self, skills: Sequence[Skill]) -> None:
@@ -1727,70 +437,8 @@ class SkillsManager:
             )
 
     def scan(self, *, force_refresh: bool = False) -> ScanReport:
-        """
-        执行 skills 扫描并返回 `ScanReport`（支持 refresh_policy 缓存语义）。
-
-        参数：
-        - force_refresh：强制触发一次刷新 scan（manual/ttl 下可用于显式刷新缓存）
-        """
-
-        refresh_policy, ttl_sec = self._scan_refresh_policy_from_config()
-        cache_key = self._scan_cache_key_for_current_config()
-
-        with self._scan_lock:
-            cached_ok = None
-            cached_ok_at = None
-            if self._scan_last_ok_report is not None and self._scan_cache_key == cache_key:
-                cached_ok = self._scan_last_ok_report
-                cached_ok_at = self._scan_last_ok_at_monotonic
-
-            if not force_refresh and refresh_policy == "ttl" and cached_ok is not None and cached_ok_at is not None:
-                if (self._now_monotonic() - float(cached_ok_at)) < float(ttl_sec):
-                    self._scan_report = cached_ok
-                    return cached_ok
-
-            if not force_refresh and refresh_policy == "manual" and cached_ok is not None:
-                self._scan_report = cached_ok
-                return cached_ok
-
-            report, skills_by_key, skills_by_path, skills_by_name, fatal_exc = self._perform_full_scan()
-
-            # duplicate 等必须早失败：always / 无缓存时保持既有行为（raise）。
-            if fatal_exc is not None:
-                if refresh_policy in {"ttl", "manual"} and cached_ok is not None:
-                    warn = self._scan_refresh_failed_warning(refresh_policy=refresh_policy, reason=str(fatal_exc))
-                    fallback = self._make_scan_report(skills=list(cached_ok.skills), errors=[], warnings=[warn])
-                    self._scan_report = fallback
-                    return fallback
-
-                self._scan_report = report
-                self._skills_by_key = {}
-                self._skills_by_path = {}
-                self._skills_by_name = {}
-                raise fatal_exc
-
-            # refresh 失败但有历史成功缓存：返回旧缓存 + warnings（不得悄悄吞错）。
-            if report.errors and refresh_policy in {"ttl", "manual"} and cached_ok is not None:
-                warn = self._scan_refresh_failed_warning(
-                    refresh_policy=refresh_policy,
-                    reason=f"scan_errors: {[e.code for e in report.errors]}",
-                )
-                fallback = self._make_scan_report(skills=list(cached_ok.skills), errors=[], warnings=[warn])
-                self._scan_report = fallback
-                return fallback
-
-            # commit 本次 scan 快照（无缓存 or always or refresh 成功）
-            self._scan_report = report
-            self._skills_by_key = skills_by_key
-            self._skills_by_path = skills_by_path
-            self._skills_by_name = skills_by_name
-
-            if not report.errors:
-                self._scan_cache_key = cache_key
-                self._scan_last_ok_at_monotonic = self._now_monotonic()
-                self._scan_last_ok_report = report
-
-            return report
+        """执行 skills scan 并返回 ScanReport（可选强制刷新）。"""
+        return _scan(self, force_refresh=force_refresh)
 
     def refresh(self) -> ScanReport:
         """显式触发一次 skills scan 刷新（等价于 `scan(force_refresh=True)`）。"""
@@ -1818,7 +466,7 @@ class SkillsManager:
         else:
             self._disabled_paths.add(p)
 
-    def _raise_space_not_configured(self, mention: SkillMention) -> None:
+    def _raise_space_not_configured(self, mention) -> None:
         """抛出 space 未配置错误。"""
 
         raise FrameworkError(
@@ -1831,85 +479,42 @@ class SkillsManager:
         )
 
     def resolve_mentions(self, text: str) -> List[Tuple[Skill, SkillMention]]:
-        """解析 mentions 并映射到 skills。"""
-
-        mentions = extract_skill_mentions(text)
-        if not mentions:
-            return []
-
-        spaces = [s for s in self._skills_config.spaces if s.enabled]
-        sources = self._skills_config.sources
-        if not spaces or not sources:
-            self._raise_space_not_configured(mentions[0])
-
-        # resolve 前按 refresh_policy 决定是否需要触发 scan/刷新（默认 always 保持“即时可见”）。
-        self.scan()
-
-        if self._scan_report is not None:
-            for issue in self._scan_report.errors:
-                if issue.code in {"SKILL_SCAN_SOURCE_UNAVAILABLE", "SKILL_SCAN_METADATA_INVALID"}:
-                    raise FrameworkError(code=issue.code, message=issue.message, details=dict(issue.details))
-
-        out: List[Tuple[Skill, SkillMention]] = []
-        seen = set()
-        configured_spaces = {s.namespace for s in spaces}
-        for mention in mentions:
-            space_key = mention.namespace
-            if space_key not in configured_spaces:
-                self._raise_space_not_configured(mention)
-
-            key = (mention.namespace, mention.skill_name)
-            skill = self._skills_by_key.get(key)
-            if skill is None:
-                raise FrameworkError(
-                    code="SKILL_UNKNOWN",
-                    message="Referenced skill is not found in configured spaces.",
-                    details={"mention": mention.mention_text},
-                )
-            if skill.path is not None and skill.path in self._disabled_paths:
-                continue
-            uniq = (skill.namespace, skill.skill_name)
-            if uniq in seen:
-                continue
-            seen.add(uniq)
-            out.append((skill, mention))
-        return out
+        """解析文本中的 mentions，并返回命中的 skills 列表（保序）。"""
+        return _resolve_mentions(self, text)
 
     def render_injected_skill(self, skill: Skill, *, source: str, mention_text: Optional[str] = None) -> str:
-        """渲染注入技能（注入时懒加载正文 + max_bytes 校验）。"""
+        """渲染注入到 prompt 的 skill 文本（用于 mention 注入）。"""
+        return _render_injected_skill(self, skill, source=source, mention_text=mention_text)
 
-        _ = source
-        _ = mention_text
-        try:
-            raw = skill.body_loader()
-        except Exception as exc:
-            # 防御性兜底：body_loader 可能是 IO/网络/DB 操作，可能抛出任意异常。
-            raise FrameworkError(
-                code="SKILL_BODY_READ_FAILED",
-                message="Skill body read failed.",
-                details={"skill_name": skill.skill_name, "locator": skill.locator, "reason": str(exc)},
-            ) from exc
+    def close(self) -> None:
+        """
+        释放运行态创建的 source clients（例如 redis 连接）。
 
-        raw_bytes = raw.encode("utf-8")
-        limit = self._skills_config.injection.max_bytes
-        if limit is not None and len(raw_bytes) > limit:
-            raise FrameworkError(
-                code="SKILL_BODY_TOO_LARGE",
-                message="Skill body exceeds configured max bytes.",
-                details={
-                    "skill_name": skill.skill_name,
-                    "locator": skill.locator,
-                    "limit_bytes": limit,
-                    "actual_bytes": len(raw_bytes),
-                },
-            )
+        约束：
+        - 仅关闭运行态内部创建/缓存的 clients（`_runtime_source_clients`）；
+        - 注入的 clients（`_source_clients`）由调用方管理，不在此处关闭。
+        """
 
-        locator = skill.locator
-        parts: List[str] = [
-            "<skill>",
-            f"<name>{skill.skill_name}</name>",
-            f"<path>{locator}</path>",
-            raw,
-            "</skill>",
-        ]
-        return "\n".join(parts)
+        clients = list((self._runtime_source_clients or {}).values())
+        self._runtime_source_clients.clear()
+        for client in clients:
+            close = getattr(client, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
+    def __enter__(self) -> "SkillsManager":
+        """上下文管理器入口（返回 self）。"""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        """上下文管理器退出：关闭运行态资源。"""
+        _ = (exc_type, exc, tb)
+        self.close()

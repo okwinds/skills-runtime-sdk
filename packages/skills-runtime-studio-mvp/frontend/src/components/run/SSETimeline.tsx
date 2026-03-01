@@ -9,6 +9,7 @@ import { listPendingApprovals, type PendingApproval } from '../../lib/approvals'
 import { appendHistoryEntry, loadHistoryForSession, type HistoryEntry } from '../../lib/history';
 import { deriveStatusItem, type StatusItem } from '../../lib/runStatus';
 import { extractApprovalEvents, extractConfigSummary, extractToolSandboxEntries, summarizeSandbox } from '../../lib/runInfo';
+import { isRecord } from '../../lib/typeGuards';
 
 interface TimelineEvent {
   id: string;
@@ -31,10 +32,6 @@ const formatTime = (date: Date): string =>
     second: '2-digit',
     hour12: false,
   });
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 function getStringField(obj: Record<string, unknown>, field: string): string | null {
   const value = obj[field];

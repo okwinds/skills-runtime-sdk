@@ -88,15 +88,15 @@ def _build_offline_backend(*, app_py: str, test_py: str, report_md: str) -> Fake
                             ToolCall(call_id="tc_plan1", name="update_plan", args=plan_1),
                             ToolCall(call_id="tc_app", name="file_write", args={"path": "app.py", "content": app_py}),
                             ToolCall(call_id="tc_test", name="file_write", args={"path": "test_app.py", "content": test_py}),
-                            ToolCall(call_id="tc_pytest_fail", name="shell_exec", args={"argv": pytest_argv, "timeout_ms": 15000, "sandbox": "none"}),
+                            ToolCall(call_id="tc_pytest_fail", name="shell_exec", args={"argv": pytest_argv, "timeout_ms": 15000, "sandbox": "inherit"}),
                             ToolCall(call_id="tc_patch", name="apply_patch", args={"input": patch}),
                             # 重要：同秒内文件内容变更可能触发 pyc 缓存未失效（mtime/size 不变），导致第二次 pytest 仍跑旧代码。
                             ToolCall(
                                 call_id="tc_clear_pycache",
                                 name="shell_exec",
-                                args={"argv": clear_pycache_argv, "timeout_ms": 5000, "sandbox": "none"},
+                                args={"argv": clear_pycache_argv, "timeout_ms": 5000, "sandbox": "inherit"},
                             ),
-                            ToolCall(call_id="tc_pytest_ok", name="shell_exec", args={"argv": pytest_argv, "timeout_ms": 15000, "sandbox": "none"}),
+                            ToolCall(call_id="tc_pytest_ok", name="shell_exec", args={"argv": pytest_argv, "timeout_ms": 15000, "sandbox": "inherit"}),
                             ToolCall(call_id="tc_plan2", name="update_plan", args=plan_2),
                             ToolCall(call_id="tc_report", name="file_write", args={"path": "report.md", "content": report_md}),
                         ],

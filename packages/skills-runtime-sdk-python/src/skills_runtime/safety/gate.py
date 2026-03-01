@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 from skills_runtime.config.loader import AgentSdkSafetyConfig
+from skills_runtime.safety.descriptors import DenyDescriptor
 from skills_runtime.safety.guard import CommandRisk
 from skills_runtime.safety.policy import (
     PolicyDecision,
@@ -61,10 +62,10 @@ class SafetyGate:
         try:
             desc = self._get_descriptor_fn(tool_name)
         except Exception:
-            # 防御性兜底：descriptor 查找函数由外部注入，可能抛出任意异常；
-            # 缺失时使用 passthrough 兜底，避免安全门禁自身崩溃。
-            logger.warning("Failed to get descriptor for tool %r", tool_name, exc_info=True)
-            return PassthroughDescriptor()
+            # 防御性兜底：descriptor 查找函数由外部注入，可能抛出任意异常。
+            # 安全策略：fail-closed，避免因门禁组件异常导致工具无门禁执行。
+            logger.error("Descriptor lookup failed for %r — denying", tool_name, exc_info=True)
+            return DenyDescriptor()
         return desc if desc is not None else PassthroughDescriptor()
 
     @staticmethod
@@ -175,7 +176,13 @@ class SafetyGate:
         argv, risk = self._extract_risk(descriptor, call.args)
         summary, sanitized = self._sanitize_for_approval(call, descriptor)
 
-        if category == "shell":
+        if category == "deny":
+            policy = PolicyDecision(
+                action="deny",
+                reason="Tool is denied because safety descriptor lookup failed (fail-closed).",
+                matched_rule="descriptor=deny",
+            )
+        elif category == "shell":
             policy = evaluate_policy_for_shell_exec(
                 argv=argv,
                 risk=risk,

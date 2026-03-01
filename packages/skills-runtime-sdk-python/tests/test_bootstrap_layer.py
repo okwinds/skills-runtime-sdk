@@ -13,10 +13,11 @@ def test_load_dotenv_if_present_loads_workspace_root_dotenv(tmp_path: Path, monk
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_ENV_FILE", raising=False)
     monkeypatch.delenv("X_BOOT", raising=False)
-    p = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    p, env = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert p is not None
     assert Path(p) == (ws / ".env")
-    assert os.environ.get("X_BOOT") == "1"
+    assert env == {"X_BOOT": "1"}
+    assert os.environ.get("X_BOOT") is None
 
 
 def test_load_dotenv_if_present_does_not_override_existing_env_by_default(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -26,7 +27,8 @@ def test_load_dotenv_if_present_does_not_override_existing_env_by_default(tmp_pa
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_ENV_FILE", raising=False)
     monkeypatch.setenv("X_BOOT", "from_process")
-    __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    _p, env = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    assert env == {}
     assert os.environ.get("X_BOOT") == "from_process"
 
 
@@ -37,8 +39,9 @@ def test_load_dotenv_if_present_override_true_overrides_existing_env(tmp_path: P
 
     monkeypatch.delenv("SKILLS_RUNTIME_SDK_ENV_FILE", raising=False)
     monkeypatch.setenv("X_BOOT", "from_process")
-    __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=True)
-    assert os.environ.get("X_BOOT") == "from_file"
+    _p, env = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=True)
+    assert env == {"X_BOOT": "from_file"}
+    assert os.environ.get("X_BOOT") == "from_process"
 
 
 def test_load_dotenv_if_present_uses_skills_runtime_sdk_env_file_relative_to_workspace_root(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -50,10 +53,11 @@ def test_load_dotenv_if_present_uses_skills_runtime_sdk_env_file_relative_to_wor
 
     monkeypatch.setenv("SKILLS_RUNTIME_SDK_ENV_FILE", "config/dev.env")
     monkeypatch.delenv("X_BOOT", raising=False)
-    p = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    p, env = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert p is not None
     assert Path(p) == envp
-    assert os.environ.get("X_BOOT") == "2"
+    assert env == {"X_BOOT": "2"}
+    assert os.environ.get("X_BOOT") is None
 
 
 def test_load_dotenv_if_present_missing_skills_runtime_sdk_env_file_fails_fast(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -82,8 +86,9 @@ def test_load_dotenv_if_present_ignores_legacy_env_file_key(tmp_path: Path, monk
     monkeypatch.setenv(legacy_key, "config/legacy.env")
     monkeypatch.delenv("X_BOOT", raising=False)
 
-    p = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    p, env = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert p is None
+    assert env == {}
     assert os.environ.get("X_BOOT") is None
 
 
@@ -103,10 +108,11 @@ def test_load_dotenv_if_present_prefers_skills_runtime_sdk_env_file(tmp_path: Pa
     monkeypatch.setenv(legacy_key, "config/old.env")
     monkeypatch.delenv("X_BOOT", raising=False)
 
-    p = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    p, env = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
     assert p is not None
     assert Path(p) == env_new
-    assert os.environ.get("X_BOOT") == "from_new"
+    assert env == {"X_BOOT": "from_new"}
+    assert os.environ.get("X_BOOT") is None
 
 
 def test_load_dotenv_parses_export_quotes_and_comments(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -131,11 +137,12 @@ def test_load_dotenv_parses_export_quotes_and_comments(tmp_path: Path, monkeypat
     for k in ["A", "B", "C", "D"]:
         monkeypatch.delenv(k, raising=False)
 
-    __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
-    assert os.environ.get("A") == "1"
-    assert os.environ.get("B") == "2"
-    assert os.environ.get("C") == "3"
-    assert os.environ.get("D", "").startswith("4")
+    _p, env = __import__("skills_runtime.bootstrap").bootstrap.load_dotenv_if_present(workspace_root=ws, override=False)
+    assert env.get("A") == "1"
+    assert env.get("B") == "2"
+    assert env.get("C") == "3"
+    assert str(env.get("D", "")).startswith("4")
+    assert os.environ.get("A") is None
 
 
 def test_discover_overlay_paths_reads_env_list_and_appends_default_runtime_yaml(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

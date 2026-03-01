@@ -47,6 +47,15 @@ class FileStorage:
         p = (self._sdk_dir() / "runs").resolve()
         p.mkdir(parents=True, exist_ok=True)
         return p
+    
+    @staticmethod
+    def _ensure_under_root(*, root: Path, path: Path, kind: str) -> None:
+        root2 = Path(root).resolve()
+        path2 = Path(path).resolve()
+        try:
+            path2.relative_to(root2)
+        except ValueError as exc:
+            raise ValueError(f"invalid {kind}: path traversal detected") from exc
 
     def generated_skills_root(self) -> Path:
         p = (self._sdk_dir() / "skills").resolve()
@@ -54,10 +63,16 @@ class FileStorage:
         return p
 
     def session_dir(self, session_id: str) -> Path:
-        return (self.sessions_root() / session_id).resolve()
+        root = self.sessions_root()
+        p = (root / str(session_id)).resolve()
+        self._ensure_under_root(root=root, path=p, kind="session_id")
+        return p
 
     def run_dir(self, run_id: str) -> Path:
-        return (self.runs_root() / run_id).resolve()
+        root = self.runs_root()
+        p = (root / str(run_id)).resolve()
+        self._ensure_under_root(root=root, path=p, kind="run_id")
+        return p
 
     def _read_json(self, path: Path) -> Dict[str, Any]:
         return json.loads(Path(path).read_text(encoding="utf-8"))

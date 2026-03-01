@@ -212,7 +212,7 @@ def _build_session_operator_backend(*, python_executable: str) -> FakeChatBacken
                     ChatStreamEvent(
                         type="tool_calls",
                         tool_calls=[
-                            ToolCall(call_id="tc_exec", name="exec_command", args={"cmd": cmd, "yield_time_ms": 200, "tty": True, "sandbox": "none"}),
+                            ToolCall(call_id="tc_exec", name="exec_command", args={"cmd": cmd, "yield_time_ms": 200, "tty": True, "sandbox": "inherit"}),
                             ToolCall(call_id="tc_w1", name="write_stdin", args={"session_id": 1, "chars": "hello\r", "yield_time_ms": 200}),
                             ToolCall(call_id="tc_w2", name="write_stdin", args={"session_id": 1, "chars": "bye\r", "yield_time_ms": 200}),
                             ToolCall(call_id="tc_poll", name="write_stdin", args={"session_id": 1, "yield_time_ms": 200}),

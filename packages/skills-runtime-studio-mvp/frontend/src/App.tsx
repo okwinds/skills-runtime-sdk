@@ -51,7 +51,7 @@ export default function App() {
 
   const refreshSessionSkills = useCallback(async () => {
     if (!activeSessionId) return;
-      setSkillsLoading(true);
+    setSkillsLoading(true);
     try {
       const data = await getSessionSkills(activeSessionId);
       setSkills(data.skills);

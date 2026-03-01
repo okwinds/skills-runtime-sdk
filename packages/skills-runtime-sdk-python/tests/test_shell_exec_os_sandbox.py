@@ -106,14 +106,15 @@ def test_shell_exec_inherit_restricted_without_adapter_is_sandbox_denied(tmp_pat
     assert ex.calls == []
 
 
-def test_shell_exec_explicit_none_ignores_restricted_default(tmp_path: Path) -> None:
+def test_shell_exec_explicit_none_is_validation_error(tmp_path: Path) -> None:
     ex = _RecordingExecutor()
     ctx = _mk_ctx(workspace_root=tmp_path, executor=ex, sandbox_policy_default="restricted", sandbox_adapter=None)
     call = ToolCall(call_id="c1", name="shell_exec", args={"argv": ["echo", "hi"], "sandbox": "none"})
     result = shell_exec(call, ctx)
 
-    assert result.ok is True
-    assert ex.calls and ex.calls[0]["argv"] == ["echo", "hi"]
+    assert result.ok is False
+    assert result.error_kind == "validation"
+    assert ex.calls == []
 
 
 def test_shell_exec_explicit_restricted_requires_adapter(tmp_path: Path) -> None:
@@ -223,4 +224,3 @@ def test_seatbelt_sandbox_exec_available_on_mac_or_skip() -> None:
     adapter = SeatbeltSandboxAdapter(profile="(version 1) (allow default)")
     # 只验证可用性检测本身不抛异常；不强制在非 mac 上可用
     _ = adapter.is_available()
-

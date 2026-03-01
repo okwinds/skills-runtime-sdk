@@ -209,7 +209,7 @@ def _build_backend(*, submission_json: str) -> FakeChatBackend:
                             ToolCall(
                                 call_id="tc_qa",
                                 name="shell_exec",
-                                args={"argv": qa_argv, "timeout_ms": 5000, "sandbox": "none"},
+                                args={"argv": qa_argv, "timeout_ms": 5000, "sandbox": "inherit"},
                             ),
                         ],
                         finish_reason="tool_calls",

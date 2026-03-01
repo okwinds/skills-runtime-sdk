@@ -57,6 +57,14 @@ def test_exec_command_sandbox_policy_invalid(tmp_path: Path) -> None:
     assert p["error_kind"] == "validation"
 
 
+def test_exec_command_sandbox_none_is_validation_error(tmp_path: Path) -> None:
+    ctx = _mk_ctx(tmp_path)
+    r = exec_command(ToolCall(call_id="c1", name="exec_command", args={"cmd": "echo 1", "sandbox": "none"}), ctx)
+    p = _payload(r)
+    assert p["ok"] is False
+    assert p["error_kind"] == "validation"
+
+
 def test_exec_command_short_command_finishes_without_session_id(tmp_path: Path) -> None:
     ctx = _mk_ctx(tmp_path)
     # 该用例本质是在验证“短命令默认会被回收并返回 session_id=None”。

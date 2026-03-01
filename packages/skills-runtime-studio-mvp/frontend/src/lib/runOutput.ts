@@ -1,13 +1,11 @@
+import { isRecord } from './typeGuards';
+
 export type RunOutputTextKind = 'delta' | 'content' | 'text';
 
 export type RunOutputText = {
   kind: RunOutputTextKind;
   value: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 function readStringField(obj: Record<string, unknown>, field: string): string | null {
   const value = obj[field];
@@ -72,4 +70,3 @@ export function extractRunOutputText(data: unknown): RunOutputText | null {
 
   return null;
 }
-

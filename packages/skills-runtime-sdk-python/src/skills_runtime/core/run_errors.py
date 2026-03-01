@@ -7,9 +7,12 @@ Run 失败错误类型化（RunErrorKind / RunError）。
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional
+
+from skills_runtime.core.errors import FrameworkError
 
 
 class RunErrorKind(str, Enum):
@@ -102,3 +105,112 @@ class RunError:
         if self.details:
             out["details"] = dict(self.details)
         return out
+
+
+def _classify_run_exception(exc: BaseException) -> RunError:
+    """
+    将运行时异常映射为结构化 RunError（用于生成稳定 run_failed payload）。
+
+    约束：
+    - 不得包含 secrets（例如 API key value）
+    - message 必须尽量简洁可读
+    """
+
+    # 框架结构化错误：通常属于配置/输入问题（fail-fast，不建议重试）
+    if isinstance(exc, FrameworkError):
+        return RunError(
+            error_kind=RunErrorKind.CONFIG_ERROR,
+            message=str(exc),
+            retryable=False,
+            details={"framework_code": getattr(exc, "code", None), "framework_details": dict(getattr(exc, "details", {}) or {})},
+        )
+
+    # httpx 相关异常分类（不强依赖 LLM backend 实现）
+    try:
+        import httpx  # type: ignore
+
+        if isinstance(exc, httpx.TimeoutException):
+            return RunError(error_kind=RunErrorKind.LLM_ERROR, message=str(exc), retryable=True, details={"kind": "timeout"})
+
+        if isinstance(exc, httpx.RequestError):
+            return RunError(error_kind=RunErrorKind.LLM_ERROR, message=str(exc), retryable=True, details={"kind": "request_error"})
+
+        if isinstance(exc, httpx.HTTPStatusError):
+            code = int(exc.response.status_code)
+            retry_after_ms: Optional[int] = None
+
+            kind = RunErrorKind.HTTP_ERROR
+            retryable = False
+            if code in (401, 403):
+                kind = RunErrorKind.AUTH_ERROR
+            elif code == 429:
+                kind = RunErrorKind.RATE_LIMITED
+                retryable = True
+                ra = exc.response.headers.get("Retry-After")
+                if ra:
+                    try:
+                        sec = int(str(ra).strip())
+                        if sec > 0:
+                            retry_after_ms = sec * 1000
+                    except (ValueError, TypeError):
+                        retry_after_ms = None
+            elif 500 <= code <= 599:
+                kind = RunErrorKind.SERVER_ERROR
+                retryable = True
+
+            msg = f"HTTP {code}"
+            try:
+                data = exc.response.json()
+                # OpenAI 风格：{"error":{"message": "..."}}
+                if isinstance(data, dict) and isinstance(data.get("error"), dict):
+                    em = data["error"].get("message")
+                    if isinstance(em, str) and em.strip():
+                        msg = f"HTTP {code}: {em.strip()}"
+            except (json.JSONDecodeError, KeyError, TypeError):
+                pass
+            if len(msg) > 800:
+                msg = msg[:800] + "...<truncated>"
+
+            return RunError(
+                error_kind=kind,
+                message=msg,
+                retryable=retryable,
+                retry_after_ms=retry_after_ms,
+                details={"status_code": code},
+            )
+    except (ImportError, AttributeError):
+        # 防御性兜底：可选依赖未安装时跳过。
+        pass
+
+    if isinstance(exc, MissingRequiredEnvVarError):
+        details: Dict[str, Any] = {"missing_env_vars": list(exc.missing_env_vars)}
+        if exc.skill_name is not None:
+            details["skill_name"] = exc.skill_name
+        if exc.skill_path is not None:
+            details["skill_path"] = exc.skill_path
+        if exc.policy is not None:
+            details["policy"] = exc.policy
+        return RunError(error_kind=RunErrorKind.MISSING_ENV_VAR, message=str(exc), retryable=False, details=details)
+
+    if isinstance(exc, ValueError):
+        # 常见：缺少 API key env；或配置加载问题
+        return RunError(error_kind=RunErrorKind.CONFIG_ERROR, message=str(exc), retryable=False)
+
+    # LLM 相关：显式可分类错误
+    try:
+        from skills_runtime.llm.errors import ContextLengthExceededError
+
+        if isinstance(exc, ContextLengthExceededError):
+            return RunError(error_kind=RunErrorKind.CONTEXT_LENGTH_EXCEEDED, message=str(exc), retryable=False)
+    except ImportError:
+        pass
+
+    try:
+        from skills_runtime.core.errors import LlmError
+
+        if isinstance(exc, LlmError):
+            return RunError(error_kind=RunErrorKind.LLM_ERROR, message=str(exc), retryable=True)
+    except ImportError:
+        pass
+
+    return RunError(error_kind=RunErrorKind.UNKNOWN, message=str(exc), retryable=False)

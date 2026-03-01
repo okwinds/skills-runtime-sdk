@@ -10,11 +10,13 @@ from pydantic import BaseModel, create_model
 
 from skills_runtime.config.defaults import load_default_config_dict
 from skills_runtime.config.loader import AgentSdkConfig, load_config_dicts
-from skills_runtime.core.agent_loop import AgentLoop, ChatBackend, RunResult, _sanitize_approval_request
+from skills_runtime.core.agent_loop import AgentLoop, RunResult
+from skills_runtime.core.approval_sanitizers import _sanitize_approval_request
 from skills_runtime.core.contracts import AgentEvent
 from skills_runtime.core.errors import UserError
 from skills_runtime.core.exec_sessions import ExecSessionsProvider
 from skills_runtime.core.executor import Executor
+from skills_runtime.llm.protocol import ChatBackend
 from skills_runtime.prompts.manager import PromptManager, PromptTemplates
 from skills_runtime.safety.approvals import ApprovalProvider
 from skills_runtime.skills.manager import SkillsManager

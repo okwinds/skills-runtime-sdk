@@ -93,7 +93,7 @@ def _build_offline_backend(
                             ToolCall(call_id="tc_read", name="read_file", args={"file_path": "input.csv"}),
                             ToolCall(call_id="tc_fixed", name="file_write", args={"path": "fixed.csv", "content": fixed_csv}),
                             ToolCall(call_id="tc_validation", name="file_write", args={"path": "validation_report.json", "content": validation_json}),
-                            ToolCall(call_id="tc_qa", name="shell_exec", args={"argv": qa_argv, "timeout_ms": 5000, "sandbox": "none"}),
+                            ToolCall(call_id="tc_qa", name="shell_exec", args={"argv": qa_argv, "timeout_ms": 5000, "sandbox": "inherit"}),
                             ToolCall(call_id="tc_plan2", name="update_plan", args=plan_2),
                             ToolCall(call_id="tc_report", name="file_write", args={"path": "report.md", "content": report_md}),
                         ],

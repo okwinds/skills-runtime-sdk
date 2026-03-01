@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List
+
+import yaml
 
 
 def skills_config_from_filesystem_sources(*, filesystem_sources: List[str]) -> Dict[str, Any]:
@@ -58,42 +59,6 @@ def write_session_skills_overlay(*, session_dir: Path, filesystem_sources: List[
     overlay_path = (Path(session_dir) / "skills_overlay.yaml").resolve()
     overlay_path.parent.mkdir(parents=True, exist_ok=True)
 
-    lines: List[str] = [
-        "config_version: 1",
-        "skills:",
-        "  spaces:",
-    ]
-
-    spaces = cfg.get("spaces") or []
-    for space in spaces:
-        sources = space.get("sources") or []
-        lines.extend(
-            [
-                f"    - id: \"{space['id']}\"",
-                f"      namespace: \"{space['namespace']}\"",
-                "      sources:",
-                *[f"        - \"{sid}\"" for sid in sources],
-                "      enabled: true",
-            ]
-        )
-
-    lines.append("  sources:")
-    sources_cfg = cfg.get("sources") or []
-    for src in sources_cfg:
-        options = src.get("options") if isinstance(src, dict) else None
-        if not isinstance(options, dict):
-            options = {}
-        root = str(options.get("root") or "")
-        root_q = json.dumps(root, ensure_ascii=False)
-        lines.extend(
-            [
-                f"    - id: \"{src['id']}\"",
-                f"      type: \"{src['type']}\"",
-                "      options:",
-                f"        root: {root_q}",
-            ]
-        )
-
-    lines.extend(["  injection:", "    max_bytes: 65536", ""])
-    overlay_path.write_text("\n".join(lines), encoding="utf-8")
+    overlay_obj: Dict[str, Any] = {"config_version": 1, "skills": cfg}
+    overlay_path.write_text(yaml.safe_dump(overlay_obj, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return overlay_path

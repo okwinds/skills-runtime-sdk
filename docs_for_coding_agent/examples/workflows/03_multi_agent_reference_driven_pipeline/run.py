@@ -221,7 +221,7 @@ def _build_qa_backend(*, python_executable: str) -> FakeChatBackend:
                 events=[
                     ChatStreamEvent(
                         type="tool_calls",
-                        tool_calls=[ToolCall(call_id="tc_shell_qa", name="shell_exec", args={"argv": argv, "timeout_ms": 5000, "sandbox": "none"})],
+                        tool_calls=[ToolCall(call_id="tc_shell_qa", name="shell_exec", args={"argv": argv, "timeout_ms": 5000, "sandbox": "inherit"})],
                         finish_reason="tool_calls",
                     ),
                     ChatStreamEvent(type="completed", finish_reason="tool_calls"),

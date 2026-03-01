@@ -66,6 +66,11 @@ class TestShellExecDenylist:
         result = evaluate_policy_for_shell_exec(argv=["rm", "file.txt"], risk=_risk(), safety=safety)
         assert result.action == "deny"
 
+    def test_cmd0_match_is_exact_does_not_match_git_receive_pack(self):
+        safety = _safety(mode="allow", denylist=["git"])
+        result = evaluate_policy_for_shell_exec(argv=["git-receive-pack", "/tmp/repo"], risk=_risk("low"), safety=safety)
+        assert result.action == "allow"
+
 
 class TestShellExecModeDeny:
     def test_mode_deny_returns_deny(self):
@@ -114,6 +119,12 @@ class TestShellExecAllowlist:
         safety = _safety(allowlist=["git status"])
         result = evaluate_policy_for_shell_exec(argv=["git", "status"], risk=_risk(), safety=safety)
         assert result.action == "allow"
+
+    def test_cmd0_match_is_exact_does_not_match_git_receive_pack(self):
+        safety = _safety(mode="ask", allowlist=["git"])
+        result = evaluate_policy_for_shell_exec(argv=["git-receive-pack", "/tmp/repo"], risk=_risk("low"), safety=safety)
+        assert result.action == "ask"
+        assert result.matched_rule == "mode=ask"
 
     def test_allowlist_miss_falls_through(self):
         safety = _safety(mode="ask", allowlist=["git"])
