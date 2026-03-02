@@ -104,6 +104,7 @@ def test_examples_smoke(tmp_path: Path) -> None:
         ("docs_for_coding_agent/examples/skills/01_skills_preflight_and_scan", "run.py"),
         ("docs_for_coding_agent/examples/skills/02_offline_sources_redis_and_pgsql", "run.py"),
         ("docs_for_coding_agent/examples/skills/03_redis_bundle_backed_actions_and_ref_read_minimal", "run.py"),
+        ("docs_for_coding_agent/examples/skills/04_redis_bundle_backed_failure_semantics_minimal", "run.py"),
         ("docs_for_coding_agent/examples/state/01_wal_replay_and_fork", "run.py"),
         ("docs_for_coding_agent/examples/workflows/01_multi_agent_repo_change_pipeline", "run.py"),
         ("docs_for_coding_agent/examples/workflows/02_single_agent_form_interview", "run.py"),

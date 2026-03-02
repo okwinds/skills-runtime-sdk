@@ -46,4 +46,5 @@
 - `docs_for_coding_agent/examples/skills/`：skills preflight/scan/mentions 示例。
 - `docs_for_coding_agent/examples/skills/02_offline_sources_redis_and_pgsql/`：离线演示 redis/pgsql sources 的 scan(metadata-only) + inject(lazy body) 契约（fake clients）。
 - `docs_for_coding_agent/examples/skills/03_redis_bundle_backed_actions_and_ref_read_minimal/`：离线演示 Redis bundle-backed：zip（actions/references）+ sha256 cache + ref-read/exec 的边界。
+- `docs_for_coding_agent/examples/skills/04_redis_bundle_backed_failure_semantics_minimal/`：离线演示 Redis bundle-backed 的 fail-closed 失败语义：非法 zip entry / ref_path / action argv 的稳定错误码断言。
 - `docs_for_coding_agent/examples/state/`：WAL replay/fork 示例。
