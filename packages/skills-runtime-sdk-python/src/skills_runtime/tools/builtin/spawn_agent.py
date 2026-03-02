@@ -61,8 +61,30 @@ def spawn_agent(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     if mgr is None:
         return ToolResult.error_payload(error_kind="validation", stderr="spawn_agent requires collab_manager")
 
+    parent_profile_id = ctx.profile_id
+    child_profile_id: Optional[str] = None
+    if parent_profile_id is not None:
+        mp = ctx.child_profile_map
+        if mp is None or parent_profile_id not in mp:
+            return ToolResult.error_payload(
+                error_kind="permission",
+                stderr="child_profile_map missing",
+                data={"reason": "child_profile_map_missing", "parent_profile_id": parent_profile_id},
+            )
+        mapped = mp.get(parent_profile_id)
+        if not isinstance(mapped, str) or not mapped.strip():
+            return ToolResult.error_payload(
+                error_kind="permission",
+                stderr="child_profile_map missing",
+                data={"reason": "child_profile_map_missing", "parent_profile_id": parent_profile_id},
+            )
+        child_profile_id = mapped
+    else:
+        # parent_profile_id 缺失时保持最小可用：仍忽略 LLM args.agent_type，使用稳定默认值。
+        child_profile_id = "default"
+
     try:
-        h = mgr.spawn(message=str(args.message), agent_type=str(args.agent_type or "default"))  # type: ignore[attr-defined]
+        h = mgr.spawn(message=str(args.message), agent_type=str(child_profile_id))  # type: ignore[attr-defined]
     except Exception as e:
         # 防御性兜底：collab_manager 由外部注入，可能抛出任意异常。
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e))
@@ -75,7 +97,12 @@ def spawn_agent(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
         exit_code=0,
         duration_ms=duration_ms,
         truncated=False,
-        data={"id": str(h.id), "status": str(getattr(h, "status", "running"))},
+        data={
+            "id": str(h.id),
+            "status": str(getattr(h, "status", "running")),
+            "parent_profile_id": parent_profile_id,
+            "child_profile_id": child_profile_id,
+        },
         error_kind=None,
         retryable=False,
         retry_after_ms=None,

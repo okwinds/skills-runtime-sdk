@@ -60,6 +60,47 @@ def test_spawn_agent_ok_running(tmp_path: Path) -> None:
     assert isinstance(p["data"]["id"], str) and p["data"]["id"]
 
 
+def test_spawn_agent_child_profile_mapping_hit_uses_child_profile_id(tmp_path: Path) -> None:
+    ctx = _mk_ctx(tmp_path)
+    ctx.profile_id = "parent_profile"  # trusted carrier
+    ctx.child_profile_map = {"parent_profile": "child_profile"}  # trusted injection
+    r = spawn_agent(ToolCall(call_id="c1", name="spawn_agent", args={"message": "sleep:50"}), ctx)
+    p = _payload(r)
+    assert p["ok"] is True
+    assert p["data"]["parent_profile_id"] == "parent_profile"
+    assert p["data"]["child_profile_id"] == "child_profile"
+    aid = p["data"]["id"]
+    assert ctx.collab_manager is not None
+    assert ctx.collab_manager.get(aid).agent_type == "child_profile"
+
+
+def test_spawn_agent_child_profile_mapping_missing_is_fail_closed(tmp_path: Path) -> None:
+    ctx = _mk_ctx(tmp_path)
+    ctx.profile_id = "parent_profile"  # trusted carrier
+    ctx.child_profile_map = {}  # missing mapping
+    r = spawn_agent(ToolCall(call_id="c1", name="spawn_agent", args={"message": "x"}), ctx)
+    p = _payload(r)
+    assert p["ok"] is False
+    assert p["error_kind"] == "permission"
+    assert p["data"]["reason"] == "child_profile_map_missing"
+    assert p["data"]["parent_profile_id"] == "parent_profile"
+
+
+def test_spawn_agent_llm_agent_type_arg_does_not_affect_child_profile_choice(tmp_path: Path) -> None:
+    ctx = _mk_ctx(tmp_path)
+    ctx.profile_id = "parent_profile"  # trusted carrier
+    ctx.child_profile_map = {"parent_profile": "child_profile"}  # trusted injection
+    r = spawn_agent(
+        ToolCall(call_id="c1", name="spawn_agent", args={"message": "sleep:10", "agent_type": "evil"}),
+        ctx,
+    )
+    p = _payload(r)
+    assert p["ok"] is True
+    aid = p["data"]["id"]
+    assert ctx.collab_manager is not None
+    assert ctx.collab_manager.get(aid).agent_type == "child_profile"
+
+
 def test_spawn_agent_requires_manager(tmp_path: Path) -> None:
     ctx = _mk_ctx(tmp_path, with_mgr=False)
     r = spawn_agent(ToolCall(call_id="c1", name="spawn_agent", args={"message": "x"}), ctx)
@@ -457,4 +498,3 @@ def test_resume_agent_data_contains_id(tmp_path: Path) -> None:
     p = _payload(resume_agent(ToolCall(call_id="c2", name="resume_agent", args={"id": aid}), ctx))
     assert p["ok"] is True
     assert p["data"]["id"] == aid
-

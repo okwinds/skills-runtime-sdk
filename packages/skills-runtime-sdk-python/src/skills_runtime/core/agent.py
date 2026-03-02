@@ -31,6 +31,8 @@ class Agent:
     def __init__(
         self,
         *,
+        profile_id: Optional[str] = None,
+        child_profile_map: Optional[Dict[str, str]] = None,
         model: Optional[str] = None,
         planner_model: Optional[str] = None,
         executor_model: Optional[str] = None,
@@ -52,6 +54,8 @@ class Agent:
         """构造 Agent，并把运行态依赖注入 AgentLoop。"""
 
         self._workspace_root = Path(workspace_root or Path.cwd()).resolve()
+        self._profile_id = profile_id
+        self._child_profile_map = dict(child_profile_map) if child_profile_map is not None else None
         self._config_overlay_paths: List[str] = []
 
         # 默认配置作为 base，调用方 overlays 作为增量覆盖。
@@ -158,6 +162,8 @@ class Agent:
             workspace_root=self._workspace_root,
             config=self._config,
             config_overlay_paths=self._config_overlay_paths,
+            profile_id=self._profile_id,
+            child_profile_map=self._child_profile_map,
             planner_model=self._planner_model,
             executor_model=self._executor_model,
             backend=self._backend,

@@ -47,6 +47,8 @@ class AgentLoop:
         self,
         *,
         workspace_root: Path, config: AgentSdkConfig, config_overlay_paths: List[str],
+        profile_id: Optional[str],
+        child_profile_map: Optional[Dict[str, str]] = None,
         planner_model: str, executor_model: str, backend: Optional[ChatBackend], executor: Executor,
         human_io: Optional[HumanIOProvider], approval_provider: Optional[ApprovalProvider], cancel_checker: Optional[Callable[[], bool]],
         safety: Any, approved_for_session_keys: set[str], exec_sessions: Optional[ExecSessionsProvider], collab_manager: Optional[object],
@@ -63,6 +65,8 @@ class AgentLoop:
         self._workspace_root = Path(workspace_root).resolve()
         self._config = config
         self._config_overlay_paths = list(config_overlay_paths)
+        self._profile_id = str(profile_id) if profile_id is not None else None
+        self._child_profile_map = dict(child_profile_map) if child_profile_map is not None else None
         self._planner_model = str(planner_model)
         self._executor_model = str(executor_model)
         self._backend = backend
@@ -231,6 +235,7 @@ class AgentLoop:
             wal_emitter=wal_emitter,
             history=[],
             artifacts_dir=(run_dir / "artifacts").resolve(),
+            profile_id=self._profile_id,
             max_steps=max_steps,
             max_wall_time_sec=float(max_wall_time_sec) if max_wall_time_sec is not None else None,
             context_recovery_mode=str(cr.mode),
@@ -267,6 +272,7 @@ class AgentLoop:
                 payload={
                     "task": task,
                     "config_summary": {
+                        "profile_id": self._profile_id,
                         "models": {"planner": self._planner_model, "executor": self._executor_model},
                         "llm": {"base_url": self._config.llm.base_url, "api_key_env": self._config.llm.api_key_env},
                         "config_overlays": list(self._config_overlay_paths),
@@ -319,6 +325,8 @@ class AgentLoop:
         tool_ctx = ToolExecutionContext(
             workspace_root=self._workspace_root,
             run_id=run_id,
+            profile_id=self._profile_id,
+            child_profile_map=self._child_profile_map,
             wal=None,
             event_emitter=wal_emitter,
             executor=self._executor,

@@ -116,6 +116,8 @@ class ToolExecutionContext:
     字段：
     - workspace_root：相对路径解析基准目录
     - run_id：用于 WAL 事件关联
+    - profile_id：平台可信载体（用于审计/平台强控逻辑；LLM tool args 不可信）
+    - child_profile_map：平台可信注入（父 profile → 子 profile 映射；用于 spawn_agent 平台强控）
     - wal：可选；为 None 时不落盘
     - event_emitter：可选；统一事件管道（WAL append + hooks + stream）。若提供，则 emit_event 不直接调用 wal.append
     - executor：可选；shell_exec 需要
@@ -134,6 +136,8 @@ class ToolExecutionContext:
 
     workspace_root: Path
     run_id: str
+    profile_id: Optional[str] = None
+    child_profile_map: Optional[Dict[str, str]] = None
     wal: Optional[JsonlWal] = None
     event_emitter: Optional[WalEmitter] = None
     executor: Optional[Executor] = None

@@ -15,7 +15,7 @@ import os
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 import yaml
 
@@ -393,6 +393,10 @@ def build_agent(
     backend: Optional["ChatBackend"] = None,
     approval_provider: Optional["ApprovalProvider"] = None,
     env_vars: Optional[Dict[str, str]] = None,
+    tenant_id: Optional[str] = None,
+    llm_api_key: Optional[str] = None,
+    llm_api_key_ref: Optional[str] = None,
+    resolve_llm_api_key: Optional[Callable[[str, Optional[str]], str]] = None,
 ) -> "Agent":
     """
     构造一个带 bootstrap 语义的 Agent（适配 CLI/Web/Studio 等上层）。
@@ -409,6 +413,11 @@ def build_agent(
     - backend：可选，显式注入 ChatBackend（例如 FakeChatBackend）；若为 None 则创建默认 OpenAI backend
     - approval_provider：可选，注入 ApprovalProvider（由上层实现/管理）
     - env_vars：可选，run-local env_store（不落盘）
+    - tenant_id：可选，租户标识（用于凭证解析上下文；不会写入事件/WAL）
+    - llm_api_key：可选，直接以内存方式注入的 LLM API key（优先级最高；不会写入事件/WAL）
+    - llm_api_key_ref：可选，API key 的引用（例如 credential_ref）；需要配合 resolve_llm_api_key 使用
+    - resolve_llm_api_key：可选，解析函数，签名为 `(llm_api_key_ref: str, tenant_id: Optional[str]) -> str`；
+      当提供 llm_api_key_ref 时必须提供该函数；解析结果只在内存中使用，不写入 `os.environ` 或 overlay。
     """
 
     from skills_runtime import AgentBuilder
@@ -429,12 +438,20 @@ def build_agent(
     if chosen_backend is None:
         from skills_runtime.llm.openai_chat import OpenAIChatCompletionsBackend
 
+        api_key_override: Optional[str] = None
+        if llm_api_key is not None:
+            api_key_override = str(llm_api_key)
+        elif llm_api_key_ref is not None:
+            if resolve_llm_api_key is None:
+                raise ValueError("llm_api_key_ref is provided but resolve_llm_api_key is missing")
+            api_key_override = str(resolve_llm_api_key(str(llm_api_key_ref), tenant_id))
+
         dicts: list[Dict[str, Any]] = [load_default_config_dict()]
         for p in cfg_paths:
             dicts.append(_load_yaml_mapping(Path(p)))
         dicts.append(llm_overlay)
         merged: AgentSdkConfig = load_config_dicts(dicts)
-        chosen_backend = OpenAIChatCompletionsBackend(merged.llm)
+        chosen_backend = OpenAIChatCompletionsBackend(merged.llm, api_key=api_key_override)
 
     assert chosen_backend is not None
 

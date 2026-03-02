@@ -35,6 +35,7 @@ class RunContext:
     wal_emitter: WalEmitter
     history: List[Dict[str, Any]]
     artifacts_dir: Path
+    profile_id: Optional[str] = None
 
     compactions_performed: int = 0
     compaction_artifacts: List[str] = field(default_factory=list)
@@ -123,4 +124,3 @@ class RunContext:
 
 
 __all__ = ["RunContext"]
-
