@@ -44,4 +44,6 @@
 - `docs_for_coding_agent/examples/step_by_step/`：按学习路径组织的最小闭环示例（tool_calls/approvals/sandbox/WAL…）。
 - `docs_for_coding_agent/examples/tools/`：ToolRegistry 与工具协议示例（尽量不依赖 LLM）。
 - `docs_for_coding_agent/examples/skills/`：skills preflight/scan/mentions 示例。
+- `docs_for_coding_agent/examples/skills/02_offline_sources_redis_and_pgsql/`：离线演示 redis/pgsql sources 的 scan(metadata-only) + inject(lazy body) 契约（fake clients）。
+- `docs_for_coding_agent/examples/skills/03_redis_bundle_backed_actions_and_ref_read_minimal/`：离线演示 Redis bundle-backed：zip（actions/references）+ sha256 cache + ref-read/exec 的边界。
 - `docs_for_coding_agent/examples/state/`：WAL replay/fork 示例。
