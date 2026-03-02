@@ -44,7 +44,7 @@ echo "$SKILLS_RUNTIME_SDK_CONFIG_PATHS"
 
 修复：
 - 删除失效路径或改为存在路径
-- Studio 推荐用 `backend/config/runtime.yaml`
+- Studio MVP 推荐用 `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`（由 `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example` 复制生成）
 
 ---
 

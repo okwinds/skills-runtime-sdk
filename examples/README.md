@@ -14,3 +14,9 @@
 
 离线 smoke tests（门禁，覆盖代表性示例）：
 - `pytest -q packages/skills-runtime-sdk-python/tests/test_examples_smoke.py`
+
+## 验收标记（离线回归观察点）
+
+离线 smoke tests 的约定是：每个被覆盖的 app 运行后 stdout 必须包含对应的 `EXAMPLE_OK:` 标记，例如：
+- `EXAMPLE_OK: app_form_interview_pro`
+- `EXAMPLE_OK: app_fastapi_sse_gateway_pro`

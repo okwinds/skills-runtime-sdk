@@ -25,7 +25,7 @@ bash scripts/pytest.sh
 - root tests 通过
 - SDK tests 通过
 
-若失败，先看：`help/09-troubleshooting.md` 的“环境与版本”章节。
+若失败，先看：[09-troubleshooting.cn.md](./09-troubleshooting.cn.md) 的“环境与版本”章节。
 
 ## 1.3 SDK 最小运行（Python）
 
@@ -126,7 +126,7 @@ npm -C packages/skills-runtime-studio-mvp/frontend run dev
 ## 1.6 第一次交互建议
 
 1. 创建 Session
-2. 检查/设置 skills roots
+2. 检查/设置 `filesystem_sources`
 3. 在 Run 中输入包含合法 mention 的消息：
 
 ```text

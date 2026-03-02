@@ -30,7 +30,7 @@ Conceptual model:
        v
 ┌──────────────┐     ┌────────────────┐
 │ Agent API     │────▶ PromptManager   │───(skills injection / history compaction)
-│ core/agent.py │     └────────────────┘
+│ skills_runtime/core/agent.py │     └────────────────┘
 └──────┬───────┘
        │ stream chat events
        v

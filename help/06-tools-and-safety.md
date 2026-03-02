@@ -318,7 +318,7 @@ class ToolSafetyDescriptor(Protocol):
     def sanitize_for_event(self, args, **ctx) -> dict: ...
 ```
 
-The SDK ships 7 built-in descriptors in `safety/descriptors.py`:
+The SDK ships 8 built-in descriptors in `skills_runtime/safety/descriptors.py` (repo path: `packages/skills-runtime-sdk-python/src/skills_runtime/safety/descriptors.py`):
 `ShellExecDescriptor`, `ShellDescriptor`, `ShellCommandDescriptor`, `ExecCommandDescriptor`, `FileWriteDescriptor`, `ApplyPatchDescriptor`, `SkillExecDescriptor`, `WriteStdinDescriptor`.
 
 For custom tools without a descriptor, `PassthroughDescriptor` is used as a fallback (low risk, args passed through as-is).

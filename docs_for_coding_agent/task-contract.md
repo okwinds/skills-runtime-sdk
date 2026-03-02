@@ -10,7 +10,7 @@
 - 因此本契约不要求你向仓库提交这类文件；但仍要求你在 PR/issue 或你们内部系统里保留“命令 + 结果 + 决策”的证据链。
 
 补充（Local / Strict Mode）：
-- 当仓库存在本地门禁（例如 `AGENTS.md`、`docs/policies/*`）或 CI 显式启用 `REQUIRE_LOCAL_DOCS=1` 时，必须以本地门禁为准（见 `docs_for_coding_agent/local-strict-mode.md`）。
+- 当仓库存在本地门禁文件（例如协作宪法/门禁说明）或 CI 显式启用 `REQUIRE_LOCAL_DOCS=1` 时，必须以本地门禁为准（见 `./local-strict-mode.md`）。
 
 ---
 
@@ -32,9 +32,9 @@
 4. Evidence（可追溯）：
    - 在 PR/issue 或内部工单中记录：关键命令、关键输出、关键决策与理由
 5. Task Summary + Index（本地门禁仓库必需）：
-   - 产出独立任务总结（例如 `docs/task-summaries/YYYY-MM-DD-...md`）
+   - 产出独立任务总结（见下方模板；并登记索引）
    - 更新 `DOCS_INDEX.md`（新增/删除/重命名文档时必须登记：路径 + 一句话说明）
-   - 记录工作流证据（例如 `docs/worklog.md` 的命令与完整结果）
+   - 记录工作流证据（见下方 worklog 最小要素）
 
 ## 3) Done 的定义（不要“最小化完成”）
 
@@ -46,4 +46,47 @@
   - 文档与示例可复用
 
 补充约束（避免踩门禁）：
-- `.gitignore` 与 `AGENTS.md` 通常为受保护文件；如需修改必须先获得明确授权。
+- `.gitignore` 与协作宪法/门禁文件通常为受保护文件；如需修改必须先获得明确授权。
+
+---
+
+## 附录 A：Worklog 最小要素（可直接复制）
+
+你至少需要记录：
+
+- 开始时间（含时区）
+- 目标（1~3 条即可）
+- 关键变更（文件/模块 + 一句话说明）
+- 测试（每条：命令 + 完整结果；包含 passed/failed/skipped 数）
+- 决策（如有：做了什么决定 + 为什么）
+- 约束核对（例如：是否修改受保护文件）
+- 结束时间（含时区）与耗时
+
+---
+
+## 附录 B：Task Summary 模板（7 段）
+
+```markdown
+# 任务总结：[标题]
+
+## 1) Goal / Scope
+- 目标与范围（不做什么也要写清楚）
+
+## 2) Key Decisions
+- 关键决策与取舍（含替代方案）
+
+## 3) Changes
+- 变更点列表（按文件/模块归类）
+
+## 4) Test Plan & Results
+- 测试命令 + 完整结果（离线优先）
+
+## 5) Known Issues / Risks
+- 已知问题、风险、回滚注意事项
+
+## 6) Next Steps
+- 后续待办（可选）
+
+## 7) Doc Index Update
+- 需要登记索引的文档条目（路径 + 一句话说明）
+```

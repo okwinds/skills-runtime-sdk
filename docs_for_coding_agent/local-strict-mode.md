@@ -5,7 +5,7 @@
 1) **Public teaching pack（对外教学包）**：`docs_for_coding_agent/`  
    目标是帮助编码智能体快速上手，不强制依赖你们团队的本地协作文档体系。
 
-2) **Local / Strict Mode（本地门禁模式）**：当仓库存在本地门禁（例如 `AGENTS.md`、`docs/policies/*`），或显式启用校验开关（例如 `REQUIRE_LOCAL_DOCS=1`）时，交付必须遵循本地门禁定义的 DoD。
+2) **Local / Strict Mode（本地门禁模式）**：当仓库存在本地门禁文件（例如“协作宪法/门禁说明”等约束文本），或显式启用校验开关（例如 `REQUIRE_LOCAL_DOCS=1`）时，交付必须遵循本地门禁定义的 DoD。
 
 ---
 
@@ -13,26 +13,27 @@
 
 满足任一条件，即视为进入 Local / Strict Mode：
 
-- 仓库根目录存在 `AGENTS.md`（或等价的协作宪法/门禁文件）
+- 仓库根目录存在协作宪法/门禁文件（或等价约束文本）
 - CI / 脚本启用了 `REQUIRE_LOCAL_DOCS=1`
 - 团队明确要求：Spec-First + TDD + Worklog + Task Summary + Index
 
 ---
 
-## 在本仓库（含门禁文件）你应遵循哪些权威入口？
+## 在“本地门禁模式”下你应遵循哪些权威要求？
 
-最小必读（建议顺序）：
+最小必读（建议顺序；用“要求”描述，不依赖具体路径）：
 
-- `docs/policies/dev-cycle.md`：开发循环（判级 → Spec → RED → GREEN → VERIFY → DISTILL）
-- `docs/policies/spec-first.md`：写代码前必须先有 `docs/specs/**` 源规格
-- `docs/policies/tdd-gate.md`：没有通过测试不算完成（命令 + 完整结果要记录）
-- `docs/policies/worklog-rules.md`：工作记录格式与“每个动作都要记”的硬要求
+- 开发循环：判级 → Spec → 测试（RED）→ 实现（GREEN）→ 验证（VERIFY）→ 沉淀（DISTILL）
+- Spec-First：任何功能/行为变更必须先写清规格（L0 纯文档更新可例外，但仍需维护索引）
+- TDD Gate：没有离线回归证据不算交付；新增/修改能力必须补齐或更新测试
+- Worklog Gate：每个动作都要记录（命令 + 关键结果 + 决策）；超过约定时长要通知
+- 文档索引：新增/删除/重命名面向人类的文档必须登记索引（路径 + 一句话说明）
 
-交付沉淀（DoD 相关）：
+交付沉淀（DoD 相关；建议你在 PR/issue 或内部系统里也保留一份）：
 
-- `docs/worklog.md`：本仓库工作记录（命令/结果/决策证据链）
-- `docs/task-summaries/`：每次任务结束必须产出一份任务总结（并登记索引）
-- `DOCS_INDEX.md`：新增/删除/重命名文档必须同步登记（路径 + 一句话说明）
+- 工作记录（worklog）：记录开始/结束时间、目标、关键变更、测试命令与完整结果、关键决策与理由、约束核对
+- 任务总结（task summary）：用固定结构沉淀本轮交付的范围/决策/变更/回归/风险/后续
+- 索引文件：对“新增/删除/重命名”的文档做登记（路径 + 一句话说明）
 
 ---
 
@@ -40,4 +41,3 @@
 
 - `docs_for_coding_agent/` 仍然是对外教学入口：内容尽量保持可迁移、可复用，不把流程写死为某个团队工具链。
 - 但当你处在“有本地门禁”的仓库里，**本地门禁优先**：即使教学包没有写到某个要求，你也必须遵循仓库内的门禁文件。
-

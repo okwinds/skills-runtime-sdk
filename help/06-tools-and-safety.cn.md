@@ -318,7 +318,7 @@ class ToolSafetyDescriptor(Protocol):
     def sanitize_for_event(self, args, **ctx) -> dict: ...
 ```
 
-SDK 在 `safety/descriptors.py` 中内置了 7 个 descriptor：
+SDK 在 `skills_runtime/safety/descriptors.py`（仓库路径：`packages/skills-runtime-sdk-python/src/skills_runtime/safety/descriptors.py`）中内置了 8 个 descriptor：
 `ShellExecDescriptor`、`ShellDescriptor`、`ShellCommandDescriptor`、`ExecCommandDescriptor`、`FileWriteDescriptor`、`ApplyPatchDescriptor`、`SkillExecDescriptor`、`WriteStdinDescriptor`。
 
 对于没有 descriptor 的自定义工具，`PassthroughDescriptor` 作为兜底（低风险，参数原样透传）。

@@ -56,7 +56,7 @@ PYTHONPATH=packages/skills-runtime-sdk-python/src \
   python3 help/examples/run_agent_minimal.py --workspace-root . --config /tmp/sdk.overlay.yaml
 ```
 
-## 4) 常用 CLI（skills/tools）
+## 4) 常用 CLI（Skills CLI / Tools CLI）
 
 Skills 预检与扫描（确认 spaces/sources 配置是否正确）：
 

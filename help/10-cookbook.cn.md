@@ -102,7 +102,7 @@
 要求：
 - 记录恢复时间
 - 记录实际根因
-- 更新 `help/09-troubleshooting.md`
+- 更新 `09-troubleshooting.cn.md`
 
 ---
 

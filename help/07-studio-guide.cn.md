@@ -131,8 +131,8 @@ curl -s -X POST "http://127.0.0.1:8000/api/v1/runs/${RUN_ID}/approvals/${APPROVA
 
 ## 7.6 Studio 常见配置点
 
-- `backend/config/runtime.yaml.example`：模型、safety、sandbox（复制为本地 `backend/config/runtime.yaml` 使用；不要提交到远端仓库）
-- `backend/.env`：API key 与环境变量
+- `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example`：模型、safety、sandbox（复制为本地 `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml` 使用；不要提交到远端仓库）
+- `packages/skills-runtime-studio-mvp/backend/.env`：API key 与环境变量
 - `STUDIO_WORKSPACE_ROOT`：覆盖后端工作区（测试隔离）
 - `skills.env_var_missing_policy`：Studio backend 默认不注入 HumanIOProvider，因此当 skill 依赖 env var 缺失时，建议使用 `fail_fast` 获得确定性失败（终态 `run_failed.error_kind=missing_env_var`，并携带结构化 details）。本仓库示例 `runtime.yaml.example` 已默认设置为 `fail_fast`。
 

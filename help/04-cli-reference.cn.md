@@ -103,7 +103,7 @@ python3 -m skills_runtime.cli.main skills scan \
 PYTHONPATH=packages/skills-runtime-sdk-python/src \
 python3 -m skills_runtime.cli.main tools read-file \
   --workspace-root . \
-  --file-path help/README.md \
+  --file-path help/README.cn.md \
   --offset 1 \
   --limit 80 \
   --pretty
@@ -172,7 +172,7 @@ python3 -m skills_runtime.cli.main runs metrics \
 ### `skills`
 
 - `0`：成功
-- `10/11/12`：配置或扫描错误/告警（见 `skills-cli.md`）
+- `10/11/12`：配置或扫描错误/告警（见 [05-skills-guide.cn.md](./05-skills-guide.cn.md)）
 
 ### `tools`（按 `error_kind` 映射）
 

@@ -95,7 +95,7 @@ def main() -> int:
                 "header": "语言",
                 "question": "文档默认语言？",
                 "options": [
-                    {"label": "中文", "description": "遵循仓库 AGENTS.md 的默认语言"},
+                    {"label": "中文", "description": "遵循仓库本地门禁/约束的默认语言（如有）"},
                     {"label": "English", "description": "只在必要场景补充"},
                 ],
             },

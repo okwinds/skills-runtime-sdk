@@ -5,7 +5,7 @@
 
 本清单目标：做到“不遗漏”，便于编码智能体快速确认：
 - 当前 SDK 已具备哪些能力（可回归/可复刻）
-- 每个能力点对应的契约入口（help/源码）、示例（examples）、回归（tests）
+- 每个能力点对应的契约入口（help + 源码）、示例（examples）、回归（tests）
 
 ---
 
@@ -39,7 +39,7 @@
 
 - 能力：框架层 sandbox policy gate；OS adapter auto；可观测 `data.sandbox.*`
 - 入口（契约/使用）：`help/sandbox-best-practices.cn.md`
-- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/sandbox/*`
+- 入口（实现）：`packages/skills-runtime-sdk-python/src/skills_runtime/sandbox.py`
 
 ### CAP-SDK-006：Exec sessions（exec_command/write_stdin）
 
@@ -80,9 +80,9 @@
 ### CAP-SDK-012：Studio MVP（API + SSE）
 
 - 能力：sessions/runs/approvals API；SSE events；信息面板（sandbox/approvals/config）
-- 入口：`help/07-studio-guide.md`、`packages/skills-runtime-studio-mvp/README.md`
+- 入口：`help/07-studio-guide.cn.md`、`packages/skills-runtime-studio-mvp/README.md`
 
-### CAP-SDK-013：CLI（skills/tools）
+### CAP-SDK-013：CLI（Skills CLI / Tools CLI）
 
 - 能力：skills preflight/scan；tools 内置能力调用（list-dir/read-file/grep-files/...）；明确 exit code 语义
 - 入口（契约/使用）：`help/04-cli-reference.cn.md`

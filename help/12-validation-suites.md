@@ -52,7 +52,7 @@ Evidence to archive (recommended in CI):
 ### 12.2.1 Internal production: enforce local collaboration docs without exposing them
 
 Notes:
-- This repo may intentionally exclude local collaboration artifacts (for example `AGENTS.md`, root `DOCS_INDEX.md`, `docs/worklog.md`) via `.gitignore` to avoid exposing them in OSS.
+- This repo may intentionally exclude local collaboration artifacts (for example: the collaboration constitution, the doc index, worklog / task summaries) via `.gitignore` to avoid exposing them in OSS.
 - Internal production environments may still want to enforce their presence as part of a gate.
 
 Approach (explicit switch):

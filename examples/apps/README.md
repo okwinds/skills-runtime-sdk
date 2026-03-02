@@ -36,12 +36,12 @@ export SRS_MODEL_EXECUTOR="gpt-4o-mini"
 
 ## App 列表
 
-- `form_interview_pro/`：表单访谈 Pro（request_user_input + update_plan + file_write + shell_exec）。
-- `rules_parser_pro/`：规则解析 Pro（自然语言规则→plan/result/report；强调确定性 QA）。
-- `incident_triage_assistant/`：排障助手（read_file + request_user_input + runbook/report）。
-- `repo_change_pipeline_pro/`：Repo 变更流水线（Analyze → Patch → QA → Report；更贴近工程闭环）。
-- `ci_failure_triage_and_fix/`：CI 失败排障与修复闭环（pytest 失败→apply_patch 修复→pytest 通过→report）。
-- `data_import_validate_and_fix/`：数据导入校验与修复（csv→修复→校验→报告）。
-- `auto_loop_research_assistant/`：多步研究助手（update_plan→检索/读取→再计划→汇总报告）。
-- `policy_compliance_redactor_pro/`：合规扫描与脱敏闭环（skill_ref_read(policy) → apply_patch → artifacts）。
-- `fastapi_sse_gateway_pro/`：FastAPI + SSE 网关（服务化 run + SSE 订阅 + HTTP 审批）。
+- `form_interview_pro/`：表单访谈 Pro（stdout 含 `EXAMPLE_OK: app_form_interview_pro`）。
+- `rules_parser_pro/`：规则解析 Pro（stdout 含 `EXAMPLE_OK: app_rules_parser_pro`）。
+- `incident_triage_assistant/`：排障助手（stdout 含 `EXAMPLE_OK: app_incident_triage_assistant`）。
+- `repo_change_pipeline_pro/`：Repo 变更流水线（stdout 含 `EXAMPLE_OK: app_repo_change_pipeline_pro`）。
+- `ci_failure_triage_and_fix/`：CI 失败排障与修复闭环（stdout 含 `EXAMPLE_OK: app_ci_failure_triage_and_fix`）。
+- `data_import_validate_and_fix/`：数据导入校验与修复（stdout 含 `EXAMPLE_OK: app_data_import_validate_and_fix`）。
+- `auto_loop_research_assistant/`：多步研究助手（stdout 含 `EXAMPLE_OK: app_auto_loop_research_assistant`）。
+- `policy_compliance_redactor_pro/`：合规扫描与脱敏闭环（stdout 含 `EXAMPLE_OK: app_policy_compliance_redactor_pro`）。
+- `fastapi_sse_gateway_pro/`：FastAPI + SSE 网关（stdout 含 `EXAMPLE_OK: app_fastapi_sse_gateway_pro`）。

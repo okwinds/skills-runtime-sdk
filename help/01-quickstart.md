@@ -126,7 +126,7 @@ Default URL: `http://localhost:5173`
 ## 1.6 First interaction suggestions
 
 1. Create a Session
-2. Check / set skills roots
+2. Check / set `filesystem_sources`
 3. In Run, send a message with a valid mention, e.g.:
 
 ```text

@@ -49,5 +49,4 @@ bash scripts/pytest.sh
 
 - “工具执行失败”：`help/09-troubleshooting.cn.md`
 - “容器里沙箱能不能用”：`help/sandbox-best-practices.cn.md`（Debian 13 / Ubuntu 20.04/24.04）
-- “rg 搜不到 docs/specs”：见 `docs_for_coding_agent/common-pitfalls.md`
-
+- “rg 搜不到协作规格目录”：见 `docs_for_coding_agent/common-pitfalls.md`

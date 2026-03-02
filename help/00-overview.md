@@ -46,7 +46,7 @@ Note on naming:
    - Isolation: OS sandbox (seatbelt / bubblewrap)
 
 4. **Product Layer**
-   - Example: Studio MVP (sessions, skills roots, runs, SSE, approvals API)
+   - Example: Studio MVP (sessions, `filesystem_sources`, runs, SSE, approvals API)
 
 ## 0.4 Terminology quick reference
 

@@ -2,7 +2,7 @@
 
 本示例演示如何用“脚本客户端”的方式走一遍 Studio MVP 的端到端链路：
 
-- 创建 session（并设置 skills roots）
+- 创建 session（并设置 `filesystem_sources`）
 - 创建 run（message 含 skill mention）
 - 订阅 SSE：`/api/v1/runs/<run_id>/events/stream`
 - 自动处理 approvals（看到 `approval_requested` 就调用 decide API）

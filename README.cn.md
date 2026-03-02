@@ -30,7 +30,7 @@ _许可证：Apache License 2.0（见 `LICENSE`）_
        v
 ┌──────────────┐     ┌────────────────┐
 │ Agent API     │────▶ PromptManager   │───（skills 注入 / history compaction）
-│ core/agent.py │     └────────────────┘
+│ skills_runtime/core/agent.py │     └────────────────┘
 └──────┬───────┘
        │ stream chat events
        v

@@ -15,7 +15,7 @@ metadata:
 
 ## 注意（namespace）
 
-Studio MVP 当前会把 session skills roots 映射到固定 space：
+Studio MVP 当前会把 session 的 `filesystem_sources` 映射到固定 space：
 - `namespace=web:mvp`
 
 因此在 Studio 的 message 里应使用：

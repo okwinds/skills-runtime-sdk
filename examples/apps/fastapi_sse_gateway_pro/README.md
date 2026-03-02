@@ -78,8 +78,8 @@ curl -N http://127.0.0.1:8000/runs/<run_id>/events/stream
 ```bash
 curl -s -X POST http://127.0.0.1:8000/runs/<run_id>/approvals/<approval_key> \
   -H 'Content-Type: application/json' \
-  -d '{"decision":"approved_for_session"}'
+  -d '{"decision":"approve"}'
 ```
 
 说明：
-- `decision` 兼容别名：`approve` / `approved` / `y` / `yes`（示例优先展示 `approved_for_session`）。
+- `decision` 兼容别名：`approve` / `approved` / `y` / `yes`。

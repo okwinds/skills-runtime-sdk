@@ -48,13 +48,13 @@ A：使用 bootstrap 的 `resolve_effective_run_config(...).sources` 做来源�
 
 ## Q9：为什么我本机命令能跑，线上却失败？
 
-A：常见原因是 Linux 上 `bwrap` 缺失、路径权限不同、或 overlay/env 差异。请按 `help/09-troubleshooting.md` 逐项核对。
+A：常见原因是 Linux 上 `bwrap` 缺失、路径权限不同、或 overlay/env 差异。请按 [09-troubleshooting.cn.md](./09-troubleshooting.cn.md) 逐项核对。
 
 ## Q10：如果要做二次开发，先从哪里看？
 
 A：推荐顺序：
-1. `help/08-architecture-internals.md`
-2. `help/06-tools-and-safety.md`（tools/approvals/sandbox 的心智模型与可观测字段）
+1. [08-architecture-internals.cn.md](./08-architecture-internals.cn.md)
+2. [06-tools-and-safety.cn.md](./06-tools-and-safety.cn.md)（tools/approvals/sandbox 的心智模型与可观测字段）
 3. 对应实现代码（`packages/skills-runtime-sdk-python/src/skills_runtime/*`，从 `skills_runtime/core/agent.py` 与 `skills_runtime/tools/builtin/*` 入手）
 
 ---

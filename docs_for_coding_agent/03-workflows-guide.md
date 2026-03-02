@@ -193,7 +193,7 @@ $[examples:workflow].repo_patcher
 
 当你需要把“编排能力”做成服务/产品形态（UI/后端）并提供 SSE 事件流：
 
-- create session（设置 skills roots）
+- create session（设置 `filesystem_sources`）
 - create run（message 含 skill mention）
 - subscribe SSE：`/api/v1/runs/<run_id>/events/stream`
 - approvals：监听 `approval_requested` 并调用 decide API

@@ -1,13 +1,13 @@
 # Common Pitfalls（常见坑 / 排障速查）
 
-## 1) ripgrep 搜不到 docs/ 下的内容？
+## 1) ripgrep 搜不到“协作规格目录”里的内容？
 
-原因：本仓库开源忽略策略中，`docs/` 可能被 `.gitignore` 忽略；`rg` 默认会遵循 ignore 规则。
+原因：有些仓库会把“本地协作目录”（例如规格、工作记录等）排除出开源提交；并且 `rg` 默认会遵循 ignore 规则。
 
 解决：
 
 ```bash
-rg --no-ignore -n \"TODO\" docs/specs
+rg --no-ignore -n \"TODO\" <你的规格目录>
 ```
 
 ## 2) 在 Docker 容器里 sandbox 能不能用？

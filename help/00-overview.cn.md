@@ -33,7 +33,7 @@
 ## 0.3 四层模型（强烈建议记住）
 
 1. **Config Layer（配置层）**
-   - 来源：`default.yaml` + overlay YAML + env + session settings
+   - 来源：内置默认配置（安装包路径：`skills_runtime/assets/default.yaml`）+ overlay YAML + env + session settings
    - 结果：有效运行配置（模型、超时、safety、sandbox、skills）
 
 2. **Runtime Layer（运行层）**
@@ -45,7 +45,7 @@
    - 隔离：OS sandbox（seatbelt / bubblewrap）
 
 4. **Product Layer（产品层）**
-   - 例如 Studio MVP：会话管理、skills roots、run、SSE、审批接口
+   - 例如 Studio MVP：会话管理、`filesystem_sources`、run、SSE、审批接口
 
 ## 0.4 关键术语速查
 
