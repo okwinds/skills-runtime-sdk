@@ -58,6 +58,7 @@ packages/skills-runtime-studio-mvp/docs/
 
 # Local collaboration markdown/docs (not for remote open-source)
 AGENTS.md
+CLAUDE.md
 DOCS_INDEX.md
 TASK_SUMMARY_TEMPLATE.md
 WORKLOG_TEMPLATE.md
