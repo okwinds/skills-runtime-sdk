@@ -84,6 +84,9 @@ class AgentLoop:
         self._skills_manager = skills_manager
         self._prompt_manager = prompt_manager
         self._extra_tools = extra_tools
+        # Fix 4：缓存 builtin tool names frozenset，避免每次 run 重新从 registry.list_specs() 遍历。
+        # register_tool() 调用时会置 None 使缓存失效。
+        self._builtin_tool_names_cache: Optional[frozenset] = None
     def tool(self, func=None, *, name: Optional[str] = None, description: Optional[str] = None):  # type: ignore[no-untyped-def]
         """注册自定义 tool（decorator）。"""
         def _register(f):  # type: ignore[no-untyped-def]
@@ -155,6 +158,8 @@ class AgentLoop:
             self._extra_tools.append(entry)
         else:
             self._extra_tools[idx] = entry
+        # 新工具注册后，builtin_tool_names 集合不变，但为保持语义一致性强制失效
+        self._builtin_tool_names_cache = None
     async def _ensure_skill_env_vars(  # type: ignore[no-untyped-def]
         self,
         skill: Skill,
@@ -295,6 +300,8 @@ class AgentLoop:
             denied_approvals_by_key=dict(resume.resume_replay_denied or {}),
         )
         run_env_store: Dict[str, str] = dict(self._env_store or {})
+        # 记录 run 开始时 session 已有的 key 集合，用于 finally 增量合并（只把新增项写回 session）。
+        _run_env_initial_keys: set[str] = set(run_env_store.keys())
         if self._backend is None:
             ctx.emit_event(
                 AgentEvent(
@@ -349,7 +356,10 @@ class AgentLoop:
         )
         registry = ToolRegistry(ctx=tool_ctx)
         register_builtin_tools(registry)
-        builtin_tool_names = set(s.name for s in registry.list_specs())
+        # Fix 4：首次 run 时计算并缓存 builtin tool names frozenset；后续 run 直接复用缓存。
+        if self._builtin_tool_names_cache is None:
+            self._builtin_tool_names_cache = frozenset(s.name for s in registry.list_specs())
+        builtin_tool_names: frozenset = self._builtin_tool_names_cache
         for spec, handler, override in self._extra_tools:
             registry.register(spec, handler, override=bool(override))
         custom_tool_names = set(s.name for s, _h, _o in self._extra_tools)
@@ -456,6 +466,22 @@ class AgentLoop:
                         )
                     )
                     q_backend: "asyncio.Queue[Any]" = asyncio.Queue()
+                    # 事件驱动取消检测：后台 watcher 每 10ms 轮询，发现取消/超时时 set stop_event。
+                    # 主 streaming 循环通过 asyncio.wait 竞争"队列有数据"和"stop_event 触发"，
+                    # 响应延迟 ≤ 10ms（替代原 50ms 超时轮询）。
+                    stop_event: asyncio.Event = asyncio.Event()
+
+                    async def _stop_watcher() -> None:
+                        """后台任务：每 10ms 检测取消/超时，触发时 set stop_event。"""
+                        try:
+                            while not stop_event.is_set():
+                                if loop.is_cancelled() or loop.wall_time_exceeded():
+                                    stop_event.set()
+                                    return
+                                await asyncio.sleep(0.01)
+                        except asyncio.CancelledError:
+                            pass
+
                     async def _consume_backend() -> None:
                         """消费 backend streaming 并写入队列（异常与 EOF 通过哨兵传递）。"""
                         try:
@@ -469,25 +495,42 @@ class AgentLoop:
                             await q_backend.put(e)
                         finally:
                             await q_backend.put(None)
+
                     backend_task = asyncio.create_task(_consume_backend())
+                    watcher_task = asyncio.create_task(_stop_watcher())
                     try:
                         while True:
-                            if loop.is_cancelled():
+                            # 竞争：等待下一个 backend 事件 OR stop_event 被触发（取消/超时）
+                            get_coro = asyncio.ensure_future(q_backend.get())
+                            stop_coro = asyncio.ensure_future(stop_event.wait())
+                            done, pending = await asyncio.wait(
+                                {get_coro, stop_coro},
+                                return_when=asyncio.FIRST_COMPLETED,
+                            )
+                            # 取消未完成的 future
+                            for f in pending:
+                                f.cancel()
+                                with contextlib.suppress(BaseException):
+                                    await f
+
+                            if stop_coro in done:
+                                # stop_event 触发：检查是取消还是超时
+                                if not get_coro.done():
+                                    get_coro.cancel()
                                 backend_task.cancel()
                                 with contextlib.suppress(BaseException):
                                     await asyncio.gather(backend_task, return_exceptions=True)
-                                ctx.emit_cancelled()
+                                if loop.is_cancelled():
+                                    ctx.emit_cancelled()
+                                else:
+                                    ctx.emit_budget_exceeded(message=f"budget exceeded: max_wall_time_sec={max_wall_time_sec}")
                                 return
-                            if loop.wall_time_exceeded():
-                                backend_task.cancel()
-                                with contextlib.suppress(BaseException):
-                                    await asyncio.gather(backend_task, return_exceptions=True)
-                                ctx.emit_budget_exceeded(message=f"budget exceeded: max_wall_time_sec={max_wall_time_sec}")
-                                return
+
+                            # get_coro 完成：处理队列事件
                             try:
-                                item = await asyncio.wait_for(q_backend.get(), timeout=0.05)
-                            except asyncio.TimeoutError:
-                                continue
+                                item = get_coro.result()
+                            except Exception as exc:
+                                raise exc from None
                             if item is None:
                                 break
                             if isinstance(item, BaseException):
@@ -533,6 +576,11 @@ class AgentLoop:
                             elif t == "completed":
                                 break
                     finally:
+                        stop_event.set()  # 确保 watcher 退出
+                        if not watcher_task.done():
+                            watcher_task.cancel()
+                            with contextlib.suppress(BaseException):
+                                await asyncio.gather(watcher_task, return_exceptions=True)
                         if not backend_task.done():
                             backend_task.cancel()
                             with contextlib.suppress(BaseException):
@@ -600,4 +648,8 @@ class AgentLoop:
             )
             return
         finally:
-            self._env_store.update(run_env_store)
+            # 增量合并：只把本次 run 期间新增的 env var 写回 session 级缓存。
+            # 不全量覆盖，避免 run 期间对已有 session var 的临时修改污染跨 run 状态。
+            for k, v in run_env_store.items():
+                if k not in _run_env_initial_keys:
+                    self._env_store[k] = v

@@ -270,6 +270,8 @@ class Agent:
             self._extra_tools.append(entry)
         else:
             self._extra_tools[idx] = entry
+        # 同步使 AgentLoop 的 builtin_tool_names 缓存失效（因为 extra_tools 已变更）
+        self._loop._builtin_tool_names_cache = None
 
     def run(
         self,

@@ -8,6 +8,7 @@ Coordinator（多 Agent 调度器，Phase 2 最小实现）。
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -140,3 +141,59 @@ class Coordinator:
             history.extend(primary_initial_history)
         history.append({"role": "assistant", "content": injected_summary})
         return self._agents[0].run(task, initial_history=history)
+
+    async def run_children_concurrent(
+        self,
+        child_tasks: List[str],
+        *,
+        start_index: int = 1,
+    ) -> List[ChildResult]:
+        """
+        并发运行多个子 agent（asyncio.gather），每个子任务对应 `child_tasks[i]`。
+
+        参数：
+        - child_tasks：子任务文本列表；每个任务由 `agents[start_index + i]` 执行。
+        - start_index：子 agent 起始下标（默认 1，即 `agents[1]` 对应 `child_tasks[0]`）。
+
+        返回：
+        - List[ChildResult]：按 child_tasks 顺序排列的结果列表。
+
+        异常：
+        - ValueError：child_tasks 为空，或子 agent 下标越界。
+        """
+
+        if not child_tasks:
+            raise ValueError("child_tasks 不能为空")
+        end_index = start_index + len(child_tasks)
+        if end_index > len(self._agents):
+            raise ValueError(
+                f"agent 数量不足：需要 agents[{start_index}:{end_index}]，"
+                f"当前只有 {len(self._agents)} 个"
+            )
+
+        async def _run_one(agent: Agent, task: str) -> ChildResult:
+            """运行单个子 agent 并收集终态结果。"""
+            final_output = ""
+            status = "completed"
+            wal_locator = ""
+            async for ev in agent.run_stream_async(task):
+                if ev.type == "run_completed":
+                    final_output = str(ev.payload.get("final_output") or "")
+                    wal_locator = str(ev.payload.get("wal_locator") or "")
+                    status = "completed"
+                elif ev.type == "run_failed":
+                    final_output = str(ev.payload.get("message") or "")
+                    wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
+                    status = "failed"
+                elif ev.type == "run_cancelled":
+                    final_output = str(ev.payload.get("message") or "")
+                    wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
+                    status = "cancelled"
+            return ChildResult(summary=final_output, status=status, artifacts=[], wal_locator=wal_locator)
+
+        agents_and_tasks = [
+            (self._agents[start_index + i], child_tasks[i])
+            for i in range(len(child_tasks))
+        ]
+        results = await asyncio.gather(*[_run_one(agent, task) for agent, task in agents_and_tasks])
+        return list(results)

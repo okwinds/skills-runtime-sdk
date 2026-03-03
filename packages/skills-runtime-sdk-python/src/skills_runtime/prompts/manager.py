@@ -52,6 +52,10 @@ class PromptTemplates:
     name: str = "default"
     version: str = "0"
 
+    def __post_init__(self) -> None:
+        """初始化实例级模板缓存（frozen dataclass 用 object.__setattr__ 绕过不可变约束）。"""
+        object.__setattr__(self, "_loaded_cache", None)
+
     def load(self) -> Tuple[str, str]:
         """
         加载并返回 (system_text, developer_text)。
@@ -60,7 +64,12 @@ class PromptTemplates:
         - 若提供 `*_text`，优先使用；
         - 否则若提供 `*_path`，读取文件；
         - 再否则回退到内置默认文本（保证 SDK 可独立运行）。
+        - 首次加载后缓存到实例，避免同一 run 期间每 turn 重复读文件。
         """
+
+        cached = object.__getattribute__(self, "_loaded_cache")
+        if cached is not None:
+            return cached
 
         system = self.system_text
         if system is None and self.system_path is not None:
@@ -74,7 +83,9 @@ class PromptTemplates:
         if developer is None:
             developer = "Follow the spec-driven + TDD workflow.\n"
 
-        return system, developer
+        result = (system, developer)
+        object.__setattr__(self, "_loaded_cache", result)
+        return result
 
 
 class PromptManager:
@@ -132,13 +143,15 @@ class PromptManager:
         """
 
         system_t, developer_t = self._templates.load()
+        # 提前获取 skills 列表，避免后续两处引用各自调用 list_skills() 造成冗余扫描。
+        enabled_skills = skills_manager.list_skills(enabled_only=True)
         variables = {
             "task": task,
             "cwd": cwd,
             "tools": "\n".join(f"- {t.name}" for t in tools),
             "skills": "\n".join(
                 f"- $[{s.namespace}].{s.skill_name}: {s.description}"
-                for s in skills_manager.list_skills(enabled_only=True)
+                for s in enabled_skills
             ),
             "constraints": "",
         }
@@ -157,7 +170,7 @@ class PromptManager:
 
         if self._include_skills_list:
             skills_lines = ["Available skills (mention via $[namespace].skill_name):"]
-            for s in skills_manager.list_skills(enabled_only=True):
+            for s in enabled_skills:
                 skills_lines.append(f"- $[{s.namespace}].{s.skill_name}: {s.description}")
             messages.append({"role": "user", "content": "\n".join(skills_lines)})
 
@@ -179,7 +192,7 @@ class PromptManager:
 
         debug = {
             "templates": [{"name": self._templates.name, "version": self._templates.version}],
-            "skills_count": len(skills_manager.list_skills(enabled_only=True)),
+            "skills_count": len(enabled_skills),
             "tools_count": len(list(tools)),
             "history_kept": len(kept_history),
             "history_dropped": dropped,

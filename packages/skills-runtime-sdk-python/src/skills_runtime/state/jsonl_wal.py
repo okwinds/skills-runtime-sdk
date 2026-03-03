@@ -21,6 +21,15 @@ from typing import Iterator, Optional, TextIO
 
 from skills_runtime.core.contracts import AgentEvent
 
+# 终态事件集合：这些事件落盘后才视为 run 持久化完成，MUST fsync。
+# delta 类事件（如 llm_response_delta、tool_call_started）只需 flush，不强制 fsync。
+_TERMINAL_EVENT_TYPES: frozenset[str] = frozenset({
+    "run_completed",
+    "run_failed",
+    "run_cancelled",
+    "budget_exceeded",
+})
+
 
 @dataclass
 class JsonlWal:
@@ -74,17 +83,23 @@ class JsonlWal:
                     count += 1
         return count
 
-    def append(self, event: AgentEvent) -> int:
+    def append(self, event: AgentEvent, *, force_fsync: bool = False) -> int:
         """
         追加一条事件，返回其 line index（0-based）。
 
         说明：
         - 本方法会将事件序列化为单行 JSON（by_alias=True），并追加换行。
         - 返回的 index 在单进程内单调递增；若外部进程同时写同一文件，本实现不保证。
+        - fsync 分级：
+          - `force_fsync=True`：调用方显式要求持久化（如终态事件写入路径）。
+          - `force_fsync=False`（默认）：自动判断——终态事件（run_completed/
+            run_failed/run_cancelled/budget_exceeded）仍 fsync；delta 事件只 flush。
+          两种路径均保证：非终态 delta 事件不会因额外 fsync 引入延迟。
         """
 
         payload = event.model_dump(by_alias=True, exclude_none=True)
         line = json.dumps(payload, ensure_ascii=False)
+        is_terminal = force_fsync or (event.type in _TERMINAL_EVENT_TYPES)
         with self._lock:
             index = self._next_index
             if self._fh is None or self._fh.closed:
@@ -92,7 +107,8 @@ class JsonlWal:
             self._fh.write(line)
             self._fh.write("\n")
             self._fh.flush()
-            os.fsync(self._fh.fileno())
+            if is_terminal:
+                os.fsync(self._fh.fileno())
             self._next_index += 1
         return index
 

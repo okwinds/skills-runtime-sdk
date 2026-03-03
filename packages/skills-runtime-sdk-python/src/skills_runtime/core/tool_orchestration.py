@@ -1,12 +1,11 @@
-"""
-工具调用编排（从 core.agent_loop 拆出）。
+"""工具调用编排（从 core.agent_loop 拆出）。
 
 包含：
 - tool_call_requested/tool_call_finished 事件产出
 - arguments JSON 解析校验（fail-closed）
 - safety gate policy（allow/deny/ask）
 - approvals flow（含 session cache 与 loop guard）
-- tool dispatch 与 history 回注
+- tool dispatch 与 history 回注（Fix 5：两阶段 approval 串行 + dispatch asyncio.gather）
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from skills_runtime.core.contracts import AgentEvent
 from skills_runtime.core.run_context import RunContext
@@ -41,7 +40,17 @@ async def process_pending_tool_calls(
     safety_config: Any,
     approved_for_session_keys: Set[str],
 ) -> bool:
-    """执行 pending tool calls（含 approvals/safety），并把结果回注到 ctx.history。"""
+    """
+    执行 pending tool calls（含 approvals/safety），并把结果回注到 ctx.history。
+
+    Fix 5：两阶段实现：
+    - Phase 1（串行）：validation + safety gate + approvals → 收集 approved_batch
+      denied/invalid 结果直接写入 history（顺序保持）。
+    - Phase 2（asyncio.gather）：批量派发 approved_batch。
+      同步 handler 在单线程 event loop 中仍为顺序执行；
+      当 handler 变为 async 时，gather 自动获得并发语义。
+    - Phase 3：把 approved 结果按原始 call 顺序写入 history。
+    """
     if not pending_tool_calls:
         return True
 
@@ -53,6 +62,12 @@ async def process_pending_tool_calls(
         tool_calls_wire.append({"id": c.call_id, "type": "function", "function": {"name": c.name, "arguments": raw_args}})
     ctx.history.append({"role": "assistant", "content": None, "tool_calls": tool_calls_wire})
 
+    # ── Phase 1：串行 validation + safety + approvals ────────────────────────
+    # approved_batch: calls that passed all gates, to be dispatched in Phase 2
+    # denied_results: call_id → ToolResult for calls already handled in Phase 1
+    approved_batch: List[Tuple[ToolCall, str]] = []  # (call, step_id)
+    denied_results: Dict[str, ToolResult] = {}
+
     for call in pending_tool_calls:
         if loop.is_cancelled():
             ctx.emit_cancelled()
@@ -62,8 +77,8 @@ async def process_pending_tool_calls(
             return False
 
         step_id = loop.next_step_id()
-
         redaction_values = list((env_store or {}).values())
+
         raw_arguments = (call.raw_arguments or "").strip()
         raw_arguments_len = len(raw_arguments)
         raw_arguments_sha256: Optional[str] = None
@@ -77,6 +92,15 @@ async def process_pending_tool_calls(
             except json.JSONDecodeError as e:
                 raw_arguments_validation_error = str(e)
 
+        extra_payload: Dict[str, Any] = {}
+        if raw_arguments_validation_error is not None:
+            extra_payload = {
+                "arguments_valid": False,
+                "raw_arguments_len": raw_arguments_len,
+                "raw_arguments_sha256": raw_arguments_sha256,
+                "raw_arguments_error": raw_arguments_validation_error,
+            }
+
         ctx.emit_event(
             AgentEvent(
                 type="tool_call_requested",
@@ -89,16 +113,7 @@ async def process_pending_tool_calls(
                     "tool": call.name,
                     "name": call.name,
                     "arguments": safety_gate.sanitize_for_event(call, redaction_values=redaction_values),
-                    **(
-                        {
-                            "arguments_valid": False,
-                            "raw_arguments_len": raw_arguments_len,
-                            "raw_arguments_sha256": raw_arguments_sha256,
-                            "raw_arguments_error": raw_arguments_validation_error,
-                        }
-                        if raw_arguments_validation_error is not None
-                        else {}
-                    ),
+                    **extra_payload,
                 },
             )
         )
@@ -120,6 +135,7 @@ async def process_pending_tool_calls(
                 )
             )
             ctx.history.append({"role": "tool", "tool_call_id": call.call_id, "content": validation_result.content})
+            denied_results[call.call_id] = validation_result
             continue
 
         approval_reason: Optional[str] = None
@@ -137,10 +153,12 @@ async def process_pending_tool_calls(
                 )
             )
             ctx.history.append({"role": "tool", "tool_call_id": call.call_id, "content": denied_result.content})
+            denied_results[call.call_id] = denied_result
             continue
-        requires_approval = policy_decision.action == "ask"
 
+        requires_approval = policy_decision.action == "ask"
         approval_key: Optional[str] = None
+
         if requires_approval:
             summary, request_obj = safety_gate.sanitize_for_approval(call, redaction_values=redaction_values)
             approval_key = compute_approval_key(tool=call.name, request=request_obj)
@@ -159,7 +177,6 @@ async def process_pending_tool_calls(
                         payload={"approval_key": approval_key, "tool": call.name, "summary": summary, "request": request_obj},
                     )
                 )
-
                 if approval_provider is None:
                     decision = ApprovalDecision.DENIED
                     approval_reason = "no_provider"
@@ -230,6 +247,7 @@ async def process_pending_tool_calls(
                     )
                 )
                 ctx.history.append({"role": "tool", "tool_call_id": call.call_id, "content": denied_result.content})
+                denied_results[call.call_id] = denied_result
 
                 if approval_reason == "no_provider":
                     ctx.emit_event(
@@ -274,14 +292,40 @@ async def process_pending_tool_calls(
             ctx.emit_budget_exceeded(message=f"budget exceeded: max_steps={max_steps}")
             return False
 
-        result = dispatcher.dispatch_one(
+        # 通过所有检查：加入 approved_batch 等待 Phase 2 派发
+        approved_batch.append((call, step_id))
+
+    # ── Phase 2：asyncio.gather 并发派发 approved_batch ──────────────────────
+    # 同步 handler 在单线程 event loop 中顺序执行（无 await 点不切换）；
+    # 当 handler 升级为 async 时，gather 自动提供并发语义。
+    if not approved_batch:
+        return True
+
+    async def _dispatch_one_async(call: ToolCall, step_id: str) -> ToolResult:
+        """单个 tool call 的异步派发包装（为未来 async handler 铺路）。"""
+        return dispatcher.dispatch_one(
             inputs=ToolDispatchInputs(call=call, run_id=ctx.run_id, turn_id=turn_id, step_id=step_id),
             pending_tool_events=pending_tool_events,
             emit_event=ctx.emit_event,
             emit_stream=ctx.wal_emitter.stream_only,
         )
 
-        ctx.history.append({"role": "tool", "tool_call_id": call.call_id, "content": result.content})
+    dispatch_results: List[ToolResult] = list(
+        await asyncio.gather(*[_dispatch_one_async(call, step_id) for call, step_id in approved_batch])
+    )
+
+    # ── Phase 3：按原始 call 顺序写入 history ────────────────────────────────
+    # denied/invalid 已在 Phase 1 写入，此处只写 approved 结果。
+    approved_result_map: Dict[str, ToolResult] = {
+        call.call_id: result
+        for (call, _step_id), result in zip(approved_batch, dispatch_results)
+    }
+    for call in pending_tool_calls:
+        if call.call_id in denied_results:
+            continue  # Phase 1 已写入
+        result = approved_result_map.get(call.call_id)
+        if result is not None:
+            ctx.history.append({"role": "tool", "tool_call_id": call.call_id, "content": result.content})
 
     return True
 
