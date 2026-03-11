@@ -9,6 +9,7 @@ Chat Completions Streaming SSE 解析器（Phase 2）。
 - 支持终止哨兵：`[DONE]` 与 `DONE`
 - 支持 `choices[].delta.content` 文本增量
 - 支持 `choices[].delta.tool_calls[]` 的 arguments 分片拼接，并在 `finish_reason="tool_calls"` 时 flush
+- 支持 `usage-only chunk`，并把标准化 usage 摘要挂到最终 `completed` 事件
 """
 
 from __future__ import annotations
@@ -36,6 +37,9 @@ class ChatStreamEvent:
     text: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
     finish_reason: Optional[str] = None
+    usage: Optional[Dict[str, int]] = None
+    request_id: Optional[str] = None
+    provider: Optional[str] = None
 
 
 @dataclass
@@ -72,6 +76,10 @@ class ChatCompletionsSseParser:
         self._last_tool_call_index: Optional[int] = None
         self._next_tool_call_index: int = 0
         self._completed_sent: bool = False
+        self._pending_finish_reason: Optional[str] = None
+        self._pending_usage: Optional[Dict[str, int]] = None
+        self._pending_request_id: Optional[str] = None
+        self._provider: str = "openai"
 
     def feed_data(self, data: str) -> List[ChatStreamEvent]:
         """
@@ -87,18 +95,20 @@ class ChatCompletionsSseParser:
             return []
 
         if data_s in ("[DONE]", "DONE"):
-            events: List[ChatStreamEvent] = []
-            if self._tool_calls:
-                events.append(ChatStreamEvent(type="tool_calls", tool_calls=self._flush_tool_calls(), finish_reason="done"))
-            if not self._completed_sent:
-                events.append(ChatStreamEvent(type="completed", finish_reason="done"))
-                self._completed_sent = True
-            return events
+            return self._finalize_completed(default_finish_reason="done")
 
         try:
             obj = json.loads(data_s)
         except json.JSONDecodeError:
             return []
+
+        usage = self._normalize_usage(obj.get("usage"))
+        if usage is not None:
+            self._pending_usage = usage
+
+        request_id = obj.get("id")
+        if isinstance(request_id, str) and request_id:
+            self._pending_request_id = request_id
 
         choices = obj.get("choices")
         if not isinstance(choices, list):
@@ -116,9 +126,7 @@ class ChatCompletionsSseParser:
             if finish_reason == "tool_calls":
                 out.append(ChatStreamEvent(type="tool_calls", tool_calls=self._flush_tool_calls(), finish_reason="tool_calls"))
             elif finish_reason == "stop":
-                if not self._completed_sent:
-                    out.append(ChatStreamEvent(type="completed", finish_reason="stop"))
-                    self._completed_sent = True
+                self._pending_finish_reason = "stop"
             elif finish_reason == "length":
                 # Phase 2：让上层决定如何处理（通常需要压缩/截断历史）
                 raise ContextLengthExceededError("context_length_exceeded")
@@ -135,10 +143,75 @@ class ChatCompletionsSseParser:
 
         if self._completed_sent:
             return []
+        return self._finalize_completed(default_finish_reason="eof")
+
+    def _normalize_usage(self, raw_usage: Any) -> Optional[Dict[str, int]]:
+        """
+        把 provider usage 形状标准化为 `input/output/total_tokens`。
+
+        兼容：
+        - OpenAI 形状：`prompt_tokens` / `completion_tokens` / `total_tokens`
+        - 已标准化形状：`input_tokens` / `output_tokens` / `total_tokens`
+        """
+
+        if not isinstance(raw_usage, dict):
+            return None
+
+        def _as_non_negative_int(value: Any) -> Optional[int]:
+            """把任意 token 计数字段尽力转成非负整数；非法值返回 `None`。"""
+
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                return None
+            return max(parsed, 0)
+
+        input_tokens = _as_non_negative_int(raw_usage.get("input_tokens"))
+        if input_tokens is None:
+            input_tokens = _as_non_negative_int(raw_usage.get("prompt_tokens"))
+
+        output_tokens = _as_non_negative_int(raw_usage.get("output_tokens"))
+        if output_tokens is None:
+            output_tokens = _as_non_negative_int(raw_usage.get("completion_tokens"))
+
+        total_tokens = _as_non_negative_int(raw_usage.get("total_tokens"))
+        if total_tokens is None and input_tokens is not None and output_tokens is not None:
+            total_tokens = input_tokens + output_tokens
+
+        if input_tokens is None or output_tokens is None or total_tokens is None:
+            return None
+
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+        }
+
+    def _finalize_completed(self, *, default_finish_reason: str) -> List[ChatStreamEvent]:
+        """
+        输出最终 completed（必要时先 flush tool_calls），并只发出一次。
+
+        设计：
+        - `finish_reason="stop"` 后先挂起，等待 usage-only chunk / `[DONE]` / EOF；
+        - 这样可避免 `stop -> usage-only chunk -> [DONE]` 时丢 usage 或重复 completed。
+        """
+
+        if self._completed_sent:
+            return []
+
+        finish_reason = self._pending_finish_reason or default_finish_reason
         events: List[ChatStreamEvent] = []
         if self._tool_calls:
-            events.append(ChatStreamEvent(type="tool_calls", tool_calls=self._flush_tool_calls(), finish_reason="eof"))
-        events.append(ChatStreamEvent(type="completed", finish_reason="eof"))
+            events.append(ChatStreamEvent(type="tool_calls", tool_calls=self._flush_tool_calls(), finish_reason=finish_reason))
+        events.append(
+            ChatStreamEvent(
+                type="completed",
+                finish_reason=finish_reason,
+                usage=dict(self._pending_usage) if self._pending_usage is not None else None,
+                request_id=self._pending_request_id,
+                provider=self._provider,
+            )
+        )
         self._completed_sent = True
         return events
 

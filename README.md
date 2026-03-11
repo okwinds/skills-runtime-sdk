@@ -240,6 +240,10 @@ In Studio, check `Info → Sandbox` and inspect evidence fields:
 ## Offline tests
 
 ```bash
+# Default repo-level gate (SDK + Studio backend + frontend)
+bash scripts/tier0.sh
+
+# Root + Python SDK offline regression only
 bash scripts/pytest.sh
 ```
 

@@ -574,6 +574,41 @@ class AgentLoop:
                                     )
                                 )
                             elif t == "completed":
+                                usage = getattr(ev, "usage", None)
+                                if isinstance(usage, dict):
+                                    try:
+                                        input_tokens = max(int(usage.get("input_tokens") or 0), 0)
+                                        output_tokens = max(int(usage.get("output_tokens") or 0), 0)
+                                        total_tokens = usage.get("total_tokens")
+                                        total_tokens = (
+                                            max(int(total_tokens), 0)
+                                            if total_tokens is not None
+                                            else input_tokens + output_tokens
+                                        )
+                                    except (TypeError, ValueError):
+                                        input_tokens = output_tokens = total_tokens = -1
+                                    if input_tokens >= 0 and output_tokens >= 0 and total_tokens >= 0:
+                                        payload = {
+                                            "model": str(getattr(ev, "model", None) or self._executor_model),
+                                            "input_tokens": input_tokens,
+                                            "output_tokens": output_tokens,
+                                            "total_tokens": total_tokens,
+                                        }
+                                        provider = getattr(ev, "provider", None)
+                                        if isinstance(provider, str) and provider:
+                                            payload["provider"] = provider
+                                        request_id = getattr(ev, "request_id", None)
+                                        if isinstance(request_id, str) and request_id:
+                                            payload["request_id"] = request_id
+                                        ctx.emit_event(
+                                            AgentEvent(
+                                                type="llm_usage",
+                                                timestamp=now_rfc3339(),
+                                                run_id=run_id,
+                                                turn_id=turn_id,
+                                                payload=payload,
+                                            )
+                                        )
                                 break
                     finally:
                         stop_event.set()  # 确保 watcher 退出

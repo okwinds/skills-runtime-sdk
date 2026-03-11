@@ -29,17 +29,19 @@ class _FakeStreamResponse:
         lines: Optional[List[str]] = None,
         raise_in_aiter: Optional[Exception] = None,
         request: Optional[httpx.Request] = None,
+        body: bytes = b"{}",
     ) -> None:
         self.status_code = status_code
         self.headers = httpx.Headers(headers or {})
         self.request = request or httpx.Request("POST", "http://example.test/v1/chat/completions")
         self._lines = list(lines or [])
         self._raise_in_aiter = raise_in_aiter
+        self._body = body
         self.aread_called = False
 
     async def aread(self) -> bytes:
         self.aread_called = True
-        return b"{}"
+        return self._body
 
     def raise_for_status(self) -> None:
         if self.status_code < 400:
@@ -47,7 +49,7 @@ class _FakeStreamResponse:
         resp = httpx.Response(
             status_code=self.status_code,
             headers=self.headers,
-            content=b"{}",
+            content=self._body,
             request=self.request,
         )
         raise httpx.HTTPStatusError("HTTP error", request=self.request, response=resp)
@@ -77,6 +79,7 @@ class _Scenario:
     def __init__(self, responses: List[_FakeStreamResponse]) -> None:
         self.responses = responses
         self.client_creations = 0
+        self.last_json_payloads: List[Any] = []
 
     def make_client(self, *args: Any, **kwargs: Any) -> "_FakeAsyncClient":
         idx = self.client_creations
@@ -90,6 +93,7 @@ class _FakeAsyncClient:
         self._idx = idx
 
     def stream(self, *args: Any, **kwargs: Any) -> _FakeStreamResponse:
+        self._scenario.last_json_payloads.append(kwargs.get("json"))
         return self._scenario.responses[self._idx]
 
     async def __aenter__(self) -> "_FakeAsyncClient":
@@ -258,7 +262,7 @@ def test_openai_chat_retries_on_500_then_success(monkeypatch) -> None:  # type: 
     assert "completed" in types
 
 
-def test_openai_chat_does_not_retry_on_400(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_openai_chat_does_not_fallback_on_generic_400_when_stream_options_are_user_supplied(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import skills_runtime.llm.openai_chat as mod
 
     scenario = _Scenario([_FakeStreamResponse(status_code=400, lines=[])])
@@ -273,14 +277,19 @@ def test_openai_chat_does_not_retry_on_400(monkeypatch) -> None:  # type: ignore
     backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
 
     async def _go() -> None:
-        req = ChatRequest(model="gpt-test", messages=[{"role": "user", "content": "hi"}], tools=None)
+        req = ChatRequest(
+            model="gpt-test",
+            messages=[{"role": "user", "content": "hi"}],
+            tools=None,
+            extra={"stream_options": {"include_usage": True}},
+        )
         async for _ in backend.stream_chat(req):
             pass
 
     with pytest.raises(httpx.HTTPStatusError):
         asyncio.run(_go())
 
-    assert scenario.client_creations == 1, "should not retry on non-retryable 4xx"
+    assert scenario.client_creations == 1, "should not fallback when stream_options are caller-controlled"
 
 
 def test_openai_chat_enforces_retry_max_retries(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -369,3 +378,71 @@ def test_openai_chat_retry_is_observable_via_on_retry_callback(monkeypatch) -> N
     assert observed, "expected on_retry to be called at least once"
     assert observed[0].get("provider") == "openai"
     assert observed[0].get("error_kind") == "http_status"
+
+
+def test_openai_chat_falls_back_without_stream_options_when_usage_request_unsupported(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import skills_runtime.llm.openai_chat as mod
+
+    ok_lines = [
+        "data: " + json.dumps({"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}]}),
+        "data: DONE",
+    ]
+    scenario = _Scenario(
+        [
+            _FakeStreamResponse(
+                status_code=400,
+                lines=[],
+                body=json.dumps({"error": {"message": "unknown field: stream_options.include_usage"}}).encode("utf-8"),
+            ),
+            _FakeStreamResponse(status_code=200, lines=ok_lines),
+        ]
+    )
+    monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
+
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        timeout_sec=1,
+        retry={"max_retries": 0},
+    )
+    backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
+    types = _run_stream(backend)
+
+    assert scenario.client_creations == 2
+    assert scenario.last_json_payloads[0]["stream_options"] == {"include_usage": True}
+    assert "stream_options" not in scenario.last_json_payloads[1]
+    assert "completed" in types
+
+
+def test_openai_chat_falls_back_without_stream_options_on_generic_422_when_auto_injected(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import skills_runtime.llm.openai_chat as mod
+
+    ok_lines = [
+        "data: " + json.dumps({"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}]}),
+        "data: DONE",
+    ]
+    scenario = _Scenario(
+        [
+            _FakeStreamResponse(
+                status_code=422,
+                lines=[],
+                body=json.dumps({"error": {"message": "bad request"}}).encode("utf-8"),
+            ),
+            _FakeStreamResponse(status_code=200, lines=ok_lines),
+        ]
+    )
+    monkeypatch.setattr(mod.httpx, "AsyncClient", scenario.make_client)
+
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="OPENAI_API_KEY",
+        timeout_sec=1,
+        retry={"max_retries": 0},
+    )
+    backend = OpenAIChatCompletionsBackend(cfg, api_key="sk-test")
+    types = _run_stream(backend)
+
+    assert scenario.client_creations == 2
+    assert scenario.last_json_payloads[0]["stream_options"] == {"include_usage": True}
+    assert "stream_options" not in scenario.last_json_payloads[1]
+    assert "completed" in types

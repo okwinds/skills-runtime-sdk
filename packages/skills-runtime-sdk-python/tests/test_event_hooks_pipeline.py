@@ -107,3 +107,58 @@ def test_event_hooks_receive_tool_side_events_once_and_in_stream_order(tmp_path:
     assert hook_types == stream_types
     assert any(e.type == "run_completed" for e in stream_events)
     assert sum(1 for e in wal.iter_events() if e.type == "plan_updated") == 1
+
+
+def test_event_hooks_receive_llm_usage_event_once_and_in_stream_order(tmp_path: Path) -> None:
+    """
+    当 backend 在 completed 上附带 usage 时，AgentLoop 必须：
+    - 翻译出一次 `llm_usage`
+    - 让 hooks 顺序与 run_stream 保持一致
+    - 把 `llm_usage` 一并落入 WAL
+    """
+
+    wal = InMemoryWal()
+    hook_types: List[str] = []
+
+    def _hook(ev: AgentEvent) -> None:
+        hook_types.append(ev.type)
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="text_delta", text="ok"),
+                    ChatStreamEvent(
+                        type="completed",
+                        finish_reason="stop",
+                        usage={"input_tokens": 11, "output_tokens": 7, "total_tokens": 18},
+                        request_id="req_usage_1",
+                    ),
+                ]
+            )
+        ]
+    )
+
+    agent = Agent(
+        model="fake-model",
+        backend=backend,
+        workspace_root=tmp_path,
+        wal_backend=wal,
+        event_hooks=[_hook],
+    )
+
+    stream_events = list(agent.run_stream("collect usage"))
+    stream_types = [e.type for e in stream_events]
+    usage_events = [e for e in stream_events if e.type == "llm_usage"]
+
+    assert hook_types == stream_types
+    assert len(usage_events) == 1
+    assert usage_events[0].payload == {
+        "model": "fake-model",
+        "input_tokens": 11,
+        "output_tokens": 7,
+        "total_tokens": 18,
+        "request_id": "req_usage_1",
+    }
+    assert stream_types.index("llm_usage") < stream_types.index("run_completed")
+    assert sum(1 for e in wal.iter_events() if e.type == "llm_usage") == 1

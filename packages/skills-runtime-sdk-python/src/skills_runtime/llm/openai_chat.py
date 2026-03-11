@@ -79,6 +79,13 @@ class OpenAIChatCompletionsBackend:
             payload["top_p"] = float(request.top_p)
         if request.response_format is not None:
             payload["response_format"] = dict(request.response_format)
+        request_stream_options = request.extra.get("stream_options")
+        injected_stream_options = False
+        if isinstance(request_stream_options, dict):
+            payload["stream_options"] = dict(request_stream_options)
+        elif request_stream_options is None:
+            payload["stream_options"] = {"include_usage": True}
+            injected_stream_options = True
 
         def _retryable_status(code: int) -> bool:
             """判断 HTTP status 是否适合重试（保守）。"""
@@ -107,6 +114,31 @@ class OpenAIChatCompletionsBackend:
                 return sec * 1000
             except (ValueError, TypeError):
                 return None
+
+        def _should_fallback_without_stream_options(exc: httpx.HTTPStatusError) -> bool:
+            """
+            判断是否应因 `stream_options.include_usage` 不被支持而降级重试。
+
+            约束：
+            - 仅对“自动注入”的 `stream_options` 使用该回退；调用方显式传入时不替其决策；
+            - 对兼容 provider 常见的通用 `400/422 bad request`，默认尝试去掉
+              `stream_options` 重试一次，满足 fail-open；
+            - `404` 仍要求错误正文显式提到 `stream_options` / `include_usage`，
+              避免把 endpoint/model 路径错误误判成 usage 能力缺失。
+            """
+
+            status_code = exc.response.status_code
+            if status_code in {400, 422}:
+                return True
+            if status_code != 404:
+                return False
+            body = ""
+            try:
+                body = exc.response.text
+            except Exception:
+                body = ""
+            body_l = body.lower()
+            return "stream_options" in body_l or "include_usage" in body_l
 
         retry_cfg = getattr(self._cfg, "retry", None)
         base_delay_sec = float(getattr(retry_cfg, "base_delay_sec", 0.5) or 0.5)
@@ -153,14 +185,18 @@ class OpenAIChatCompletionsBackend:
         timeout = httpx.Timeout(self._cfg.timeout_sec)
         headers = {"Content-Type": "application/json"}
         headers.update(self._auth_header())
+        payload_without_stream_options = dict(payload)
+        payload_without_stream_options.pop("stream_options", None)
 
         emitted_any = False
         attempt = 0
+        current_payload = dict(payload)
+        usage_fallback_available = injected_stream_options
         while True:
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     parser = ChatCompletionsSseParser()
-                    async with client.stream("POST", self._endpoint(), json=payload, headers=headers) as resp:
+                    async with client.stream("POST", self._endpoint(), json=current_payload, headers=headers) as resp:
                         # 重要：streaming 模式下若直接 raise_for_status，HTTPStatusError 里的 response
                         # 往往没有缓存 body，导致上层无法解析 OpenAI 风格 {"error":{"message":...}}。
                         # 这里在非 2xx 时先读取响应 body（错误 JSON），再抛异常，保证可观测性。
@@ -183,6 +219,10 @@ class OpenAIChatCompletionsBackend:
                 return
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
+                if usage_fallback_available and not emitted_any and _should_fallback_without_stream_options(exc):
+                    current_payload = dict(payload_without_stream_options)
+                    usage_fallback_available = False
+                    continue
                 if emitted_any or attempt >= max_retries or not _retryable_status(status):
                     raise
                 retry_after_ms = _retry_after_ms_from_headers(exc.response.headers)

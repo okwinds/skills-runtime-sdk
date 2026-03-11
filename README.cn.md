@@ -244,6 +244,10 @@ bash scripts/integration/os_sandbox_restriction_demo.sh
 ## 回归（离线）
 
 ```bash
+# 仓库级默认门禁（SDK + Studio backend + frontend）
+bash scripts/tier0.sh
+
+# 仅 root + Python SDK 离线回归
 bash scripts/pytest.sh
 ```
 

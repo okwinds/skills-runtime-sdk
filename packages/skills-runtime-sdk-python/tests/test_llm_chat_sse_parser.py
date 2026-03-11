@@ -283,6 +283,43 @@ def test_chat_sse_text_delta_emitted_and_stop_completes() -> None:
     assert completed[0].finish_reason == "stop"
 
 
+def test_chat_sse_stop_then_usage_only_chunk_then_done_emits_single_completed_with_usage() -> None:
+    data_lines = [
+        json.dumps({"choices": [{"delta": {"content": "hello"}, "finish_reason": "stop"}]}),
+        json.dumps(
+            {
+                "id": "chatcmpl_usage_1",
+                "choices": [],
+                "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+            }
+        ),
+        "[DONE]",
+    ]
+
+    events = list(iter_chat_completions_stream_events(data_lines))
+    completed = [e for e in events if e.type == "completed"]
+
+    assert [e.text for e in events if e.type == "text_delta"] == ["hello"]
+    assert len(completed) == 1
+    assert completed[0].finish_reason == "stop"
+    assert completed[0].usage == {"input_tokens": 11, "output_tokens": 7, "total_tokens": 18}
+    assert completed[0].request_id == "chatcmpl_usage_1"
+
+
+def test_chat_sse_stop_then_usage_only_chunk_then_eof_emits_single_completed_with_usage() -> None:
+    data_lines = [
+        json.dumps({"choices": [{"delta": {}, "finish_reason": "stop"}]}),
+        json.dumps({"choices": [], "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}}),
+    ]
+
+    events = list(iter_chat_completions_stream_events(data_lines))
+    completed = [e for e in events if e.type == "completed"]
+
+    assert len(completed) == 1
+    assert completed[0].finish_reason == "stop"
+    assert completed[0].usage == {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}
+
+
 def test_chat_sse_done_sentinel_variant_supported() -> None:
     events = list(iter_chat_completions_stream_events(["DONE"]))
     assert len(events) == 1

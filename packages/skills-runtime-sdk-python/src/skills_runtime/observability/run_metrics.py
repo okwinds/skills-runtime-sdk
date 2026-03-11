@@ -53,6 +53,7 @@ def _new_summary() -> Dict[str, Any]:
             "approvals_decided_total": 0,
             "human_requests_total": 0,
         },
+        "llm": {"input_tokens_total": 0, "output_tokens_total": 0, "total_tokens_total": 0},
         "tools": {"by_name": {}, "duration_ms_total": 0},
         "errors": [],
     }
@@ -102,6 +103,14 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
 
     invalid_json_lines = 0
     invalid_event_lines = 0
+
+    def _coerce_non_negative_int(value: Any) -> int:
+        """把任意值尽力转换为非负整数；失败时返回 0。"""
+
+        try:
+            return max(int(value), 0)
+        except (TypeError, ValueError):
+            return 0
 
     try:
         fh = events_jsonl_path.open("r", encoding="utf-8")
@@ -160,6 +169,21 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
             # counts
             if typ == "llm_request_started":
                 summary["counts"]["llm_requests_total"] += 1
+            elif typ == "llm_usage":
+                payload = ev.get("payload") or {}
+                if not isinstance(payload, dict):
+                    payload = {}
+                input_tokens = _coerce_non_negative_int(payload.get("input_tokens"))
+                output_tokens = _coerce_non_negative_int(payload.get("output_tokens"))
+                total_tokens_raw = payload.get("total_tokens")
+                total_tokens = (
+                    _coerce_non_negative_int(total_tokens_raw)
+                    if total_tokens_raw is not None
+                    else input_tokens + output_tokens
+                )
+                summary["llm"]["input_tokens_total"] += input_tokens
+                summary["llm"]["output_tokens_total"] += output_tokens
+                summary["llm"]["total_tokens_total"] += total_tokens
             elif typ == "approval_requested":
                 summary["counts"]["approvals_requested_total"] += 1
             elif typ == "approval_decided":

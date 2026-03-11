@@ -48,6 +48,40 @@ def test_run_metrics_completed_with_tool_aggregation(tmp_path: Path) -> None:
     assert m["tools"]["by_name"]["list_dir"]["calls"] == 1
     assert m["tools"]["by_name"]["list_dir"]["ok"] == 1
     assert m["tools"]["by_name"]["apply_patch"]["failed"] == 1
+    assert m["llm"]["input_tokens_total"] == 0
+    assert m["llm"]["output_tokens_total"] == 0
+    assert m["llm"]["total_tokens_total"] == 0
+
+
+def test_run_metrics_aggregates_llm_usage_totals(tmp_path: Path) -> None:
+    events_jsonl_path = tmp_path / "events.jsonl"
+    _write_events(
+        events_jsonl_path,
+        [
+            {"type": "run_started", "timestamp": "2026-02-09T00:00:00Z", "run_id": "r1", "payload": {}},
+            {
+                "type": "llm_usage",
+                "timestamp": "2026-02-09T00:00:01Z",
+                "run_id": "r1",
+                "turn_id": "t1",
+                "payload": {"model": "gpt-a", "input_tokens": 11, "output_tokens": 7, "total_tokens": 18},
+            },
+            {
+                "type": "llm_usage",
+                "timestamp": "2026-02-09T00:00:02Z",
+                "run_id": "r1",
+                "turn_id": "t2",
+                "payload": {"model": "gpt-a", "input_tokens": 3, "output_tokens": 5, "total_tokens": 8},
+            },
+            {"type": "run_completed", "timestamp": "2026-02-09T00:00:03Z", "run_id": "r1", "payload": {}},
+        ],
+    )
+
+    m = compute_run_metrics_summary(wal_locator=str(events_jsonl_path))
+    assert m["status"] == "completed"
+    assert m["llm"]["input_tokens_total"] == 14
+    assert m["llm"]["output_tokens_total"] == 12
+    assert m["llm"]["total_tokens_total"] == 26
 
 
 def test_run_metrics_tool_aggregation_falls_back_to_name_field(tmp_path: Path) -> None:
