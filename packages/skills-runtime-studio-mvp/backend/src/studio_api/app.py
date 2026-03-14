@@ -49,6 +49,15 @@ _WORKSPACE_ROOT = _resolve_workspace_root_from_env()
 _STORAGE = FileStorage(workspace_root=_WORKSPACE_ROOT)
 _APPROVALS = ApprovalHub()
 
+# 活跃 run 线程跟踪（用于监控和排障）
+_active_run_threads: Dict[str, threading.Thread] = {}
+_active_run_lock = threading.Lock()
+
+# Fake backend 离线回归夹具配置（仅当 STUDIO_LLM_BACKEND=fake 时使用）
+_FAKE_BACKEND_FILE_WRITE_PATH = "studio_fake_llm_output.txt"
+_FAKE_BACKEND_FILE_WRITE_CONTENT = "hello from fake llm"
+_FAKE_BACKEND_FINAL_TEXT = "done"
+
 # 约定：服务启动时加载 `.env`（若存在）；不覆盖进程外已注入的 env
 _loaded_env_file = load_dotenv_for_workspace(workspace_root=_WORKSPACE_ROOT)
 
@@ -202,7 +211,7 @@ def _build_agent(*, session_id: str, run_id: str) -> Agent:
     backend = None
     if backend_kind == "fake":
         # 离线回归夹具：用确定性的 tool_calls → tool → text 序列，覆盖 Run+Approvals 核心闭环。
-        args = {"path": "studio_fake_llm_output.txt", "content": "hello from fake llm"}
+        args = {"path": _FAKE_BACKEND_FILE_WRITE_PATH, "content": _FAKE_BACKEND_FILE_WRITE_CONTENT}
         raw_args = json.dumps(args, ensure_ascii=False, separators=(",", ":"))
         tc = ToolCall(call_id="call_1", name="file_write", args=args, raw_arguments=raw_args)
         backend = FakeChatBackend(
@@ -215,7 +224,7 @@ def _build_agent(*, session_id: str, run_id: str) -> Agent:
                 ),
                 FakeChatCall(
                     events=[
-                        ChatStreamEvent(type="text_delta", text="done"),
+                        ChatStreamEvent(type="text_delta", text=_FAKE_BACKEND_FINAL_TEXT),
                         ChatStreamEvent(type="completed", finish_reason="stop"),
                     ]
                 ),
@@ -283,8 +292,16 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
                 pass
         except Exception as e:
             _append_run_failed(error_kind="unknown", message=str(e), details={"exception_class": e.__class__.__name__})
+        finally:
+            # 线程结束时清理跟踪记录
+            with _active_run_lock:
+                _active_run_threads.pop(run_id, None)
+            logging.debug("run thread finished: run_id=%s", run_id)
 
     t = threading.Thread(target=_worker, daemon=True)
+    with _active_run_lock:
+        _active_run_threads[run_id] = t
+    logging.debug("run thread started: run_id=%s", run_id)
     t.start()
 
     return {"run_id": run_id}
