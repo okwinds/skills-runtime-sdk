@@ -32,7 +32,7 @@ def get_runtime_paths(*, workspace_root: Path) -> RuntimePaths:
     # 则需要降级到更短的 `/tmp` socket 路径，否则 server 无法启动。
     if len(str(socket_path)) > 90:
         h = hashlib.sha256(str(ws).encode("utf-8", errors="replace")).hexdigest()[:16]
-        socket_path = (Path(tempfile.gettempdir()) / f"agent_sdk_runtime_{h}.sock").resolve()
+        socket_path = (Path(tempfile.gettempdir()) / f"skills_runtime_sdk_{h}.sock").resolve()
     server_info_path = (runtime_dir / "server.json").resolve()
     exec_registry_path = (runtime_dir / "exec_registry.json").resolve()
     return RuntimePaths(

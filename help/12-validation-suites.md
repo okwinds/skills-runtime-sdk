@@ -35,14 +35,14 @@ What it runs:
 2. Studio backend offline E2E (fake LLM + approvals regression):
 
    ```bash
-   bash packages/skills-runtime-studio-mvp/backend/scripts/pytest.sh
+   bash examples/studio/mvp/backend/scripts/pytest.sh
    ```
 
 3. Studio frontend unit tests (UI/state machine/metadata notices):
 
    ```bash
-   npm -C packages/skills-runtime-studio-mvp/frontend ci
-   npm -C packages/skills-runtime-studio-mvp/frontend test
+   npm -C examples/studio/mvp/frontend ci
+   npm -C examples/studio/mvp/frontend test
    ```
 
 Evidence to archive (recommended in CI):

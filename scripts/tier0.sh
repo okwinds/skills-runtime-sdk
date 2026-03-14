@@ -17,9 +17,9 @@ echo "[tier0] sdk+repo unit tests"
 bash scripts/pytest.sh
 
 echo "[tier0] studio backend offline e2e (fake LLM)"
-bash packages/skills-runtime-studio-mvp/backend/scripts/pytest.sh
+bash examples/studio/mvp/backend/scripts/pytest.sh
 
 echo "[tier0] studio frontend unit tests"
-npm -C packages/skills-runtime-studio-mvp/frontend ci
-npm -C packages/skills-runtime-studio-mvp/frontend test
+npm -C examples/studio/mvp/frontend ci
+npm -C examples/studio/mvp/frontend test
 

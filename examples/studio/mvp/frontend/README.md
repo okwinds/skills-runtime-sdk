@@ -18,8 +18,8 @@ This is a repo example (not a published npm package). Start it from the monorepo
 
 ```bash
 cd <repo_root>
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 Open: `http://localhost:5173`
@@ -28,10 +28,10 @@ The dev server proxies backend APIs to `http://localhost:8000` (see `vite.config
 
 ## Scripts
 
-- `npm -C packages/skills-runtime-studio-mvp/frontend run dev`
-- `npm -C packages/skills-runtime-studio-mvp/frontend test`
-- `npm -C packages/skills-runtime-studio-mvp/frontend run lint`
-- `npm -C packages/skills-runtime-studio-mvp/frontend run build`
+- `npm -C examples/studio/mvp/frontend run dev`
+- `npm -C examples/studio/mvp/frontend test`
+- `npm -C examples/studio/mvp/frontend run lint`
+- `npm -C examples/studio/mvp/frontend run build`
 
 ## License
 

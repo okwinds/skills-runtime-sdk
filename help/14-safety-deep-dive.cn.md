@@ -442,7 +442,7 @@ agent = Agent(workspace_root=Path(".").resolve(), backend=..., approval_provider
 - 生产环境：`mode=ask`（或更严）+ 更严格的 sandbox profile + 保守 denylist
 
 参考 Studio 的 overlay 示例：
-- `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example`
+- `examples/studio/mvp/backend/config/runtime.yaml.example`
 
 ### 14.8.1 最小配置草图（YAML overlay）
 

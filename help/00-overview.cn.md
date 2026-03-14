@@ -23,10 +23,10 @@
 ```text
 <repo_root>/
 ├── packages/
-│   ├── skills-runtime-sdk-python/        # SDK Python 参考实现
-│   └── skills-runtime-studio-mvp/        # Studio MVP（FastAPI + React）
+│   └── skills-runtime-sdk-python/        # SDK Python 参考实现
+├── examples/
+│   └── studio/mvp/                       # Studio MVP（FastAPI + React）
 ├── help/                                 # 本手册（中英文）
-├── examples/                             # 可直接复用的示例资源（skills 等）
 └── scripts/                              # 回归与集成演示脚本
 ```
 

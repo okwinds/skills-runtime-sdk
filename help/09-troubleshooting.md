@@ -44,7 +44,7 @@ echo "$SKILLS_RUNTIME_SDK_CONFIG_PATHS"
 
 Fix:
 - Remove invalid paths or replace with existing ones
-- In Studio MVP, prefer `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`
+- In Studio MVP, prefer `examples/studio/mvp/backend/config/runtime.yaml`
 
 ---
 

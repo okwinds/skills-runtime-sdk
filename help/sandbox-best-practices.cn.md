@@ -48,7 +48,7 @@ bash scripts/integration/sandbox_profile_regression.sh prod
 
 ## 3. Studio MVP 当前建议（macOS 开发 + Linux 生产）
 
-当前落点文件：`packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`
+当前落点文件：`examples/studio/mvp/backend/config/runtime.yaml`
 
 ### 3.1 macOS（当前启用）
 

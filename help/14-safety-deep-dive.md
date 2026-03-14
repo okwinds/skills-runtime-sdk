@@ -443,7 +443,7 @@ Practical recommendation:
 - Production: `mode=ask` (or tighter) + stricter sandbox profile + conservative denylist
 
 See the Studio example overlay:
-- `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example`
+- `examples/studio/mvp/backend/config/runtime.yaml.example`
 
 ### 14.7.1 Minimal config sketch (YAML overlay)
 

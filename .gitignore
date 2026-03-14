@@ -54,7 +54,7 @@ skills_demo/
 # Open-source publishing exclusions (keep local only)
 legacy/
 docs/
-packages/skills-runtime-studio-mvp/docs/
+examples/studio/mvp/docs/
 
 # Local collaboration markdown/docs (not for remote open-source)
 AGENTS.md
@@ -63,8 +63,8 @@ DOCS_INDEX.md
 TASK_SUMMARY_TEMPLATE.md
 WORKLOG_TEMPLATE.md
 README_local.md
-packages/skills-runtime-studio-mvp/DOCS_INDEX.md
-packages/skills-runtime-studio-mvp/tests/skills-runtime-studio-mvp-test-cases.md
+examples/studio/mvp/DOCS_INDEX.md
+examples/studio/mvp/tests/skills-runtime-studio-mvp-test-cases.md
 
 # docs_for_coding_agent 是公开教学材料，需要仓库内可定位的索引文件。
 !docs_for_coding_agent/DOCS_INDEX.md
@@ -74,8 +74,8 @@ packages/skills-runtime-studio-mvp/tests/skills-runtime-studio-mvp-test-cases.md
 **/llm.yaml
 packages/skills-runtime-sdk-python/config/runtime.yaml
 packages/skills-runtime-sdk-python/config/llm.yaml
-packages/skills-runtime-studio-mvp/backend/config/runtime.yaml
-packages/skills-runtime-studio-mvp/backend/config/llm.yaml
+examples/studio/mvp/backend/config/runtime.yaml
+examples/studio/mvp/backend/config/llm.yaml
 
 # Git worktrees (temporary isolated branches)
 .worktrees/

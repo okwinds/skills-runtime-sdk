@@ -80,7 +80,7 @@
 ### CAP-SDK-012：Studio MVP（API + SSE）
 
 - 能力：sessions/runs/approvals API；SSE events；信息面板（sandbox/approvals/config）
-- 入口：`help/07-studio-guide.cn.md`、`packages/skills-runtime-studio-mvp/README.md`
+- 入口：`help/07-studio-guide.cn.md`、`examples/studio/mvp/README.md`
 
 ### CAP-SDK-013：CLI（Skills CLI / Tools CLI）
 

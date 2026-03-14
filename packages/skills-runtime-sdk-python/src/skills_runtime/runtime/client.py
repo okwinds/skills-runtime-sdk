@@ -141,9 +141,9 @@ class RuntimeClient:
         # 但环境变量里没有 `PYTHONPATH`。此时后台 server 进程若 cwd 改变会 import 失败。
         if not str(env.get("PYTHONPATH") or "").strip():
             try:
-                import skills_runtime as _agent_sdk  # local import to avoid circular
+                import skills_runtime as _skills_runtime  # local import to avoid circular
 
-                base = Path(_agent_sdk.__file__).resolve().parent.parent
+                base = Path(_skills_runtime.__file__).resolve().parent.parent
                 env["PYTHONPATH"] = str(base)
             except (ImportError, AttributeError, OSError):
                 pass

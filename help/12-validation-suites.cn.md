@@ -35,14 +35,14 @@ bash scripts/tier0.sh
 2. Studio 后端离线 E2E（fake LLM + approvals 流回归）：
 
    ```bash
-   bash packages/skills-runtime-studio-mvp/backend/scripts/pytest.sh
+   bash examples/studio/mvp/backend/scripts/pytest.sh
    ```
 
 3. Studio 前端单测（UI/状态机/metadata notices）：
 
    ```bash
-   npm -C packages/skills-runtime-studio-mvp/frontend ci
-   npm -C packages/skills-runtime-studio-mvp/frontend test
+   npm -C examples/studio/mvp/frontend ci
+   npm -C examples/studio/mvp/frontend test
    ```
 
 证据产物（建议在 CI 里保存）：

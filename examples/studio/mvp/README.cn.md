@@ -12,7 +12,7 @@
 - **Runs + SSE 流式事件**：通过后端 SSE 接口流式返回运行事件与结果
 - **React UI（Vite）**：Sessions / Skills / Create / Run 一体化操作界面
 
-本目录已迁入 `skills-runtime-sdk` monorepo：路径为 `packages/skills-runtime-studio-mvp/`，通过 `PYTHONPATH` 复用同仓库内的 Python SDK 实现（见下方后端启动命令与测试脚本）。
+本目录已迁入 `skills-runtime-sdk` monorepo：路径为 `examples/studio/mvp/`，通过 `PYTHONPATH` 复用同仓库内的 Python SDK 实现（见下方后端启动命令与测试脚本）。
 
 ## 核心能力
 
@@ -36,7 +36,7 @@
 
 ### 前置条件
 
-- 本 MVP 位于 `skills-runtime-sdk` 仓库内：`packages/skills-runtime-studio-mvp/`
+- 本 MVP 位于 `skills-runtime-sdk` 仓库内：`examples/studio/mvp/`
 - 本 MVP 后端复用同仓库内的 Python SDK 源码：
   - `packages/skills-runtime-sdk-python/src`
 - Python 环境可运行 `uvicorn` / `pytest`（如缺失 `uvicorn`：`python -m pip install "uvicorn[standard]"`）
@@ -54,10 +54,10 @@
 
 ```bash
 cd <repo_root>
-cp packages/skills-runtime-studio-mvp/backend/.env.example packages/skills-runtime-studio-mvp/backend/.env
+cp examples/studio/mvp/backend/.env.example examples/studio/mvp/backend/.env
 ```
 
-然后编辑 `packages/skills-runtime-studio-mvp/backend/.env` 填入 `OPENAI_API_KEY`（仅本机使用，不要提交）。
+然后编辑 `examples/studio/mvp/backend/.env` 填入 `OPENAI_API_KEY`（仅本机使用，不要提交）。
 
 ### 启动后端（推荐：一键脚本）
 
@@ -65,13 +65,13 @@ cp packages/skills-runtime-studio-mvp/backend/.env.example packages/skills-runti
 
 ```bash
 cd <repo_root>
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 说明：
-- 脚本会自动设置 `PYTHONPATH`（指向 `packages/skills-runtime-sdk-python/src` + `packages/skills-runtime-studio-mvp/backend/src`）并启动 `uvicorn`。
-- 后端工作区（workspace root）为 `packages/skills-runtime-studio-mvp/backend/`，运行产物会落在：`packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/`（已在 `.gitignore` 中忽略）。
-- 默认 session `filesystem_sources` 为 `packages/skills-runtime-studio-mvp/backend/.skills_runtime_sdk/skills`，UI 首次打开即可看到 skills（无需额外“Apply/生效”步骤）。
+- 脚本会自动设置 `PYTHONPATH`（指向 `packages/skills-runtime-sdk-python/src` + `examples/studio/mvp/backend/src`）并启动 `uvicorn`。
+- 后端工作区（workspace root）为 `examples/studio/mvp/backend/`，运行产物会落在：`examples/studio/mvp/backend/.skills_runtime_sdk/`（已在 `.gitignore` 中忽略）。
+- 默认 session `filesystem_sources` 为 `examples/studio/mvp/backend/.skills_runtime_sdk/skills`，UI 首次打开即可看到 skills（无需额外“Apply/生效”步骤）。
 
 #### 启动排障：`env file not found`
 
@@ -113,18 +113,18 @@ ValueError: env file not found: <some-path>/.env
 
 ```bash
 export LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 PYTHONUTF8=1
-export PYTHONPATH="<repo_root>/packages/skills-runtime-sdk-python/src:<repo_root>/packages/skills-runtime-studio-mvp/backend/src:${PYTHONPATH:-}"
-cd "<repo_root>/packages/skills-runtime-studio-mvp/backend" && python -m uvicorn studio_api.app:app --reload --host 127.0.0.1 --port 8000
+export PYTHONPATH="<repo_root>/packages/skills-runtime-sdk-python/src:<repo_root>/examples/studio/mvp/backend/src:${PYTHONPATH:-}"
+cd "<repo_root>/examples/studio/mvp/backend" && python -m uvicorn studio_api.app:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ### 启动前端
 
 ```bash
 # 如未安装依赖
-npm -C packages/skills-runtime-studio-mvp/frontend install
+npm -C examples/studio/mvp/frontend install
 
 # 启动开发服务器
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 浏览器打开：`http://localhost:5173`
@@ -147,12 +147,12 @@ $[web:mvp].skill_name
 
 ```bash
 # 后端测试（包含 PYTHONPATH/UTF-8 等环境设置）
-bash packages/skills-runtime-studio-mvp/backend/scripts/pytest.sh
+bash examples/studio/mvp/backend/scripts/pytest.sh
 
 # 前端测试 / 规范 / 构建
-npm -C packages/skills-runtime-studio-mvp/frontend test
-npm -C packages/skills-runtime-studio-mvp/frontend run lint
-npm -C packages/skills-runtime-studio-mvp/frontend run build
+npm -C examples/studio/mvp/frontend test
+npm -C examples/studio/mvp/frontend run lint
+npm -C examples/studio/mvp/frontend run build
 ```
 
 ## 可作废资源（不影响本 MVP 运行）

@@ -18,8 +18,8 @@ Studio MVP 的 React + Vite 前端。
 
 ```bash
 cd <repo_root>
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 浏览器打开：`http://localhost:5173`
@@ -28,10 +28,10 @@ npm -C packages/skills-runtime-studio-mvp/frontend run dev
 
 ## 常用脚本
 
-- `npm -C packages/skills-runtime-studio-mvp/frontend run dev`
-- `npm -C packages/skills-runtime-studio-mvp/frontend test`
-- `npm -C packages/skills-runtime-studio-mvp/frontend run lint`
-- `npm -C packages/skills-runtime-studio-mvp/frontend run build`
+- `npm -C examples/studio/mvp/frontend run dev`
+- `npm -C examples/studio/mvp/frontend test`
+- `npm -C examples/studio/mvp/frontend run lint`
+- `npm -C examples/studio/mvp/frontend run build`
 
 ## License
 

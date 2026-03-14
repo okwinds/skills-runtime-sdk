@@ -14,12 +14,12 @@ def _repo_root() -> Path:
 
 def _enable_imports() -> None:
     """
-    使 Studio MVP backend 与 SDK 可在“无需安装”的情况下被 import。
+    使 Studio MVP backend 与 SDK 可在"无需安装"的情况下被 import。
     """
 
     root = _repo_root()
     sdk_src = root / "packages" / "skills-runtime-sdk-python" / "src"
-    studio_backend_src = root / "packages" / "skills-runtime-studio-mvp" / "backend" / "src"
+    studio_backend_src = root / "examples" / "studio" / "mvp" / "backend" / "src"
 
     sys.path.insert(0, str(sdk_src))
     sys.path.insert(0, str(studio_backend_src))

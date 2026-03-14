@@ -8,28 +8,28 @@
 
 ## 7.1 组件说明
 
-- 后端：`packages/skills-runtime-studio-mvp/backend`
-- 前端：`packages/skills-runtime-studio-mvp/frontend`
+- 后端：`examples/studio/mvp/backend`
+- 前端：`examples/studio/mvp/frontend`
 - 后端对外协议：REST + SSE
 
 ## 7.2 后端启动
 
 ```bash
 cd <repo_root>
-cp packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example \
-   packages/skills-runtime-studio-mvp/backend/config/runtime.yaml
+cp examples/studio/mvp/backend/config/runtime.yaml.example \
+   examples/studio/mvp/backend/config/runtime.yaml
 
-cp packages/skills-runtime-studio-mvp/backend/.env.example \
-   packages/skills-runtime-studio-mvp/backend/.env
+cp examples/studio/mvp/backend/.env.example \
+   examples/studio/mvp/backend/.env
 
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 离线回归（fake LLM，无需真实 key/外网）：
 
 ```bash
 cd <repo_root>
-STUDIO_LLM_BACKEND=fake bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+STUDIO_LLM_BACKEND=fake bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 说明：
@@ -45,8 +45,8 @@ curl -s http://127.0.0.1:8000/api/v1/health | jq .
 
 ```bash
 cd <repo_root>
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 ## 7.4 API 总览
@@ -131,17 +131,17 @@ curl -s -X POST "http://127.0.0.1:8000/api/v1/runs/${RUN_ID}/approvals/${APPROVA
 
 ## 7.6 Studio 常见配置点
 
-- `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example`：模型、safety、sandbox（复制为本地 `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml` 使用；不要提交到远端仓库）
-- `packages/skills-runtime-studio-mvp/backend/.env`：API key 与环境变量
+- `examples/studio/mvp/backend/config/runtime.yaml.example`：模型、safety、sandbox（复制为本地 `examples/studio/mvp/backend/config/runtime.yaml` 使用；不要提交到远端仓库）
+- `examples/studio/mvp/backend/.env`：API key 与环境变量
 - `STUDIO_WORKSPACE_ROOT`：覆盖后端工作区（测试隔离）
 - `skills.env_var_missing_policy`：Studio backend 默认不注入 HumanIOProvider，因此当 skill 依赖 env var 缺失时，建议使用 `fail_fast` 获得确定性失败（终态 `run_failed.error_kind=missing_env_var`，并携带结构化 details）。本仓库示例 `runtime.yaml.example` 已默认设置为 `fail_fast`。
 
 ## 7.7 Studio 回归入口
 
 ```bash
-bash packages/skills-runtime-studio-mvp/backend/scripts/pytest.sh
-npm -C packages/skills-runtime-studio-mvp/frontend test
-npm -C packages/skills-runtime-studio-mvp/frontend run lint
+bash examples/studio/mvp/backend/scripts/pytest.sh
+npm -C examples/studio/mvp/frontend test
+npm -C examples/studio/mvp/frontend run lint
 ```
 
 ## 7.8 推荐实践

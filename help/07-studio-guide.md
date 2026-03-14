@@ -8,28 +8,28 @@
 
 ## 7.1 Components
 
-- Backend: `packages/skills-runtime-studio-mvp/backend`
-- Frontend: `packages/skills-runtime-studio-mvp/frontend`
+- Backend: `examples/studio/mvp/backend`
+- Frontend: `examples/studio/mvp/frontend`
 - Backend protocol: REST + SSE
 
 ## 7.2 Start the backend
 
 ```bash
 cd <repo_root>
-cp packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example \
-   packages/skills-runtime-studio-mvp/backend/config/runtime.yaml
+cp examples/studio/mvp/backend/config/runtime.yaml.example \
+   examples/studio/mvp/backend/config/runtime.yaml
 
-cp packages/skills-runtime-studio-mvp/backend/.env.example \
-   packages/skills-runtime-studio-mvp/backend/.env
+cp examples/studio/mvp/backend/.env.example \
+   examples/studio/mvp/backend/.env
 
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 Offline regression (fake LLM, no real key/network):
 
 ```bash
 cd <repo_root>
-STUDIO_LLM_BACKEND=fake bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+STUDIO_LLM_BACKEND=fake bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 Notes:
@@ -45,8 +45,8 @@ curl -s http://127.0.0.1:8000/api/v1/health | jq .
 
 ```bash
 cd <repo_root>
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 ## 7.4 API overview
@@ -131,17 +131,17 @@ curl -s -X POST "http://127.0.0.1:8000/api/v1/runs/${RUN_ID}/approvals/${APPROVA
 
 ## 7.6 Common configuration touchpoints
 
-- `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example`: models / safety / sandbox (copy to `runtime.yaml` locally; do not commit)
-- `packages/skills-runtime-studio-mvp/backend/.env`: API key env vars (local only)
+- `examples/studio/mvp/backend/config/runtime.yaml.example`: models / safety / sandbox (copy to `runtime.yaml` locally; do not commit)
+- `examples/studio/mvp/backend/.env`: API key env vars (local only)
 - `STUDIO_WORKSPACE_ROOT`: override backend workspace root (for test isolation / multi-instance)
 - `skills.env_var_missing_policy`: Studio backend does not inject a HumanIOProvider by default, so when a skill requires a missing env var, prefer `fail_fast` for deterministic failure (`run_failed.error_kind=missing_env_var` with structured details). The example `runtime.yaml.example` in this repo defaults to `fail_fast`.
 
 ## 7.7 Regression entrypoints
 
 ```bash
-bash packages/skills-runtime-studio-mvp/backend/scripts/pytest.sh
-npm -C packages/skills-runtime-studio-mvp/frontend test
-npm -C packages/skills-runtime-studio-mvp/frontend run lint
+bash examples/studio/mvp/backend/scripts/pytest.sh
+npm -C examples/studio/mvp/frontend test
+npm -C examples/studio/mvp/frontend run lint
 ```
 
 ## 7.8 Recommendations

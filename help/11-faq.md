@@ -18,7 +18,7 @@ A: This is intentional to avoid interrupting the conversation. In free text, men
 
 A: The SDK default is `sandbox.default_policy=none` (it does not force OS sandbox by default to avoid changing behavior).
 
-Studio MVP’s example overlay (`packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example`) sets `sandbox.default_policy` to `restricted` by default, so when you run the MVP you’re more likely to notice sandbox-related constraints.
+Studio MVP’s example overlay (`examples/studio/mvp/backend/config/runtime.yaml.example`) sets `sandbox.default_policy` to `restricted` by default, so when you run the MVP you’re more likely to notice sandbox-related constraints.
 
 To turn “feels like sandbox” into hard evidence, run:
 

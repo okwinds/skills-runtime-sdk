@@ -25,7 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e "packages/skills-runtime-sdk-python[dev]"
           # Root test suite imports Studio backend modules; install its runtime deps (fastapi/pydantic).
-          python -m pip install -e "packages/skills-runtime-studio-mvp/backend[test]"
+          python -m pip install -e "examples/studio/mvp/backend[test]"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -33,7 +33,7 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: |
-            packages/skills-runtime-studio-mvp/frontend/package-lock.json
+            examples/studio/mvp/frontend/package-lock.json
 
       - name: Run Tier-0 gate
         run: |

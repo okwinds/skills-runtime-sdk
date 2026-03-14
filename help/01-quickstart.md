@@ -97,10 +97,10 @@ Expected: JSON on stdout with `ok/issues` or `report/skills`.
 
 ```bash
 cd <repo_root>
-cp packages/skills-runtime-studio-mvp/backend/.env.example \
-   packages/skills-runtime-studio-mvp/backend/.env
+cp examples/studio/mvp/backend/.env.example \
+   examples/studio/mvp/backend/.env
 
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 Default URL: `http://127.0.0.1:8000`
@@ -117,8 +117,8 @@ In another terminal:
 
 ```bash
 cd <repo_root>
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 Default URL: `http://localhost:5173`

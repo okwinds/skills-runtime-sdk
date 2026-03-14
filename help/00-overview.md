@@ -24,10 +24,10 @@ Note on naming:
 ```text
 <repo_root>/
 ├── packages/
-│   ├── skills-runtime-sdk-python/        # Python SDK reference implementation
-│   └── skills-runtime-studio-mvp/        # Studio MVP (FastAPI + React)
+│   └── skills-runtime-sdk-python/        # Python SDK reference implementation
+├── examples/
+│   └── studio/mvp/                       # Studio MVP (FastAPI + React)
 ├── help/                                 # This handbook (CN/EN)
-├── examples/                             # Reusable examples (skills, etc.)
 └── scripts/                              # Regression + integration demo scripts
 ```
 

@@ -48,7 +48,7 @@ bash scripts/integration/sandbox_profile_regression.sh prod
 
 ## 3. Studio MVP baseline (macOS dev + Linux prod)
 
-Current config location: `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`
+Current config location: `examples/studio/mvp/backend/config/runtime.yaml`
 
 ### 3.1 macOS (active now)
 

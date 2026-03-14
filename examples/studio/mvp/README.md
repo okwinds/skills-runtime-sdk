@@ -12,7 +12,7 @@ A minimal “Studio” built on top of `skills-runtime-sdk`, providing:
 - **Runs + SSE event streaming**: stream run events and results from the backend
 - **React UI (Vite)**: Sessions / Skills / Create / Run in one place
 
-This package lives inside the monorepo at `packages/skills-runtime-studio-mvp/` and reuses the SDK source via `PYTHONPATH`.
+This package lives inside the monorepo at `examples/studio/mvp/` and reuses the SDK source via `PYTHONPATH`.
 
 ## Quick start
 
@@ -25,29 +25,29 @@ Config (local only; do not commit secrets):
 
 ```bash
 cd <repo_root>
-cp packages/skills-runtime-studio-mvp/backend/.env.example \
-   packages/skills-runtime-studio-mvp/backend/.env
+cp examples/studio/mvp/backend/.env.example \
+   examples/studio/mvp/backend/.env
 
-cp packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example \
-   packages/skills-runtime-studio-mvp/backend/config/runtime.yaml
+cp examples/studio/mvp/backend/config/runtime.yaml.example \
+   examples/studio/mvp/backend/config/runtime.yaml
 ```
 
 Then edit:
 
-- `packages/skills-runtime-studio-mvp/backend/.env`: set `OPENAI_API_KEY`
-- `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`: set `llm.base_url` and `models.planner/executor`
+- `examples/studio/mvp/backend/.env`: set `OPENAI_API_KEY`
+- `examples/studio/mvp/backend/config/runtime.yaml`: set `llm.base_url` and `models.planner/executor`
 
 Start backend:
 
 ```bash
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 Start frontend:
 
 ```bash
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 Open: `http://localhost:5173`
@@ -61,7 +61,7 @@ Open: `http://localhost:5173`
 ## Offline regression
 
 ```bash
-bash packages/skills-runtime-studio-mvp/backend/scripts/pytest.sh
-npm -C packages/skills-runtime-studio-mvp/frontend test
+bash examples/studio/mvp/backend/scripts/pytest.sh
+npm -C examples/studio/mvp/frontend test
 ```
 

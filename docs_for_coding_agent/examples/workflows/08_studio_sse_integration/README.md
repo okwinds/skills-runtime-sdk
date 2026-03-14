@@ -17,7 +17,7 @@
 1) 启动 Studio backend：
 
 ```bash
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 2) 运行本示例（必须显式开启）：

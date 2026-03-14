@@ -94,23 +94,23 @@ Approvals are auditable without leaking secrets:
 cd <repo_root>
 
 # 1) Backend env (do NOT commit API keys)
-cp packages/skills-runtime-studio-mvp/backend/.env.example \
-   packages/skills-runtime-studio-mvp/backend/.env
+cp examples/studio/mvp/backend/.env.example \
+   examples/studio/mvp/backend/.env
 
 # 2) Runtime overlay (local sensitive file; only `.example` is kept in the repo)
-cp packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example \
-   packages/skills-runtime-studio-mvp/backend/config/runtime.yaml
+cp examples/studio/mvp/backend/config/runtime.yaml.example \
+   examples/studio/mvp/backend/config/runtime.yaml
 ```
 
 Then edit:
 
-- `packages/skills-runtime-studio-mvp/backend/.env`: set `OPENAI_API_KEY`
-- `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`: set `llm.base_url` and `models.planner/executor`
+- `examples/studio/mvp/backend/.env`: set `OPENAI_API_KEY`
+- `examples/studio/mvp/backend/config/runtime.yaml`: set `llm.base_url` and `models.planner/executor`
 
 ### 2) Start the backend
 
 ```bash
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 Health check:
@@ -122,8 +122,8 @@ curl -s http://127.0.0.1:8000/api/v1/health
 ### 3) Start the frontend
 
 ```bash
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 Open: `http://localhost:5173`

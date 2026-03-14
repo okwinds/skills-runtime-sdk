@@ -94,23 +94,23 @@ Approvals 的审计键遵循“可审计但不泄密”：
 cd <repo_root>
 
 # 1) 后端环境变量（key 不要提交）
-cp packages/skills-runtime-studio-mvp/backend/.env.example \
-   packages/skills-runtime-studio-mvp/backend/.env
+cp examples/studio/mvp/backend/.env.example \
+   examples/studio/mvp/backend/.env
 
 # 2) 运行时 overlay（本地敏感文件；远端只保留 .example）
-cp packages/skills-runtime-studio-mvp/backend/config/runtime.yaml.example \
-   packages/skills-runtime-studio-mvp/backend/config/runtime.yaml
+cp examples/studio/mvp/backend/config/runtime.yaml.example \
+   examples/studio/mvp/backend/config/runtime.yaml
 ```
 
 然后编辑：
 
-- `packages/skills-runtime-studio-mvp/backend/.env`：填 `OPENAI_API_KEY`
-- `packages/skills-runtime-studio-mvp/backend/config/runtime.yaml`：填 `llm.base_url`、`models.planner/executor`
+- `examples/studio/mvp/backend/.env`：填 `OPENAI_API_KEY`
+- `examples/studio/mvp/backend/config/runtime.yaml`：填 `llm.base_url`、`models.planner/executor`
 
 ### 2) 启动后端
 
 ```bash
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 健康检查：
@@ -122,8 +122,8 @@ curl -s http://127.0.0.1:8000/api/v1/health
 ### 3) 启动前端
 
 ```bash
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 浏览器打开：`http://localhost:5173`

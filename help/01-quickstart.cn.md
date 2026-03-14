@@ -97,10 +97,10 @@ python3 -m skills_runtime.cli.main skills scan \
 
 ```bash
 cd <repo_root>
-cp packages/skills-runtime-studio-mvp/backend/.env.example \
-   packages/skills-runtime-studio-mvp/backend/.env
+cp examples/studio/mvp/backend/.env.example \
+   examples/studio/mvp/backend/.env
 
-bash packages/skills-runtime-studio-mvp/backend/scripts/dev.sh
+bash examples/studio/mvp/backend/scripts/dev.sh
 ```
 
 默认地址：`http://127.0.0.1:8000`
@@ -117,8 +117,8 @@ curl -s http://127.0.0.1:8000/api/v1/health | jq .
 
 ```bash
 cd <repo_root>
-npm -C packages/skills-runtime-studio-mvp/frontend install
-npm -C packages/skills-runtime-studio-mvp/frontend run dev
+npm -C examples/studio/mvp/frontend install
+npm -C examples/studio/mvp/frontend run dev
 ```
 
 默认地址：`http://localhost:5173`
