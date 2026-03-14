@@ -81,14 +81,14 @@ def test_versioning_explicit_is_accepted() -> None:
         [
             _base_config(
                 {
-                    "versioning": {"enabled": False, "strategy": "TODO"},
+                    "versioning": {"enabled": False, "strategy": ""},
                     "spaces": [],
                     "sources": [],
                 }
             )
         ]
     )
-    assert cfg.skills.versioning.strategy == "TODO"
+    assert cfg.skills.versioning.strategy == ""
 
 
 def test_versioning_defaults_when_missing() -> None:
@@ -96,7 +96,7 @@ def test_versioning_defaults_when_missing() -> None:
 
     cfg = load_config_dicts([_base_config({})])
     assert cfg.skills.versioning.enabled is False
-    assert cfg.skills.versioning.strategy == "TODO"
+    assert cfg.skills.versioning.strategy == ""
 
 
 def test_versioning_defaults_when_empty_object() -> None:
@@ -104,7 +104,7 @@ def test_versioning_defaults_when_empty_object() -> None:
 
     cfg = load_config_dicts([_base_config({"versioning": {}})])
     assert cfg.skills.versioning.enabled is False
-    assert cfg.skills.versioning.strategy == "TODO"
+    assert cfg.skills.versioning.strategy == ""
 
 
 def test_versioning_partial_object_keeps_defaults() -> None:
@@ -112,7 +112,7 @@ def test_versioning_partial_object_keeps_defaults() -> None:
 
     cfg = load_config_dicts([_base_config({"versioning": {"enabled": True}})])
     assert cfg.skills.versioning.enabled is True
-    assert cfg.skills.versioning.strategy == "TODO"
+    assert cfg.skills.versioning.strategy == ""
 
 
 def test_versioning_invalid_enabled_type_raises() -> None:
@@ -137,7 +137,7 @@ def test_versioning_rejects_extra_fields() -> None:
             [
                 _base_config(
                     {
-                        "versioning": {"enabled": False, "strategy": "TODO", "rollout": {"pct": 10}},
+                        "versioning": {"enabled": False, "strategy": "", "rollout": {"pct": 10}},
                         "spaces": [],
                         "sources": [],
                     }
@@ -163,7 +163,7 @@ def test_skills_manager_scan_is_unchanged_with_versioning(tmp_path: Path) -> Non
             _base_config(
                 {
                     **base_skills_cfg,
-                    "versioning": {"enabled": True, "strategy": "TODO"},
+                    "versioning": {"enabled": True, "strategy": ""},
                 }
             )
         ]
@@ -187,7 +187,7 @@ def test_versioning_can_be_enabled_without_affecting_scan(tmp_path: Path) -> Non
     skills_cfg = {
         "spaces": [{"id": "space-eng", "namespace": "alice:engineering", "sources": ["src-fs"]}],
         "sources": [{"id": "src-fs", "type": "filesystem", "options": {"root": str(fs_root)}}],
-        "versioning": {"enabled": True, "strategy": "TODO"},
+        "versioning": {"enabled": True, "strategy": ""},
     }
     cfg = load_config_dicts([_base_config(skills_cfg)]).skills
     mgr = SkillsManager(workspace_root=tmp_path, skills_config=cfg)
