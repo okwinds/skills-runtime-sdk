@@ -12,6 +12,7 @@ AgentBuilder：用于更安全、可复用地构造 Agent。
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,8 +40,6 @@ def _stable_json_hash(obj: object) -> str:
     """
 
     raw = json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    import hashlib
-
     return hashlib.sha256(raw).hexdigest()[:16]
 
 

@@ -120,17 +120,18 @@ def preflight(skills_config: AgentSdkSkillsConfig) -> List[FrameworkIssue]:
     # versioning placeholder warning
     try:
         versioning_enabled = bool(getattr(skills_config.versioning, "enabled", False))
-        versioning_strategy = str(getattr(skills_config.versioning, "strategy", "TODO") or "TODO")
+        versioning_strategy = str(getattr(skills_config.versioning, "strategy", "") or "")
     except AttributeError:
         versioning_enabled = False
-        versioning_strategy = "TODO"
-    if versioning_enabled or versioning_strategy != "TODO":
+        versioning_strategy = ""
+    # 当用户显式启用 versioning 或设置非空 strategy 时，发出警告
+    if versioning_enabled or versioning_strategy:
         issues.append(
             _issue(
                 code="SKILL_CONFIG_VERSIONING_IGNORED",
                 message="skills.versioning is currently a placeholder and has no runtime effect.",
                 path="skills.versioning",
-                details={"level": "warning", "enabled": versioning_enabled, "strategy": versioning_strategy},
+                details={"level": "warning", "enabled": versioning_enabled, "strategy": versioning_strategy or "(empty)"},
             )
         )
 

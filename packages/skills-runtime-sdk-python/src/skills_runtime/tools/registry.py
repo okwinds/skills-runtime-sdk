@@ -14,29 +14,26 @@ ToolRegistry：工具注册表与派发（dispatch）。
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence, TYPE_CHECKING, Union
 
 from skills_runtime.core.contracts import AgentEvent
 from skills_runtime.core.errors import UserError
+from skills_runtime.core.executor import Executor
+from skills_runtime.core.exec_sessions import ExecSessionManager
 from skills_runtime.core.utils import now_rfc3339
 from skills_runtime.state.jsonl_wal import JsonlWal
 from skills_runtime.state.wal_emitter import WalEmitter
 from skills_runtime.tools.protocol import HumanIOProvider, ToolCall, ToolResult, ToolResultPayload, ToolSpec
 
-try:  # 避免循环依赖；Executor 仅在 builtin tools 场景使用
-    from skills_runtime.core.executor import Executor
-except Exception:  # pragma: no cover
-    Executor = object  # type: ignore[assignment,misc]
-
-try:  # exec sessions 是可选能力（仅 Phase 5 parity tools 使用）
-    from skills_runtime.core.exec_sessions import ExecSessionManager
-except Exception:  # pragma: no cover
-    ExecSessionManager = object  # type: ignore[assignment,misc]
-
 if TYPE_CHECKING:  # pragma: no cover
     from skills_runtime.skills.manager import SkillsManager
+
+
+logger = logging.getLogger(__name__)
 
 
 ToolHandler = Callable[[ToolCall, "ToolExecutionContext"], ToolResult]
@@ -228,6 +225,7 @@ class ToolExecutionContext:
                 return list(rv())
             except Exception:
                 # 防御性兜底：redaction_values 由外部注入，可能抛出任意异常；fail-open 返回空列表。
+                logger.debug("redaction_values callable raised exception, returning empty list", exc_info=True)
                 return []
         return list(rv)
 
@@ -379,8 +377,6 @@ class ToolRegistry:
         message = self._ctx.redact_text(result.message or "") if result.message else None
         content = result.content
         try:
-            import json
-
             obj = json.loads(content)
             if isinstance(obj, (dict, list)):
                 red = _redact_obj(obj)

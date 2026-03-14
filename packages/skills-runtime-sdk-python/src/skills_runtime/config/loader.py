@@ -270,7 +270,7 @@ class AgentSdkSkillsConfig(BaseModel):
         model_config = ConfigDict(extra="forbid")
 
         enabled: StrictBool = False
-        strategy: str = "TODO"
+        strategy: str = ""  # 占位：当前 versioning 功能未实现（BL-001），策略值保留但不生效
 
     class Strictness(BaseModel):
         """Skills 严格模式配置（固定约束，可读性字段）。"""

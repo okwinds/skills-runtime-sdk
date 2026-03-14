@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import inspect
+import logging
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
+import yaml
 from pydantic import BaseModel, create_model
 
 from skills_runtime.config.defaults import load_default_config_dict
@@ -23,6 +26,9 @@ from skills_runtime.skills.manager import SkillsManager
 from skills_runtime.state.wal_protocol import WalBackend
 from skills_runtime.tools.protocol import HumanIOProvider, ToolCall, ToolResult, ToolResultPayload, ToolSpec
 from skills_runtime.tools.registry import ToolExecutionContext
+
+
+logger = logging.getLogger(__name__)
 
 
 class Agent:
@@ -67,10 +73,10 @@ class Agent:
                 try:
                     pp = pp.resolve()
                 except OSError:
+                    # 路径无法 resolve（如不存在或权限问题），使用原始路径继续尝试加载
+                    logger.debug("config path resolve failed, using original: %s", p, exc_info=True)
                     pp = Path(p)
                 self._config_overlay_paths.append(str(pp))
-                import yaml
-
                 obj = yaml.safe_load(pp.read_text(encoding="utf-8")) or {}
                 if isinstance(obj, dict):
                     overlays.append(obj)
@@ -115,8 +121,6 @@ class Agent:
 
         def _load_builtin_prompt_template(template_name: str) -> Tuple[str, str]:
             """读取内置 prompt 模板（system/developer）。"""
-
-            from importlib.resources import files
 
             base = files("skills_runtime.assets").joinpath("prompts").joinpath(template_name)
             system_text = base.joinpath("system.md").read_text(encoding="utf-8")
