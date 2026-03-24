@@ -11,7 +11,14 @@ class _DummyRegistry:
     def __init__(self) -> None:
         self.dispatch_calls: List[ToolCall] = []
 
-    def dispatch(self, call: ToolCall, *, turn_id: str, step_id: str) -> ToolResult:  # noqa: ARG002
+    def dispatch(
+        self,
+        call: ToolCall,
+        *,
+        turn_id: str,
+        step_id: str,
+        event_sink=None,  # noqa: ARG002
+    ) -> ToolResult:
         self.dispatch_calls.append(call)
         return ToolResult.ok_payload(stdout="ok")
 
@@ -52,4 +59,3 @@ def test_tool_dispatcher_valid_raw_arguments_emits_started_and_dispatches() -> N
     assert result.ok is True
     assert len(registry.dispatch_calls) == 1
     assert [e.type for e in events] == ["tool_call_started", "tool_call_finished"]
-

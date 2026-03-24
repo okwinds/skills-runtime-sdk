@@ -35,7 +35,6 @@ async def process_pending_tool_calls(
     env_store: Dict[str, str],
     safety_gate: SafetyGate,
     dispatcher: ToolDispatcher,
-    pending_tool_events: List[AgentEvent],
     approval_provider: Optional[ApprovalProvider],
     safety_config: Any,
     approved_for_session_keys: Set[str],
@@ -302,10 +301,18 @@ async def process_pending_tool_calls(
         return True
 
     async def _dispatch_one_async(call: ToolCall, step_id: str) -> ToolResult:
-        """单个 tool call 的异步派发包装（为未来 async handler 铺路）。"""
+        """
+        单个 tool call 的异步派发包装（为未来 async handler 铺路）。
+
+        关键约束：
+        - 每个 dispatch 必须拥有独立的 pending_tool_events 容器；
+        - 且该容器必须同时作为本次 registry.dispatch 的 event_sink；
+        - 否则一个 dispatch 的 clear/flush 会污染同批次其它 dispatch，或导致工具旁路事件丢失。
+        """
+        local_pending_tool_events: List[AgentEvent] = []
         return dispatcher.dispatch_one(
             inputs=ToolDispatchInputs(call=call, run_id=ctx.run_id, turn_id=turn_id, step_id=step_id),
-            pending_tool_events=pending_tool_events,
+            pending_tool_events=local_pending_tool_events,
             emit_event=ctx.emit_event,
             emit_stream=ctx.wal_emitter.stream_only,
         )

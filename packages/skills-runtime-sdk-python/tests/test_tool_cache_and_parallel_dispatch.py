@@ -212,3 +212,75 @@ def test_failed_tool_does_not_interrupt_concurrent_sibling(tmp_path: Path) -> No
     # 两个 tool_call_finished 事件都应存在
     finished_events = [e for e in events if e.type == "tool_call_finished"]
     assert len(finished_events) == 2, f"期望 2 个 tool_call_finished，实际 {len(finished_events)} 个"
+
+
+def test_parallel_dispatch_streams_tool_side_events_from_each_call(tmp_path: Path) -> None:
+    """
+    每个并发 tool call 产生的旁路事件都必须被独立收集并刷到事件流中。
+
+    回归目标：
+    - tool handler 内部 `ctx.emit_event(...)` 写出的事件不能丢失；
+    - 同批次多个 call 的旁路事件都必须出现在 `run_stream()` 结果里。
+    """
+    backend = _MultiToolBackend("tool_a", "tool_b")
+
+    import yaml as _yaml
+
+    overlay_file = tmp_path / "overlay.yaml"
+    overlay_file.write_text(_yaml.safe_dump({"config_version": 1, "safety": {"mode": "allow"}}), encoding="utf-8")
+
+    agent = Agent(
+        backend=backend,
+        workspace_root=tmp_path,
+        config_paths=[overlay_file],
+    )
+
+    spec_a = ToolSpec(name="tool_a", description="a", parameters={"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]})
+    spec_b = ToolSpec(name="tool_b", description="b", parameters={"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]})
+
+    def _handler(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
+        ctx.emit_event(
+            AgentEvent(
+                type="tool_progress",
+                timestamp="2026-03-25T00:00:00Z",
+                run_id=ctx.run_id,
+                payload={"call_id": call.call_id, "tool": call.name, "marker": call.args["x"]},
+            )
+        )
+        return ToolResult.from_payload(
+            ToolResultPayload(
+                ok=True,
+                stdout=f"result:{call.name}",
+                stderr="",
+                exit_code=0,
+                duration_ms=0,
+                truncated=False,
+                data={},
+                error_kind=None,
+                retryable=False,
+                retry_after_ms=None,
+            )
+        )
+
+    agent.register_tool(spec_a, _handler)
+    agent.register_tool(spec_b, _handler)
+
+    events = list(agent.run_stream("test"))
+    assert any(e.type == "run_completed" for e in events)
+
+    progress_events = [e for e in events if e.type == "tool_progress"]
+    assert len(progress_events) == 2
+    assert {
+        (
+            (e.payload or {}).get("call_id"),
+            (e.payload or {}).get("tool"),
+            (e.payload or {}).get("marker"),
+        )
+        for e in progress_events
+    } == {("call_a", "tool_a", "1"), ("call_b", "tool_b", "2")}
+
+    finished_events = [e for e in events if e.type == "tool_call_finished"]
+    assert {
+        ((e.payload or {}).get("call_id"), (e.payload or {}).get("tool"))
+        for e in finished_events
+    } >= {("call_a", "tool_a"), ("call_b", "tool_b")}

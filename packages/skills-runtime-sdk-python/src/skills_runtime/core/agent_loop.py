@@ -325,10 +325,6 @@ class AgentLoop:
             failed["wal_locator"] = wal_locator
             ctx.emit_event(AgentEvent(type="run_failed", timestamp=now_rfc3339(), run_id=run_id, payload=failed))
             return
-        pending_tool_events: List[AgentEvent] = []
-        def _tool_event_sink(e: AgentEvent) -> None:
-            """收集 tool 执行期间产生的事件（供 WAL flush / 回放）。"""
-            pending_tool_events.append(e)
         tool_ctx = ToolExecutionContext(
             workspace_root=self._workspace_root,
             run_id=run_id,
@@ -349,7 +345,6 @@ class AgentLoop:
                 bubblewrap_unshare_net=bool(self._config.sandbox.os.bubblewrap.unshare_net),
             ),
             emit_tool_events=False,
-            event_sink=_tool_event_sink,
             skills_manager=self._skills_manager,
             exec_sessions=self._exec_sessions,
             collab_manager=self._collab_manager,
@@ -646,7 +641,6 @@ class AgentLoop:
                         env_store=run_env_store,
                         safety_gate=safety_gate,
                         dispatcher=dispatcher,
-                        pending_tool_events=pending_tool_events,
                         approval_provider=self._approval_provider,
                         safety_config=self._safety,
                         approved_for_session_keys=self._approved_for_session_keys,

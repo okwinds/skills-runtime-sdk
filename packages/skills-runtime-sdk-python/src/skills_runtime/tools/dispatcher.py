@@ -121,7 +121,12 @@ class ToolDispatcher:
             )
         )
 
-        result = self._registry.dispatch(call, turn_id=inputs.turn_id, step_id=inputs.step_id)
+        result = self._registry.dispatch(
+            call,
+            turn_id=inputs.turn_id,
+            step_id=inputs.step_id,
+            event_sink=pending_tool_events.append,
+        )
 
         # 注意：pending_tool_events 中的事件通常已经被 tool ctx 写入 WAL（ctx.emit_event），这里只负责 stream。
         for te in pending_tool_events:

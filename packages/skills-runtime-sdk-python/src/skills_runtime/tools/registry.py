@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence, TYPE_CHECKING, Union
 
@@ -290,20 +290,30 @@ class ToolRegistry:
 
         return list(self._specs.values())
 
-    def dispatch(self, call: ToolCall, *, turn_id: Optional[str] = None, step_id: Optional[str] = None) -> ToolResult:
+    def dispatch(
+        self,
+        call: ToolCall,
+        *,
+        turn_id: Optional[str] = None,
+        step_id: Optional[str] = None,
+        event_sink: Optional[EventSink] = None,
+    ) -> ToolResult:
         """
         派发执行一个 ToolCall，并在 WAL 中记录 tool_call_* 事件。
 
         参数：
         - call：工具调用（已解析 arguments）
         - turn_id/step_id：可选，用于与更高层 turn/step 关联
+        - event_sink：可选；覆盖本次 dispatch 的旁路事件 sink（用于并发隔离）
 
         返回：
         - ToolResult
         """
+        exec_ctx = self._ctx if event_sink is None else replace(self._ctx, event_sink=event_sink)
 
-        if self._ctx.emit_tool_events:
+        if exec_ctx.emit_tool_events:
             self._append_event(
+                ctx=exec_ctx,
                 type_="tool_call_requested",
                 turn_id=turn_id,
                 step_id=step_id,
@@ -312,7 +322,7 @@ class ToolRegistry:
                     "tool": call.name,
                     "name": call.name,
                     "arguments": _sanitize_tool_call_arguments_for_event(
-                        call.name, args=call.args, redaction_values=self._ctx.get_redaction_values()
+                        call.name, args=call.args, redaction_values=exec_ctx.get_redaction_values()
                     ),
                 },
             )
@@ -324,12 +334,13 @@ class ToolRegistry:
                 stderr=f"未注册的 tool：{call.name}",
                 data={"tool": call.name},
             )
-            if self._ctx.emit_tool_events:
-                self._append_tool_result(call, result, turn_id=turn_id, step_id=step_id)
+            if exec_ctx.emit_tool_events:
+                self._append_tool_result(exec_ctx, call, result, turn_id=turn_id, step_id=step_id)
             return result
 
-        if self._ctx.emit_tool_events:
+        if exec_ctx.emit_tool_events:
             self._append_event(
+                ctx=exec_ctx,
                 type_="tool_call_started",
                 turn_id=turn_id,
                 step_id=step_id,
@@ -337,19 +348,19 @@ class ToolRegistry:
             )
 
         try:
-            result = handler(call, self._ctx)
+            result = handler(call, exec_ctx)
         except UserError as e:
             result = ToolResult.error_payload(error_kind="validation", stderr=str(e))
         except Exception as e:  # pragma: no cover（防御性兜底）
             result = ToolResult.error_payload(error_kind="unknown", stderr=str(e))
 
-        result = self._redact_tool_result(result)
+        result = self._redact_tool_result(result, ctx=exec_ctx)
 
-        if self._ctx.emit_tool_events:
-            self._append_tool_result(call, result, turn_id=turn_id, step_id=step_id)
+        if exec_ctx.emit_tool_events:
+            self._append_tool_result(exec_ctx, call, result, turn_id=turn_id, step_id=step_id)
         return result
 
-    def _redact_tool_result(self, result: ToolResult) -> ToolResult:
+    def _redact_tool_result(self, result: ToolResult, *, ctx: Optional[ToolExecutionContext] = None) -> ToolResult:
         """
         对 ToolResult 做最小脱敏（stdout/stderr/content/details）。
 
@@ -358,7 +369,8 @@ class ToolRegistry:
         - 仅用于降低“工具输出意外回显 secrets”的风险，不保证绝对安全。
         """
 
-        values = list(self._ctx.get_redaction_values() or [])
+        exec_ctx = ctx or self._ctx
+        values = list(exec_ctx.get_redaction_values() or [])
         if not values:
             return result
 
@@ -366,7 +378,7 @@ class ToolRegistry:
             """递归脱敏对象结构中的字符串字段（用于 details / json content）。"""
 
             if isinstance(obj, str):
-                return self._ctx.redact_text(obj)
+                return exec_ctx.redact_text(obj)
             if isinstance(obj, list):
                 return [_redact_obj(x) for x in obj]
             if isinstance(obj, dict):
@@ -374,7 +386,7 @@ class ToolRegistry:
             return obj
 
         details = _redact_obj(result.details) if result.details is not None else None
-        message = self._ctx.redact_text(result.message or "") if result.message else None
+        message = exec_ctx.redact_text(result.message or "") if result.message else None
         content = result.content
         try:
             obj = json.loads(content)
@@ -382,7 +394,7 @@ class ToolRegistry:
                 red = _redact_obj(obj)
                 content = json.dumps(red, ensure_ascii=False)
         except json.JSONDecodeError:
-            content = self._ctx.redact_text(content)
+            content = exec_ctx.redact_text(content)
 
         return ToolResult(
             ok=result.ok,
@@ -392,7 +404,15 @@ class ToolRegistry:
             details=details,
         )
 
-    def _append_tool_result(self, call: ToolCall, result: ToolResult, *, turn_id: Optional[str], step_id: Optional[str]) -> None:
+    def _append_tool_result(
+        self,
+        ctx: ToolExecutionContext,
+        call: ToolCall,
+        result: ToolResult,
+        *,
+        turn_id: Optional[str],
+        step_id: Optional[str],
+    ) -> None:
         """把 ToolResult 规范化为 payload 并写入 `tool_call_finished` 事件。"""
 
         payload_result: Dict[str, Any]
@@ -402,6 +422,7 @@ class ToolRegistry:
             payload_result = ToolResultPayload(ok=result.ok, error_kind=result.error_kind).model_dump(exclude_none=True)
 
         self._append_event(
+            ctx=ctx,
             type_="tool_call_finished",
             turn_id=turn_id,
             step_id=step_id,
@@ -411,6 +432,7 @@ class ToolRegistry:
     def _append_event(
         self,
         *,
+        ctx: Optional[ToolExecutionContext],
         type_: str,
         payload: Dict[str, Any],
         turn_id: Optional[str],
@@ -418,11 +440,11 @@ class ToolRegistry:
     ) -> None:
         """向 WAL 追加一条事件（若未配置 wal 则 no-op）。"""
 
-        self._ctx.emit_event(
+        (ctx or self._ctx).emit_event(
             AgentEvent(
                 type=type_,
                 timestamp=now_rfc3339(),
-                run_id=self._ctx.run_id,
+                run_id=(ctx or self._ctx).run_id,
                 turn_id=turn_id,
                 step_id=step_id,
                 payload=payload,
