@@ -3,12 +3,28 @@ from __future__ import annotations
 import json
 import os
 import socket
+import time
 from pathlib import Path
 
 import pytest
 
 from skills_runtime.runtime.client import RuntimeClient
 from skills_runtime.runtime.paths import get_runtime_paths
+
+
+def _wait_for_socket_close(sock: socket.socket, *, timeout_sec: float) -> bool:
+    deadline = time.monotonic() + timeout_sec
+    sock.settimeout(min(0.2, timeout_sec))
+    while time.monotonic() < deadline:
+        try:
+            b = sock.recv(65536)
+        except socket.timeout:
+            continue
+        except OSError:
+            return True
+        if not b:
+            return True
+    return False
 
 
 @pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
@@ -74,3 +90,77 @@ def test_runtime_server_writes_server_json_with_restrictive_permissions_best_eff
     assert (mode & 0o077) == 0, f"expected no group/other perms, got mode={oct(mode)}"
     client.call(method="shutdown")
 
+
+@pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
+def test_runtime_exec_spawn_rejects_cwd_outside_workspace_with_permission_error(tmp_path: Path) -> None:
+    """
+    回归：runtime exec.spawn 必须继承 workspace_root 边界，不得允许在 workspace 外启动会话。
+    """
+
+    client = RuntimeClient(workspace_root=tmp_path)
+    _ = client.ensure_server()
+
+    outside = tmp_path.parent.resolve()
+    with pytest.raises(RuntimeError, match="permission|workspace_root|禁止访问"):
+        client.call(
+            method="exec.spawn",
+            params={
+                "argv": ["python3", "-c", "print('x')"],
+                "cwd": str(outside),
+                "tty": False,
+            },
+        )
+
+    client.call(method="shutdown")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
+def test_runtime_server_half_open_client_does_not_block_later_status_request(tmp_path: Path) -> None:
+    """
+    回归（runtime-liveness-hardening / 1.1）：
+    一个已连接但未结束上传的 client，不得阻塞后续 `runtime.status`。
+    """
+
+    if not hasattr(socket, "AF_UNIX"):
+        pytest.skip("no AF_UNIX support")
+
+    client = RuntimeClient(workspace_root=tmp_path)
+    info = client.ensure_server()
+
+    blocker = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    blocker.settimeout(1.0)
+    req = {
+        "method": "runtime.status",
+        "params": {},
+        "secret": info.secret,
+    }
+    blocker.connect(str(info.socket_path))
+    blocker.sendall(json.dumps(req, ensure_ascii=False).encode("utf-8"))
+
+    try:
+        started = time.monotonic()
+        st = client._call_with_info(info, method="runtime.status", params={}, timeout_sec=0.75)
+        elapsed = time.monotonic() - started
+
+        assert int(st.get("pid") or 0) > 0
+        assert elapsed < 0.75
+        assert _wait_for_socket_close(blocker, timeout_sec=2.0) is True
+    finally:
+        try:
+            blocker.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+        try:
+            while blocker.recv(65536):
+                pass
+        except OSError:
+            pass
+        blocker.close()
+
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            try:
+                client._call_with_info(info, method="shutdown", params={}, timeout_sec=0.25)
+                break
+            except Exception:
+                time.sleep(0.05)

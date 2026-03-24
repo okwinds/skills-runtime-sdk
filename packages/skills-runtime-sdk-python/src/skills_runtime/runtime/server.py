@@ -49,6 +49,8 @@ class RuntimeServer:
         secret: str,
         idle_timeout_ms: int = 10_000,
         max_request_bytes: int = 1 * 1024 * 1024,
+        request_read_timeout_sec: float = 1.0,
+        wait_join_poll_ms: int = 50,
     ) -> None:
         """
         创建 workspace 级 runtime server。
@@ -64,6 +66,8 @@ class RuntimeServer:
         self._secret = str(secret or "")
         self._idle_timeout_ms = int(idle_timeout_ms)
         self._max_request_bytes = max(1, int(max_request_bytes))
+        self._request_read_timeout_sec = max(0.1, float(request_read_timeout_sec))
+        self._wait_join_poll_sec = max(0.01, int(wait_join_poll_ms) / 1000.0)
         self._paths = get_runtime_paths(workspace_root=self._workspace_root)
 
         self._created_at_ms = int(time.time() * 1000)
@@ -73,6 +77,7 @@ class RuntimeServer:
         self._exec_marker = secrets.token_hex(8)
 
         self._exec = ExecSessionManager()
+        self._exec_lock = threading.Lock()
         self._children_lock = threading.Lock()
         self._children: Dict[str, _ChildState] = {}
 
@@ -240,6 +245,25 @@ class RuntimeServer:
                 os.kill(int(pid), signal.SIGKILL)
         return True
 
+    def _resolve_under_workspace(self, path: str) -> Path:
+        """
+        将 runtime RPC 传入的路径解析到 workspace_root 下。
+
+        说明：
+        - runtime server 是 workspace 级能力边界；
+        - 因此即使来自本机同用户的 RPC，也不得允许 `cwd` 逃逸出 `workspace_root`。
+        """
+
+        candidate = Path(str(path))
+        if not candidate.is_absolute():
+            candidate = (self._workspace_root / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+
+        if not candidate.is_relative_to(self._workspace_root):
+            raise PermissionError(f"cwd escapes workspace_root: {candidate}")
+        return candidate
+
     def _orphan_cleanup_on_startup(self) -> None:
         """
         启动期 orphan cleanup（crash/restart 兜底）。
@@ -340,8 +364,9 @@ class RuntimeServer:
         - 任一 child 状态为 running 视为 running。
         """
 
-        if any(self._exec.has(sid) for sid in list(getattr(self._exec, "_sessions", {}).keys())):
-            return True
+        with self._exec_lock:
+            if any(self._exec.has(sid) for sid in list(getattr(self._exec, "_sessions", {}).keys())):
+                return True
         with self._children_lock:
             for c in self._children.values():
                 if c.status == "running":
@@ -364,6 +389,7 @@ class RuntimeServer:
             raise ValueError("argv must be list[str]")
         if not isinstance(cwd, str) or not cwd:
             raise ValueError("cwd must be string")
+        cwd_path = self._resolve_under_workspace(cwd)
         env_map: Optional[Dict[str, str]] = None
         if env is not None:
             if not isinstance(env, dict):
@@ -375,15 +401,20 @@ class RuntimeServer:
         env2["SKILLS_RUNTIME_SDK_RUNTIME_EXEC_SESSION_MARKER"] = str(self._exec_marker)
         env2["SKILLS_RUNTIME_SDK_RUNTIME_WORKSPACE_ROOT"] = str(self._workspace_root)
 
-        s = self._exec.spawn(argv=[str(x) for x in argv], cwd=Path(cwd), env=env2, tty=tty)
-        self._register_exec_session(
-            session_id=int(s.session_id),
-            pid=int(getattr(s.proc, "pid", 0) or 0),
-            created_at_ms=int(s.created_at_ms),
-            argv=[str(x) for x in argv],
-            cwd=str(Path(cwd).resolve()),
-        )
-        return {"session_id": int(s.session_id), "created_at_ms": int(s.created_at_ms), "pid": int(getattr(s.proc, "pid", 0) or 0)}
+        with self._exec_lock:
+            s = self._exec.spawn(argv=[str(x) for x in argv], cwd=cwd_path, env=env2, tty=tty)
+            self._register_exec_session(
+                session_id=int(s.session_id),
+                pid=int(getattr(s.proc, "pid", 0) or 0),
+                created_at_ms=int(s.created_at_ms),
+                argv=[str(x) for x in argv],
+                cwd=str(cwd_path),
+            )
+            return {
+                "session_id": int(s.session_id),
+                "created_at_ms": int(s.created_at_ms),
+                "pid": int(getattr(s.proc, "pid", 0) or 0),
+            }
 
     def _handle_exec_write(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -397,16 +428,17 @@ class RuntimeServer:
         chars = str(params.get("chars") or "")
         yield_time_ms = int(params.get("yield_time_ms", 50))
         max_output_bytes = int(params.get("max_output_bytes", 64 * 1024))
-        wr: ExecSessionWriteResult = self._exec.write(
-            session_id=session_id,
-            chars=chars,
-            yield_time_ms=yield_time_ms,
-            max_output_bytes=max_output_bytes,
-        )
-        if not wr.running:
-            # session 已退出：从 registry 移除，避免 restart 后误认为 orphan
-            with contextlib.suppress(Exception):
-                self._unregister_exec_session(session_id)
+        with self._exec_lock:
+            wr: ExecSessionWriteResult = self._exec.write(
+                session_id=session_id,
+                chars=chars,
+                yield_time_ms=yield_time_ms,
+                max_output_bytes=max_output_bytes,
+            )
+            if not wr.running:
+                # session 已退出：从 registry 移除，避免 restart 后误认为 orphan
+                with contextlib.suppress(Exception):
+                    self._unregister_exec_session(session_id)
         return {
             "stdout": wr.stdout,
             "stderr": wr.stderr,
@@ -428,9 +460,10 @@ class RuntimeServer:
         """
 
         session_id = int(params.get("session_id"))
-        existed = bool(self._exec.has(session_id))
-        self._exec.close(session_id)
-        self._unregister_exec_session(session_id)
+        with self._exec_lock:
+            existed = bool(self._exec.has(session_id))
+            self._exec.close(session_id)
+            self._unregister_exec_session(session_id)
         return {"ok": True, "session_id": int(session_id), "found": bool(existed)}
 
     def _handle_exec_close_all(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -442,12 +475,13 @@ class RuntimeServer:
         """
 
         _ = params
-        self._exec.close_all()
-        with contextlib.suppress(Exception):
-            reg = self._read_exec_registry()
-            reg["exec_sessions"] = {}
-            reg["updated_at_ms"] = int(time.time() * 1000)
-            self._write_exec_registry(reg)
+        with self._exec_lock:
+            self._exec.close_all()
+            with contextlib.suppress(Exception):
+                reg = self._read_exec_registry()
+                reg["exec_sessions"] = {}
+                reg["updated_at_ms"] = int(time.time() * 1000)
+                self._write_exec_registry(reg)
         return {"ok": True}
 
     def _handle_runtime_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -466,8 +500,9 @@ class RuntimeServer:
         active_children = sum(1 for c in children if c.status == "running")
 
         # ExecSessionManager 当前未公开 list API，先走 best-effort 私有字段快照（单线程 server 内使用可接受）。
-        sessions = list(getattr(self._exec, "_sessions", {}).keys())
-        active_exec = sum(1 for sid in sessions if self._exec.has(sid))
+        with self._exec_lock:
+            sessions = list(getattr(self._exec, "_sessions", {}).keys())
+            active_exec = sum(1 for sid in sessions if self._exec.has(sid))
 
         reg = self._read_exec_registry()
         reg_sessions = reg.get("exec_sessions") or {}
@@ -500,12 +535,13 @@ class RuntimeServer:
         close_children = bool(params.get("children", True))
 
         if close_exec:
-            self._exec.close_all()
-            with contextlib.suppress(Exception):
-                reg = self._read_exec_registry()
-                reg["exec_sessions"] = {}
-                reg["updated_at_ms"] = int(time.time() * 1000)
-                self._write_exec_registry(reg)
+            with self._exec_lock:
+                self._exec.close_all()
+                with contextlib.suppress(Exception):
+                    reg = self._read_exec_registry()
+                    reg["exec_sessions"] = {}
+                    reg["updated_at_ms"] = int(time.time() * 1000)
+                    self._write_exec_registry(reg)
 
         cancelled_children = 0
         if close_children:
@@ -667,16 +703,27 @@ class RuntimeServer:
                 raise KeyError(f"unknown ids: {missing}")
             handles = [self._children[i] for i in ids_s]
 
-        for h in handles:
-            if not h.thread.is_alive():
-                continue
-            if deadline is None:
-                h.thread.join()
-            else:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                h.thread.join(timeout=remaining)
+        pending = list(handles)
+        while pending:
+            next_pending = []
+            for h in pending:
+                if not h.thread.is_alive():
+                    continue
+                wait_sec = self._wait_join_poll_sec
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        next_pending.append(h)
+                        continue
+                    wait_sec = min(wait_sec, remaining)
+                h.thread.join(timeout=wait_sec)
+                if h.thread.is_alive():
+                    next_pending.append(h)
+            if not next_pending:
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            pending = next_pending
 
         results = []
         with self._children_lock:
@@ -759,6 +806,66 @@ class RuntimeServer:
             msg = kind
         return {"error_kind": kind, "error": msg}
 
+    def _read_request(self, conn: socket.socket) -> Optional[Dict[str, Any]]:
+        """
+        读取并解析一个连接上的 RPC 请求。
+
+        返回：
+        - dict：已完整收到并成功解析的请求对象
+        - None：连接在活性窗口内未形成完整请求，server 直接放弃该连接
+        """
+
+        conn.settimeout(self._request_read_timeout_sec)
+        raw = bytearray()
+        while True:
+            try:
+                b = conn.recv(65536)
+            except socket.timeout:
+                return None
+            if not b:
+                break
+            if len(raw) + len(b) > self._max_request_bytes:
+                raise ValueError("request too large")
+            raw.extend(b)
+
+        if not raw:
+            raise ValueError("invalid request")
+
+        req = json.loads(raw.decode("utf-8", errors="replace"))
+        if not isinstance(req, dict):
+            raise ValueError("invalid request")
+        return req
+
+    def _serve_connection(self, conn: socket.socket) -> None:
+        """
+        处理单个已接受连接。
+
+        说明：
+        - 读请求、dispatch、回包都在独立 worker 中完成；
+        - 若请求在活性窗口内未完整形成，则直接关闭连接，不强制返回 JSON。
+        """
+
+        with conn:
+            try:
+                req = self._read_request(conn)
+                if req is None:
+                    return
+                if str(req.get("secret") or "") != self._secret:
+                    raise PermissionError("invalid secret")
+                method = str(req.get("method") or "")
+                params = req.get("params") or {}
+                if not isinstance(params, dict):
+                    raise ValueError("params must be object")
+                self._last_activity = time.monotonic()
+                data = self._dispatch(method, params)
+                resp = {"ok": True, "data": data}
+            except Exception as e:
+                # 防御性兜底：单连接 worker 不得因请求异常拖垮整个 server。
+                resp = {"ok": False, **self._format_rpc_error(e)}
+
+            with contextlib.suppress(Exception):
+                conn.sendall(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
+
     def serve_forever(self) -> None:
         """
         监听 Unix socket 并处理请求，直到 shutdown 或 idle auto-exit。
@@ -796,36 +903,18 @@ class RuntimeServer:
                     # 防御性兜底：socket accept 可能因信号/系统调用中断等抛出任意异常；
                     # 继续循环避免 server 崩溃。
                     continue
+                self._last_activity = time.monotonic()
                 try:
-                    raw = bytearray()
-                    while True:
-                        b = conn.recv(65536)
-                        if not b:
-                            break
-                        if len(raw) + len(b) > self._max_request_bytes:
-                            raise ValueError("request too large")
-                        raw.extend(b)
-                    req = json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
-                    if not isinstance(req, dict):
-                        raise ValueError("invalid request")
-                    if str(req.get("secret") or "") != self._secret:
-                        raise PermissionError("invalid secret")
-                    method = str(req.get("method") or "")
-                    params = req.get("params") or {}
-                    if not isinstance(params, dict):
-                        raise ValueError("params must be object")
-                    self._last_activity = time.monotonic()
-                    data = self._dispatch(method, params)
-                    resp = {"ok": True, "data": data}
-                except Exception as e:
-                    # 防御性兜底：RPC handler 可能抛出任意异常；序列化为错误响应返回给 client。
-                    resp = {"ok": False, **self._format_rpc_error(e)}
-                conn.sendall(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
-                conn.close()
+                    t = threading.Thread(target=self._serve_connection, args=(conn,), daemon=True)
+                    t.start()
+                except Exception:
+                    with contextlib.suppress(Exception):
+                        conn.close()
         finally:
             # 进程正常退出时尽量回收资源，避免遗留 orphan。
             with contextlib.suppress(Exception):
-                self._exec.close_all()
+                with self._exec_lock:
+                    self._exec.close_all()
             with contextlib.suppress(Exception):
                 with self._children_lock:
                     for c in self._children.values():

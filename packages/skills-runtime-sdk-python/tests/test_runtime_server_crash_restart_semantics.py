@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
+import socket
 import sys
 import time
 from pathlib import Path
@@ -140,6 +142,81 @@ def test_runtime_restart_runs_orphan_cleanup_and_old_session_not_found(tmp_path:
         _ = mgr.write(session_id=s.session_id, yield_time_ms=0)
 
     client.call(method="shutdown")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
+def test_collab_wait_keeps_send_input_interactive_and_then_returns(tmp_path: Path) -> None:
+    """
+    回归（runtime-liveness-hardening / 2.1, 2.3）：
+    一个 client 正在 `collab.wait` 时，另一个 client 的 `collab.send_input`
+    仍应可完成，且 wait 之后应返回 child 的完成结果。
+    """
+
+    if not hasattr(socket, "AF_UNIX"):
+        pytest.skip("no AF_UNIX support")
+
+    client = RuntimeClient(workspace_root=tmp_path)
+    info = client.ensure_server()
+
+    child = client.call(method="collab.spawn", params={"message": "wait_input:1", "agent_type": "default"})
+    cid = str(child.get("id") or "")
+    assert cid
+
+    wait_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    wait_sock.settimeout(3.0)
+    wait_req = {
+        "method": "collab.wait",
+        "params": {"ids": [cid]},
+        "secret": info.secret,
+    }
+    wait_sock.connect(str(info.socket_path))
+    wait_sock.sendall(json.dumps(wait_req, ensure_ascii=False).encode("utf-8"))
+    wait_sock.shutdown(socket.SHUT_WR)
+
+    try:
+        # 给 wait 请求一个极短窗口先进入 server，稳定复现当前串行处理的饥饿点。
+        time.sleep(0.1)
+
+        started = time.monotonic()
+        send_out = client._call_with_info(
+            info,
+            method="collab.send_input",
+            params={"id": cid, "message": "hello"},
+            timeout_sec=0.75,
+        )
+        elapsed = time.monotonic() - started
+
+        assert send_out.get("id") == cid
+        assert elapsed < 0.75
+
+        chunks: list[bytes] = []
+        while True:
+            b = wait_sock.recv(65536)
+            if not b:
+                break
+            chunks.append(b)
+        obj = json.loads(b"".join(chunks).decode("utf-8", errors="replace"))
+        assert obj.get("ok") is True
+
+        data = obj.get("data") or {}
+        results = data.get("results") or []
+        assert len(results) == 1
+        assert results[0].get("id") == cid
+        assert results[0].get("status") == "completed"
+        assert results[0].get("final_output") == "got:hello"
+    finally:
+        wait_sock.close()
+
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            try:
+                client._call_with_info(info, method="shutdown", params={}, timeout_sec=0.25)
+                break
+            except Exception:
+                time.sleep(0.05)
+        else:
+            with contextlib.suppress(Exception):
+                os.kill(int(info.pid), signal.SIGKILL)
 
 
 def _pid_alive(pid: int) -> bool:
