@@ -3228,3 +3228,69 @@
   - 本轮仅修改本 change 直接相关文件，未触碰其它用户改动。
 
 结束时间：2026-03-25 01:21:50 +0800
+
+### 22) 分批提交并推送：runtime-liveness-hardening
+
+开始时间：2026-03-25 01:21:50 +0800
+
+- 目标：
+  - 按用户要求将本轮变更分批 commit，并推送到 `origin/main`。
+
+- 关键变更：
+  - Git 提交 1：`fix(runtime): harden rpc liveness`
+  - Git 提交 2：`docs(runtime): record liveness hardening apply`
+
+- 测试：
+  - 命令：`git status --short`
+  - 结果：确认工作区仍有与本轮无关的 dirty files；本轮只提交 runtime liveness 相关代码与文档留痕。
+  - 命令：`git add packages/skills-runtime-sdk-python/src/skills_runtime/runtime/server.py packages/skills-runtime-sdk-python/tests/test_runtime_server_security_bounds.py packages/skills-runtime-sdk-python/tests/test_runtime_server_crash_restart_semantics.py && git add -f openspec/changes/runtime-liveness-hardening/tasks.md && git commit -m "fix(runtime): harden rpc liveness"`
+  - 结果：提交成功，commit=`6ec0ef7`。
+  - 命令：`git add -f docs/worklog.md docs/task-summaries/2026-03-25-runtime-liveness-hardening-apply.md docs/task-summaries/INDEX.md DOCS_INDEX.md && git commit -m "docs(runtime): record liveness hardening apply"`
+  - 结果：提交成功，commit=`3810a7d`。
+  - 命令：`git push origin main`
+  - 结果：推送成功，`main: c69e6a8..3810a7d`。
+
+- 决策：
+  - 决策：按“代码/测试”与“文档/留痕”分两批提交。
+  - 理由：便于回滚、审计与后续 cherry-pick。
+  - 决策：对 `openspec/`、`docs/`、`DOCS_INDEX.md` 使用 `git add -f`。
+  - 理由：当前 `.gitignore` 会默认吞掉这些治理资产，但本轮需要把它们显式纳入版本管理。
+
+- 约束核对：
+  - 未修改 `.gitignore`。
+  - 未修改 `AGENTS.md`。
+  - 未提交与本轮无关的 dirty files。
+
+结束时间：2026-03-25 01:24:54 +0800
+
+### 23) 复查仓库剩余硬伤（第 3 轮）
+
+开始时间：2026-03-25 01:24:54 +0800
+
+- 目标：
+  - 在本轮变更推送后，再做一次仓库代码复查，确认仍然存在的高风险问题。
+
+- 测试：
+  - 命令：`nl -ba packages/skills-runtime-sdk-python/src/skills_runtime/runtime/client.py | sed -n '140,190p'`
+  - 结果：确认当前工作区的 `RuntimeClient.ensure_server()` dirty patch 会在 ping 失败时直接抛出 `RuntimeError`，不再执行 stale cleanup / restart。
+  - 命令：`timeout 180s nice -n 19 ionice -c3 pytest -q packages/skills-runtime-sdk-python/tests/test_runtime_server_security_bounds.py packages/skills-runtime-sdk-python/tests/test_runtime_server_crash_restart_semantics.py`
+  - 结果：已复现 `test_runtime_restart_runs_orphan_cleanup_and_old_session_not_found` 因上述 `ensure_server()` dirty patch 失败。
+  - 命令：`git show HEAD:packages/skills-runtime-sdk-python/src/skills_runtime/core/tool_orchestration.py | nl -ba | sed -n '300,330p'`
+  - 结果：确认已 push 的 `main` 仍把同一个 `pending_tool_events` 传给并发 `_dispatch_one_async` 分支。
+  - 命令：`nl -ba packages/skills-runtime-sdk-python/src/skills_runtime/tools/dispatcher.py | sed -n '61,140p'`
+  - 结果：确认 `dispatch_one()` 入口会 `pending_tool_events.clear()`，末尾会 flush 同一容器；若上游共享同一 list，仍存在互相清空/串扰风险。
+  - 命令：`git diff -- packages/skills-runtime-sdk-python/src/skills_runtime/core/tool_orchestration.py packages/skills-runtime-sdk-python/tests/test_tool_cache_and_parallel_dispatch.py`
+  - 结果：当前工作区已有针对该问题的修复草稿与回归测试，但尚未提交/推送。
+  - 命令：`rg -n "^openspec/|^docs/|DOCS_INDEX" .gitignore`
+  - 结果：确认 `.gitignore` 仍默认忽略 `openspec/`、`docs/`、`DOCS_INDEX.md`，治理资产默认不会被普通 `git add` 纳入提交。
+
+- 决策：
+  - 决策：把 review 结果按“已 push main 上仍存在的问题”与“仅工作区 dirty patch 引入/修复中的问题”区分汇报。
+  - 理由：避免把未提交改动与仓库已发布状态混为一谈。
+
+- 已知问题结论：
+  - 1. 当前工作区 dirty patch 中，`RuntimeClient.ensure_server()` 的 fail-closed 行为仍是硬伤，会阻断 crash/restart 恢复。
+  - 2. 已 push 的 `main` 上，并发 tool dispatch 的 `pending_tool_events` 共享问题仍未入库。
+  - 3. `.gitignore` 默认忽略治理资产，是持续性的提交流失风险。
+
+结束时间：2026-03-25 01:28:30 +0800
