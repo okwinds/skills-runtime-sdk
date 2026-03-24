@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
@@ -106,6 +107,41 @@ class RuntimeClient:
             if self._paths.server_info_path.exists():
                 self._paths.server_info_path.unlink()
 
+    def _derive_timeout_sec(self, *, method: str, params: Optional[Dict[str, Any]] = None) -> float:
+        """
+        按 RPC 方法与参数推导 socket 超时。
+
+        规则：
+        - `ping` 保持短超时，用于快速健康探测；
+        - `exec.write` / `collab.wait` 需要覆盖调用方显式等待时间，并保留固定裕量；
+        - 其它方法使用稳定默认值。
+        """
+
+        params_obj = params if isinstance(params, dict) else {}
+        default_timeout_sec = 5.0
+        short_timeout_sec = 0.5
+        cushion_sec = 1.5
+
+        if method == "ping":
+            return short_timeout_sec
+
+        wait_ms: int | None = None
+        if method == "exec.write":
+            raw = params_obj.get("yield_time_ms")
+            if isinstance(raw, int):
+                wait_ms = raw
+        elif method == "collab.wait":
+            raw = params_obj.get("timeout_ms")
+            if isinstance(raw, int):
+                wait_ms = raw
+
+        if wait_ms is None:
+            return default_timeout_sec
+        if wait_ms < 0:
+            return default_timeout_sec
+
+        return max(default_timeout_sec, (wait_ms / 1000.0) + cushion_sec)
+
     def ensure_server(self) -> RuntimeServerInfo:
         """
         确保 workspace 级 runtime server 已启动，并返回其发现信息。
@@ -123,9 +159,24 @@ class RuntimeClient:
                 # - 进程假存活会导致 client 误以为 server 可用，从而在后续 call 中表现为 hang/connection errors。
                 # 因此这里做一次轻量 ping 探测，确认 server 可响应。
                 try:
-                    _ = self._call_with_info(info, method="ping", params={}, timeout_sec=0.5)
+                    _ = self._call_with_info(
+                        info,
+                        method="ping",
+                        params={},
+                        timeout_sec=self._derive_timeout_sec(method="ping", params={}),
+                    )
                     return info
-                except (OSError, ConnectionError, RuntimeError):
+                except RuntimeError as e:
+                    raise RuntimeError(
+                        "runtime server is alive but unresponsive; refusing to cleanup stale files automatically"
+                    ) from e
+                except TimeoutError as e:
+                    raise RuntimeError(
+                        "runtime server is alive but unresponsive; refusing to cleanup stale files automatically"
+                    ) from e
+                except (ConnectionResetError, ConnectionRefusedError, BrokenPipeError, OSError):
+                    # 运输层已断裂：更像 crash/restart 残留，而不是“活着但挂起”的 server。
+                    # 允许继续走 stale cleanup + restart 路径。
                     pass
 
         # stale：清理后重启
@@ -261,7 +312,5 @@ class RuntimeClient:
         """
 
         info = self.ensure_server()
-        return self._call_with_info(info, method=method, params=params, timeout_sec=5.0)
-
-
-import contextlib  # placed at end to keep imports minimal
+        timeout_sec = self._derive_timeout_sec(method=method, params=params)
+        return self._call_with_info(info, method=method, params=params, timeout_sec=timeout_sec)
