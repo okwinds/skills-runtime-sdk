@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import contextlib
 import os
 import signal
@@ -16,6 +17,9 @@ from typing import Any, Dict, Optional
 
 from skills_runtime.core.exec_sessions import ExecSessionManager, ExecSessionWriteResult
 from skills_runtime.runtime.paths import get_runtime_paths
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -315,7 +319,7 @@ class RuntimeServer:
 
         语义：
         - 读取 registry 中记录的 pids；
-        - 尽量验证 marker（ps eww）后再 kill；若无法验证则 fallback 到 argv0 匹配；
+        - 仅在 marker（或未来更强身份校验）确认后再 kill；
         - cleanup 后清空 registry（避免无限重试与误判）。
         """
 
@@ -349,26 +353,16 @@ class RuntimeServer:
             if marker:
                 verified = self._ps_env_contains_marker(pid, marker)
 
-            # fallback：当无法验证 env marker 时，尽量用 argv0 进行粗匹配（仍可能误判，但风险更低）
-            if not verified and argv0:
-                try:
-                    import subprocess
-
-                    cp = subprocess.run(  # noqa: S603
-                        ["ps", "-p", str(int(pid)), "-o", "command="],
-                        check=False,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                    )
-                    cmdline = (cp.stdout or "").strip()
-                    if cmdline and argv0 in cmdline:
-                        verified = True
-                except OSError:
-                    verified = False
-
             if not verified:
                 skipped += 1
+                # 进程存活但无法验证身份：记录详细日志便于人工排查
+                logger.warning(
+                    "orphan_cleanup: cannot verify pid=%d (marker=%s, argv0=%s), "
+                    "marking for manual cleanup",
+                    pid,
+                    marker[:8] + "..." if marker else "<none>",
+                    argv0[:32] if argv0 else "<none>",
+                )
                 remaining[str(sid)] = dict(item, needs_manual_cleanup=True, last_seen_alive_ms=int(time.time() * 1000))
                 continue
 

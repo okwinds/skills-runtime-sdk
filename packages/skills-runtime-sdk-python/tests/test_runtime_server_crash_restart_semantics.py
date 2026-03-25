@@ -5,6 +5,7 @@ import json
 import os
 import signal
 import socket
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 from skills_runtime.core.exec_sessions import PersistentExecSessionManager
 from skills_runtime.runtime.client import RuntimeClient
 from skills_runtime.runtime.paths import get_runtime_paths
+from skills_runtime.runtime.server import RuntimeServer
 
 
 @pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
@@ -217,6 +219,47 @@ def test_collab_wait_keeps_send_input_interactive_and_then_returns(tmp_path: Pat
         else:
             with contextlib.suppress(Exception):
                 os.kill(int(info.pid), signal.SIGKILL)
+
+
+def test_orphan_cleanup_does_not_kill_when_marker_verification_fails_even_if_argv0_matches(tmp_path: Path, monkeypatch) -> None:
+    server = RuntimeServer(workspace_root=tmp_path, secret="test-secret")
+    server._write_exec_registry(
+        {
+            "schema": 1,
+            "workspace_root": str(tmp_path),
+            "exec_sessions": {
+                "1": {
+                    "pid": 12345,
+                    "pgid": 12345,
+                    "created_at_ms": 1,
+                    "argv": [sys.executable, "-u", "-c", "print('x')"],
+                    "cwd": str(tmp_path),
+                    "marker": "missing-marker",
+                }
+            },
+        }
+    )
+
+    kill_calls: list[int] = []
+
+    monkeypatch.setattr(server, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(server, "_ps_env_contains_marker", lambda pid, marker: False)
+    monkeypatch.setattr(server, "_kill_process_group", lambda pid: kill_calls.append(pid) or True)
+
+    class _FakeCompletedProcess:
+        def __init__(self) -> None:
+            self.stdout = f"{sys.executable} -u -c print('x')"
+            self.stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _FakeCompletedProcess())
+
+    server._orphan_cleanup_on_startup()
+
+    assert kill_calls == []
+    reg = server._read_exec_registry()
+    item = (reg.get("exec_sessions") or {}).get("1") or {}
+    assert item.get("needs_manual_cleanup") is True
+    assert server._last_orphan_cleanup.get("skipped") == 1
 
 
 def _pid_alive(pid: int) -> bool:
