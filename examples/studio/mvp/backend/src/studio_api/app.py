@@ -86,7 +86,7 @@ class DecideApprovalReq(BaseModel):
 
 @app.get("/api/v1/health")
 async def health() -> Dict[str, Any]:
-    return {"ok": True, "workspace_root": str(_WORKSPACE_ROOT), "env_file": str(_loaded_env_file) if _loaded_env_file else None}
+    return {"ok": True, "env_loaded": _loaded_env_file is not None}
 
 
 @app.get("/api/v1/sessions")
@@ -133,6 +133,8 @@ async def set_skills_sources(session_id: str, body: SetSkillSourcesReq) -> Dict[
         cfg = _STORAGE.get_skills_config(session_id)
     except FileNotFoundError:
         raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
+    except ValueError as e:
+        raise http_error("validation_error", str(e), status_code=400, details={"session_id": session_id})
 
     sources = [str(p).strip() for p in (body.filesystem_sources or []) if str(p).strip()]
     cfg["filesystem_sources"] = sources
@@ -150,6 +152,8 @@ async def list_skills(session_id: str) -> Dict[str, Any]:
         cfg = _STORAGE.get_skills_config(session_id)
     except FileNotFoundError:
         raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
+    except ValueError as e:
+        raise http_error("validation_error", str(e), status_code=400, details={"session_id": session_id})
 
     try:
         sources = _STORAGE.normalize_filesystem_sources(cfg.get("filesystem_sources"))
@@ -254,9 +258,16 @@ async def create_run(session_id: str, body: CreateRunReq) -> Dict[str, Any]:
         _ = _STORAGE.get_skills_config(session_id)
     except FileNotFoundError:
         raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
+    except ValueError as e:
+        raise http_error("validation_error", str(e), status_code=400, details={"session_id": session_id})
 
     run_id = f"run_{uuid.uuid4().hex}"
-    _STORAGE.write_run_record(run_id=run_id, session_id=session_id)
+    try:
+        _STORAGE.write_run_record(run_id=run_id, session_id=session_id)
+    except FileNotFoundError:
+        raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
+    except ValueError as e:
+        raise http_error("validation_error", str(e), status_code=400, details={"session_id": session_id})
 
     # 可靠性：提前创建 events.jsonl，避免 SSE 因文件缺失而“空转等待”。
     run_dir = _STORAGE.run_dir(run_id)
