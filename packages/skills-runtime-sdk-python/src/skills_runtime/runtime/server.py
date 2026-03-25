@@ -33,6 +33,17 @@ class _ChildState:
     error: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class _TerminalChildState:
+    """关闭/完成后的 child 最小记录，仅供 wait 查询。"""
+
+    id: str
+    agent_type: str
+    status: str
+    final_output: Optional[str] = None
+    error: Optional[str] = None
+
+
 class RuntimeServer:
     """
     workspace 级 runtime server（Unix socket JSON RPC）。
@@ -80,6 +91,7 @@ class RuntimeServer:
         self._exec_lock = threading.Lock()
         self._children_lock = threading.Lock()
         self._children: Dict[str, _ChildState] = {}
+        self._terminal_children: Dict[str, _TerminalChildState] = {}
 
         self._shutdown = threading.Event()
         self._last_activity = time.monotonic()
@@ -95,10 +107,43 @@ class RuntimeServer:
             "socket_path": str(self._paths.socket_path),
             "created_at_ms": int(self._created_at_ms),
         }
-        self._paths.server_info_path.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+        tmp = self._paths.server_info_path.with_name(f"{self._paths.server_info_path.name}.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
         # best-effort：server.json 含本地 secret，尽力收紧权限（POSIX 0600）。
         with contextlib.suppress(OSError, PermissionError):
+            tmp.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        tmp.replace(self._paths.server_info_path)
+        with contextlib.suppress(OSError, PermissionError):
             self._paths.server_info_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    def _terminalize_child_locked(
+        self,
+        child_id: str,
+        *,
+        status: str,
+        final_output: Optional[str],
+        error: Optional[str],
+    ) -> Optional[_TerminalChildState]:
+        """
+        将 active child 转成 terminal 记录并移出 live 索引。
+
+        说明：
+        - terminal 记录只保留 wait 所需的最小字段；
+        - 一旦 terminalize，后续 send_input/resume 不再命中 live handle。
+        """
+
+        child = self._children.pop(child_id, None)
+        if child is None:
+            return self._terminal_children.get(child_id)
+        record = _TerminalChildState(
+            id=child.id,
+            agent_type=child.agent_type,
+            status=str(status),
+            final_output=final_output,
+            error=error,
+        )
+        self._terminal_children[child_id] = record
+        return record
 
     def _read_exec_registry(self) -> Dict[str, Any]:
         """
@@ -553,6 +598,7 @@ class RuntimeServer:
                     child.status = "cancelled"
                 # cleanup 的目标是“快速回收”，不保证保留历史；直接清空，避免无限增长。
                 self._children.clear()
+                self._terminal_children.clear()
 
         return {"ok": True, "exec": bool(close_exec), "children": bool(close_children), "cancelled_children": int(cancelled_children)}
 
@@ -613,19 +659,16 @@ class RuntimeServer:
                     if cur is None:
                         return
                     if cur.cancel_event.is_set():
-                        cur.status = "cancelled"
-                        cur.final_output = None
+                        self._terminalize_child_locked(cid, status="cancelled", final_output=None, error=None)
                         return
-                    cur.status = "completed"
-                    cur.final_output = str(out)
+                    self._terminalize_child_locked(cid, status="completed", final_output=str(out), error=None)
             except Exception as e:
                 # 防御性兜底：child runner 可能抛出任意异常；记录错误状态，不影响 server 主循环。
                 with self._children_lock:
                     cur = self._children.get(cid)
                     if cur is None:
                         return
-                    cur.status = "failed"
-                    cur.error = str(e)
+                    self._terminalize_child_locked(cid, status="failed", final_output=None, error=str(e))
 
         t = threading.Thread(target=_run, daemon=True)
         dummy.thread = t
@@ -664,12 +707,12 @@ class RuntimeServer:
             raise ValueError("id must be non-empty")
         with self._children_lock:
             child = self._children.get(cid)
-        if child is None:
-            raise KeyError("child not found")
-        child.cancel_event.set()
-        with self._children_lock:
-            if cid in self._children:
-                self._children[cid].status = "cancelled"
+            if child is None:
+                if cid in self._terminal_children:
+                    return {"id": cid}
+                raise KeyError("child not found")
+            child.cancel_event.set()
+            self._terminalize_child_locked(cid, status="cancelled", final_output=None, error=None)
         return {"id": cid}
 
     def _handle_collab_resume(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -680,9 +723,12 @@ class RuntimeServer:
             raise ValueError("id must be non-empty")
         with self._children_lock:
             child = self._children.get(cid)
-        if child is None:
+            if child is not None:
+                return {"id": child.id, "status": child.status}
+            terminal = self._terminal_children.get(cid)
+        if terminal is None or terminal.status == "cancelled":
             raise KeyError("child not found")
-        return {"id": child.id, "status": child.status}
+        return {"id": terminal.id, "status": terminal.status}
 
     def _handle_collab_wait(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """RPC：collab.wait。"""
@@ -698,10 +744,10 @@ class RuntimeServer:
 
         # 先取快照，避免长 join 持锁
         with self._children_lock:
-            missing = [i for i in ids_s if i not in self._children]
+            missing = [i for i in ids_s if i not in self._children and i not in self._terminal_children]
             if missing:
                 raise KeyError(f"unknown ids: {missing}")
-            handles = [self._children[i] for i in ids_s]
+            handles = [self._children[i] for i in ids_s if i in self._children]
 
         pending = list(handles)
         while pending:
@@ -729,11 +775,17 @@ class RuntimeServer:
         with self._children_lock:
             for cid in ids_s:
                 cur = self._children.get(cid)
-                if cur is None:
+                terminal = self._terminal_children.get(cid)
+                if cur is not None:
+                    item: Dict[str, Any] = {"id": cur.id, "status": cur.status}
+                    if cur.status == "completed" and cur.final_output is not None:
+                        item["final_output"] = cur.final_output
+                elif terminal is not None:
+                    item = {"id": terminal.id, "status": terminal.status}
+                    if terminal.status == "completed" and terminal.final_output is not None:
+                        item["final_output"] = terminal.final_output
+                else:
                     continue
-                item: Dict[str, Any] = {"id": cur.id, "status": cur.status}
-                if cur.status == "completed" and cur.final_output is not None:
-                    item["final_output"] = cur.final_output
                 results.append(item)
         return {"results": results}
 
@@ -920,6 +972,7 @@ class RuntimeServer:
                     for c in self._children.values():
                         c.cancel_event.set()
                     self._children.clear()
+                    self._terminal_children.clear()
             with contextlib.suppress(Exception):
                 s.close()
             self._cleanup_files()

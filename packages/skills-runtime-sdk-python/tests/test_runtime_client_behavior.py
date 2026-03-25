@@ -61,7 +61,11 @@ def test_ensure_server_does_not_cleanup_live_unresponsive_server(monkeypatch, tm
         created_at_ms=1,
     )
 
-    monkeypatch.setattr(client, "_read_server_info", lambda: info)
+    monkeypatch.setattr(
+        client,
+        "_read_server_info_state",
+        lambda: runtime_client_module._ServerInfoReadResult(state="valid", info=info),
+    )
     monkeypatch.setattr(runtime_client_module, "_pid_alive", lambda _pid: True)
 
     cleanup_calls: list[str] = []
@@ -102,13 +106,13 @@ def test_ensure_server_recovers_when_ping_transport_is_broken(monkeypatch, tmp_p
 
     read_calls = {"count": 0}
 
-    def _read_server_info():  # type: ignore[no-untyped-def]
+    def _read_server_info_state():  # type: ignore[no-untyped-def]
         read_calls["count"] += 1
         if read_calls["count"] == 1:
-            return stale_info
-        return fresh_info
+            return runtime_client_module._ServerInfoReadResult(state="valid", info=stale_info)
+        return runtime_client_module._ServerInfoReadResult(state="valid", info=fresh_info)
 
-    monkeypatch.setattr(client, "_read_server_info", _read_server_info)
+    monkeypatch.setattr(client, "_read_server_info_state", _read_server_info_state)
     monkeypatch.setattr(runtime_client_module, "_pid_alive", lambda _pid: True)
 
     cleanup_calls: list[str] = []
@@ -139,3 +143,37 @@ def test_ensure_server_recovers_when_ping_transport_is_broken(monkeypatch, tmp_p
     assert info == fresh_info
     assert cleanup_calls == ["cleanup"]
     assert len(popen_calls) == 1
+
+
+def test_ensure_server_does_not_cleanup_invalid_server_info_when_socket_still_exists(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    client = RuntimeClient(workspace_root=tmp_path, start_timeout_ms=20)
+    client._paths.runtime_dir.mkdir(parents=True, exist_ok=True)
+    client._paths.socket_path.write_text("", encoding="utf-8")
+    client._paths.server_info_path.write_text("{invalid", encoding="utf-8")
+
+    cleanup_calls: list[str] = []
+
+    def _cleanup() -> None:
+        cleanup_calls.append("cleanup")
+
+    monkeypatch.setattr(client, "_cleanup_stale_server_files", _cleanup)
+
+    popen_calls: list[tuple[object, object]] = []
+
+    class _DummyPopen:
+        pass
+
+    def _fake_popen(*args, **kwargs):  # type: ignore[no-untyped-def]
+        popen_calls.append((args, kwargs))
+        return _DummyPopen()
+
+    monkeypatch.setattr(runtime_client_module.subprocess, "Popen", _fake_popen)
+
+    with pytest.raises(RuntimeError, match="invalid|discovery|metadata"):
+        client.ensure_server()
+
+    assert cleanup_calls == []
+    assert popen_calls == []

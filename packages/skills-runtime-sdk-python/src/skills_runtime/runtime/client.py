@@ -25,6 +25,14 @@ class RuntimeServerInfo:
     created_at_ms: int
 
 
+@dataclass(frozen=True)
+class _ServerInfoReadResult:
+    """server.json 读取结果：区分 missing / valid / invalid。"""
+
+    state: str
+    info: Optional[RuntimeServerInfo] = None
+
+
 def _pid_alive(pid: int) -> bool:
     """
     判断 pid 是否存活（best-effort）。
@@ -62,33 +70,56 @@ class RuntimeClient:
         self._start_timeout_ms = int(start_timeout_ms)
         self._paths = get_runtime_paths(workspace_root=self._workspace_root)
 
-    def _read_server_info(self) -> Optional[RuntimeServerInfo]:
+    def _read_server_info_state(self) -> _ServerInfoReadResult:
         """
-        读取 server.json 并解析为 RuntimeServerInfo。
+        读取 server.json，并区分 missing / valid / invalid。
 
         返回：
-        - RuntimeServerInfo：成功时返回
-        - None：文件不存在/解析失败
+        - missing：文件不存在
+        - valid：成功解析为 RuntimeServerInfo
+        - invalid：文件存在但解析失败/字段不完整
         """
+
+        info_reader = object.__getattribute__(self, "_read_server_info")
+        reader_func = getattr(info_reader, "__func__", None)
+        if reader_func is not RuntimeClient._read_server_info:
+            info = info_reader()
+            if info is not None:
+                return _ServerInfoReadResult(state="valid", info=info)
 
         p = self._paths.server_info_path
         if not p.exists():
-            return None
+            return _ServerInfoReadResult(state="missing")
         try:
             obj = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return None
+            return _ServerInfoReadResult(state="invalid")
         if not isinstance(obj, dict):
-            return None
+            return _ServerInfoReadResult(state="invalid")
         try:
-            return RuntimeServerInfo(
+            info = RuntimeServerInfo(
                 pid=int(obj.get("pid")),
                 secret=str(obj.get("secret") or ""),
                 socket_path=str(obj.get("socket_path") or ""),
                 created_at_ms=int(obj.get("created_at_ms") or 0),
             )
+            if info.pid <= 0 or not info.secret or not info.socket_path:
+                return _ServerInfoReadResult(state="invalid")
+            return _ServerInfoReadResult(state="valid", info=info)
         except (TypeError, ValueError):
-            return None
+            return _ServerInfoReadResult(state="invalid")
+
+    def _read_server_info(self) -> Optional[RuntimeServerInfo]:
+        """
+        兼容旧调用方：仅读取有效的 RuntimeServerInfo。
+
+        返回：
+        - RuntimeServerInfo：成功时返回
+        - None：missing / invalid
+        """
+
+        result = self._read_server_info_state()
+        return result.info if result.state == "valid" else None
 
     def _cleanup_stale_server_files(self) -> None:
         """
@@ -151,8 +182,13 @@ class RuntimeClient:
         - 否则：清理残余文件并启动新 server，然后等待其写出 server.json
         """
 
-        info = self._read_server_info()
-        if info is not None and info.secret and info.socket_path:
+        info_result = self._read_server_info_state()
+        info = info_result.info if info_result.state == "valid" else None
+        if info_result.state == "invalid" and self._paths.socket_path.exists():
+            raise RuntimeError(
+                "runtime discovery metadata invalid while socket still exists; refusing to cleanup stale files automatically"
+            )
+        if info is not None:
             if _pid_alive(info.pid) and Path(info.socket_path).exists():
                 # 仅用 pid + socket file 存在并不足够：
                 # - crash 后可能出现 zombie 或残留 socket 文件；
@@ -233,8 +269,9 @@ class RuntimeClient:
 
         deadline = time.monotonic() + self._start_timeout_ms / 1000.0
         while time.monotonic() < deadline:
-            info2 = self._read_server_info()
-            if info2 is not None and info2.secret and info2.socket_path:
+            info2_result = self._read_server_info_state()
+            info2 = info2_result.info if info2_result.state == "valid" else None
+            if info2 is not None:
                 if _pid_alive(info2.pid) and Path(info2.socket_path).exists():
                     return info2
             time.sleep(0.05)
