@@ -468,34 +468,10 @@ def apply_patch(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
 
     try:
         changes: List[_Change] = []
-        if len(sections) > 1:
-            # multi-section patch：必须先对所有 section 做 dry-run 校验，成功后才允许写盘。
-            planned_ops, changes = _plan_multi_section_patch(sections=sections, ctx=ctx)
-            _apply_planned_ops(ops=planned_ops)
-        else:
-            for op, raw_path, body_lines in sections:
-                target = ctx.resolve_path(raw_path)
-                if op == "add":
-                    _write_new_file(target, content_lines=body_lines)
-                    changes.append(_Change(kind="add", path=raw_path))
-                    continue
-                if op == "delete":
-                    if body_lines:
-                        raise ValueError("Delete File section must be empty")
-                    _delete_file(target)
-                    changes.append(_Change(kind="delete", path=raw_path))
-                    continue
-                if op == "update":
-                    move_to, _summaries = _apply_update(target, update_lines=body_lines, ctx=ctx)
-                    changes.append(_Change(kind="update", path=raw_path, moved_to=str(move_to) if move_to else None))
-                    if move_to is not None:
-                        if move_to.exists():
-                            raise FileExistsError(f"move target already exists: {move_to}")
-                        move_to.parent.mkdir(parents=True, exist_ok=True)
-                        target.rename(move_to)
-                        changes.append(_Change(kind="move", path=raw_path, moved_to=str(move_to)))
-                    continue
-                raise ValueError(f"unsupported op: {op}")
+        # 所有 patch（含 single-section）统一先做 dry-run 规划，再落盘。
+        # 这样 `Update File + Move to` 在目标冲突时不会先改写源文件，避免失败后留下部分副作用。
+        planned_ops, changes = _plan_multi_section_patch(sections=sections, ctx=ctx)
+        _apply_planned_ops(ops=planned_ops)
     except FileNotFoundError as e:
         return ToolResult.error_payload(error_kind="not_found", stderr=str(e))
     except (PermissionError,) as e:

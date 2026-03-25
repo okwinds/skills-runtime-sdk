@@ -188,7 +188,8 @@ def test_apply_patch_move_to_success(tmp_path: Path) -> None:
             "*** Update File: a.txt",
             "*** Move to: b.txt",
             "@@",
-            " x",
+            "-x",
+            "+z",
             "*** End Patch",
             "",
         ]
@@ -197,7 +198,7 @@ def test_apply_patch_move_to_success(tmp_path: Path) -> None:
     ok = apply_patch(_call_apply_patch(patch), ctx)
     assert ok.ok is True
     assert not (tmp_path / "a.txt").exists()
-    assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "x\n"
+    assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "z\n"
 
 
 def test_apply_patch_move_to_no_overwrite(tmp_path: Path) -> None:
@@ -213,7 +214,8 @@ def test_apply_patch_move_to_no_overwrite(tmp_path: Path) -> None:
             "*** Update File: a.txt",
             "*** Move to: b.txt",
             "@@",
-            " x",
+            "-x",
+            "+z",
             "*** End Patch",
             "",
         ]
@@ -223,6 +225,7 @@ def test_apply_patch_move_to_no_overwrite(tmp_path: Path) -> None:
     assert result.ok is False
     assert result.error_kind == "validation"
     assert (tmp_path / "a.txt").exists()
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "x\n"
     assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "y\n"
 
 
@@ -264,4 +267,3 @@ def test_apply_patch_rejects_unknown_file_section(tmp_path: Path) -> None:
     result = apply_patch(_call_apply_patch(patch), ctx)
     assert result.ok is False
     assert result.error_kind == "validation"
-
