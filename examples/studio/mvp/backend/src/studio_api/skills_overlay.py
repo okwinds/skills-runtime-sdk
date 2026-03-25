@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+import contextlib
+import os
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
 import yaml
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """以临时文件 + rename 方式原子写 overlay 文本。"""
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with tmp.open("w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            with contextlib.suppress(OSError):
+                os.fsync(f.fileno())
+        tmp.replace(target)
+    finally:
+        with contextlib.suppress(FileNotFoundError, OSError):
+            if tmp.exists():
+                tmp.unlink()
 
 
 def skills_config_from_filesystem_sources(*, filesystem_sources: List[str]) -> Dict[str, Any]:
@@ -57,8 +79,10 @@ def write_session_skills_overlay(*, session_dir: Path, filesystem_sources: List[
 
     cfg = skills_config_from_filesystem_sources(filesystem_sources=filesystem_sources)
     overlay_path = (Path(session_dir) / "skills_overlay.yaml").resolve()
-    overlay_path.parent.mkdir(parents=True, exist_ok=True)
 
     overlay_obj: Dict[str, Any] = {"config_version": 1, "skills": cfg}
-    overlay_path.write_text(yaml.safe_dump(overlay_obj, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    _atomic_write_text(
+        overlay_path,
+        yaml.safe_dump(overlay_obj, sort_keys=False, allow_unicode=True),
+    )
     return overlay_path
