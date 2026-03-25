@@ -6,7 +6,20 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[5]
+
+
+def _enable_imports() -> None:
+    root = _repo_root()
+    sdk_src = root / "packages" / "skills-runtime-sdk-python" / "src"
+    studio_backend_src = root / "examples" / "studio" / "mvp" / "backend" / "src"
+    sys.path.insert(0, str(sdk_src))
+    sys.path.insert(0, str(studio_backend_src))
+
+
 def _load_app(tmp_path: Path):
+    _enable_imports()
     os.environ["STUDIO_WORKSPACE_ROOT"] = str(tmp_path)
     if "studio_api.app" in sys.modules:
         importlib.reload(sys.modules["studio_api.app"])
@@ -86,3 +99,45 @@ def test_create_skill_rejects_invalid_target_source(tmp_path: Path):
     )
     assert resp.status_code == 400
     assert not (allowed_root / "demo_skill" / "SKILL.md").exists()
+
+
+def test_create_session_rejects_source_outside_workspace_root(tmp_path: Path):
+    client = _client(tmp_path)
+    outside_root = tmp_path.parent / "outside-sources"
+
+    resp = client.post("/api/v1/sessions", json={"filesystem_sources": [str(outside_root)]})
+
+    assert resp.status_code == 400, resp.text
+
+
+def test_set_sources_rejects_path_outside_workspace_root(tmp_path: Path):
+    client = _client(tmp_path)
+    session_id = _create_session(client)
+    outside_root = tmp_path.parent / "outside-sources"
+
+    resp = client.put(
+        f"/api/v1/sessions/{session_id}/skills/sources",
+        json={"filesystem_sources": [str(outside_root)]},
+    )
+
+    assert resp.status_code == 400, resp.text
+
+
+def test_create_skill_rejects_source_inside_session_but_outside_workspace_root(tmp_path: Path):
+    client = _client(tmp_path)
+    session_id = _create_session(client)
+    outside_root = tmp_path.parent / "outside-sources"
+
+    session_skills = tmp_path / ".skills_runtime_sdk" / "sessions" / session_id / "skills.json"
+    session_skills.write_text(
+        f'{{"filesystem_sources":["{outside_root}"],"disabled_paths":[]}}',
+        encoding="utf-8",
+    )
+
+    resp = client.post(
+        f"/studio/api/v1/sessions/{session_id}/skills",
+        json={"name": "demo_skill", "description": "desc", "target_source": str(outside_root)},
+    )
+
+    assert resp.status_code == 400, resp.text
+    assert not (outside_root / "demo_skill" / "SKILL.md").exists()

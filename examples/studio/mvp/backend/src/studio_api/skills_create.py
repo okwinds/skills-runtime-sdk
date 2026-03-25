@@ -75,7 +75,10 @@ def bind_create_skill_router(*, storage: FileStorage) -> APIRouter:
         except FileNotFoundError:
             raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
 
-        sources = _clean_filesystem_sources(cfg)
+        try:
+            sources = storage.normalize_filesystem_sources(_clean_filesystem_sources(cfg))
+        except ValueError as e:
+            raise http_error("validation_error", str(e), status_code=400, details={"session_id": session_id})
         if not sources:
             raise http_error(
                 "validation_error",
@@ -92,6 +95,10 @@ def bind_create_skill_router(*, storage: FileStorage) -> APIRouter:
                 status_code=400,
                 details={"target_source": target_source, "filesystem_sources": sources},
             )
+        try:
+            target_source = storage.normalize_filesystem_source(target_source)
+        except ValueError as e:
+            raise http_error("validation_error", str(e), status_code=400, details={"target_source": target_source})
 
         try:
             validate_skill_name(body.name)

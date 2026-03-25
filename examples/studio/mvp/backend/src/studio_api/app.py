@@ -107,7 +107,10 @@ async def list_sessions() -> Dict[str, Any]:
 
 @app.post("/api/v1/sessions", status_code=201)
 async def create_session(body: CreateSessionReq = Body(default_factory=CreateSessionReq)) -> Dict[str, Any]:
-    s = _STORAGE.create_session(title=body.title, filesystem_sources=body.filesystem_sources)
+    try:
+        s = _STORAGE.create_session(title=body.title, filesystem_sources=body.filesystem_sources)
+    except ValueError as e:
+        raise http_error("validation_error", str(e), status_code=400, details={"filesystem_sources": body.filesystem_sources})
     return {"session_id": s.session_id, "created_at": s.created_at}
 
 
@@ -134,8 +137,11 @@ async def set_skills_sources(session_id: str, body: SetSkillSourcesReq) -> Dict[
     sources = [str(p).strip() for p in (body.filesystem_sources or []) if str(p).strip()]
     cfg["filesystem_sources"] = sources
     cfg.setdefault("disabled_paths", [])
-    _STORAGE.update_skills_config(session_id, cfg)
-    return {"ok": True, "filesystem_sources": sources}
+    try:
+        _STORAGE.update_skills_config(session_id, cfg)
+    except ValueError as e:
+        raise http_error("validation_error", str(e), status_code=400, details={"filesystem_sources": sources})
+    return {"ok": True, "filesystem_sources": cfg["filesystem_sources"]}
 
 
 @app.get("/api/v1/sessions/{session_id}/skills")
@@ -145,8 +151,10 @@ async def list_skills(session_id: str) -> Dict[str, Any]:
     except FileNotFoundError:
         raise http_error("not_found", "session not found", status_code=404, details={"session_id": session_id})
 
-    sources = cfg.get("filesystem_sources") or []
-    sources = [str(r).strip() for r in sources if str(r).strip()]
+    try:
+        sources = _STORAGE.normalize_filesystem_sources(cfg.get("filesystem_sources"))
+    except ValueError as e:
+        raise http_error("validation_error", str(e), status_code=400, details={"session_id": session_id})
     disabled_paths = cfg.get("disabled_paths") or []
     disabled_paths = [str(p).strip() for p in disabled_paths if str(p).strip()]
 
@@ -336,6 +344,11 @@ async def list_pending_approvals(run_id: str) -> Dict[str, Any]:
 
 @app.get("/api/v1/runs/{run_id}/events/stream")
 async def stream_run_events(run_id: str, request: Request) -> StreamingResponse:
-    events_jsonl_path = (_WORKSPACE_ROOT / ".skills_runtime_sdk" / "runs" / run_id / "events.jsonl").resolve()
+    # 使用 storage.run_dir 进行路径验证，防止 run_id 路径遍历
+    try:
+        run_dir = _STORAGE.run_dir(run_id)
+    except ValueError as e:
+        raise http_error("validation_error", str(e), status_code=400, details={"run_id": run_id})
+    events_jsonl_path = (run_dir / "events.jsonl").resolve()
     body = stream_jsonl_as_sse(request=request, jsonl_path=events_jsonl_path)
     return StreamingResponse(body, media_type="text/event-stream")

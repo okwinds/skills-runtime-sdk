@@ -35,6 +35,42 @@ class FileStorage:
     def __init__(self, *, workspace_root: Path) -> None:
         self.workspace_root = Path(workspace_root).resolve()
 
+    def normalize_filesystem_source(self, raw_path: str) -> str:
+        """
+        规范化并校验 filesystem source。
+
+        规则：
+        - 相对路径按 workspace_root 解析；
+        - 绝对/相对路径最终都必须位于 workspace_root 内。
+        """
+
+        text = str(raw_path or "").strip()
+        if not text:
+            raise ValueError("filesystem_source 不能为空")
+        candidate = Path(text).expanduser()
+        if not candidate.is_absolute():
+            candidate = (self.workspace_root / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        try:
+            candidate.relative_to(self.workspace_root)
+        except ValueError as exc:
+            raise ValueError("invalid filesystem_source: path must stay within workspace_root") from exc
+        return str(candidate)
+
+    def normalize_filesystem_sources(self, filesystem_sources: Optional[List[str]]) -> List[str]:
+        """批量规范化 filesystem sources，忽略空白项。"""
+
+        out: List[str] = []
+        for raw in filesystem_sources or []:
+            if not isinstance(raw, str):
+                continue
+            text = raw.strip()
+            if not text:
+                continue
+            out.append(self.normalize_filesystem_source(text))
+        return out
+
     def _sdk_dir(self) -> Path:
         return (self.workspace_root / ".skills_runtime_sdk").resolve()
 
@@ -93,7 +129,11 @@ class FileStorage:
         created_at = now_rfc3339()
         updated_at = created_at
 
-        sources = self._default_filesystem_sources() if filesystem_sources is None else list(filesystem_sources)
+        sources = (
+            self._default_filesystem_sources()
+            if filesystem_sources is None
+            else self.normalize_filesystem_sources(filesystem_sources)
+        )
 
         sdir = self.session_dir(sid)
         sdir.mkdir(parents=True, exist_ok=True)
@@ -185,6 +225,8 @@ class FileStorage:
         sdir = self.session_dir(session_id)
         if not sdir.exists():
             raise FileNotFoundError(str(sdir))
+        cfg = dict(cfg)
+        cfg["filesystem_sources"] = self.normalize_filesystem_sources(cfg.get("filesystem_sources"))
         self._write_json(sdir / "skills.json", cfg)
         sources = cfg.get("filesystem_sources") if isinstance(cfg, dict) else None
         sources_list = [str(r).strip() for r in (sources or []) if str(r).strip()]
