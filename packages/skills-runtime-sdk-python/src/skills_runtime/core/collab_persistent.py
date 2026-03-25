@@ -144,7 +144,8 @@ class PersistentCollabManager:
         try:
             data = self._client.call(method="collab.resume", params={"id": str(agent_id)})
         except RuntimeError as e:
-            if "child not found" in str(e):
+            msg = str(e)
+            if "child not found" in msg or "closed" in msg:
                 raise KeyError("agent not found")
             raise
         return RemoteChildHandle(id=str(data.get("id") or agent_id), status=str(data.get("status") or "unknown"))

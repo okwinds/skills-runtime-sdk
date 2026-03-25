@@ -51,6 +51,17 @@ class ChildAgentHandle:
     error: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class ChildAgentSnapshot:
+    """对外暴露的 child 快照；不再携带可交互 live 资源。"""
+
+    id: str
+    agent_type: str
+    status: str
+    final_output: Optional[str] = None
+    error: Optional[str] = None
+
+
 class CollabManager:
     """
     子 agent 管理器（最小实现）。
@@ -71,6 +82,7 @@ class CollabManager:
         self._runner = runner
         self._lock = threading.Lock()
         self._agents: dict[str, ChildAgentHandle] = {}
+        self._terminal: dict[str, ChildAgentSnapshot] = {}
 
     def spawn(self, *, message: str, agent_type: str = "default") -> ChildAgentHandle:
         """
@@ -139,9 +151,19 @@ class CollabManager:
             h = self._agents.get(agent_id)
             if h is None:
                 return
-            h.status = status
-            h.final_output = final_output
-            h.error = error
+            if status == "running":
+                h.status = status
+                h.final_output = final_output
+                h.error = error
+                return
+            self._agents.pop(agent_id, None)
+            self._terminal[agent_id] = ChildAgentSnapshot(
+                id=h.id,
+                agent_type=h.agent_type,
+                status=status,
+                final_output=final_output,
+                error=error,
+            )
 
     def get(self, agent_id: str) -> Optional[ChildAgentHandle]:
         """获取子 agent 句柄（不存在返回 None）。"""
@@ -149,7 +171,7 @@ class CollabManager:
         with self._lock:
             return self._agents.get(str(agent_id))
 
-    def wait(self, *, ids: list[str], timeout_ms: Optional[int] = None) -> list[ChildAgentHandle]:
+    def wait(self, *, ids: list[str], timeout_ms: Optional[int] = None) -> list[ChildAgentSnapshot]:
         """
         等待一组子 agent（或超时返回当前状态）。
 
@@ -163,10 +185,10 @@ class CollabManager:
 
         handles: list[ChildAgentHandle] = []
         with self._lock:
-            missing = [i for i in ids if str(i) not in self._agents]
+            missing = [i for i in ids if str(i) not in self._agents and str(i) not in self._terminal]
             if missing:
                 raise KeyError(f"unknown ids: {missing}")
-            handles = [self._agents[str(i)] for i in ids]
+            handles = [self._agents[str(i)] for i in ids if str(i) in self._agents]
 
         deadline = None if timeout_ms is None else (time.monotonic() + timeout_ms / 1000.0)
         for h in handles:
@@ -181,24 +203,24 @@ class CollabManager:
                 h.thread.join(timeout=remaining)
 
         # 返回快照（避免暴露内部可变对象给调用方写入）
-        out: list[ChildAgentHandle] = []
+        out: list[ChildAgentSnapshot] = []
         with self._lock:
-            for h in handles:
-                cur = self._agents.get(h.id)
-                if cur is None:
-                    continue
-                out.append(
-                    ChildAgentHandle(
-                        id=cur.id,
-                        agent_type=cur.agent_type,
-                        inbox=cur.inbox,
-                        cancel_event=cur.cancel_event,
-                        thread=cur.thread,
-                        status=cur.status,
-                        final_output=cur.final_output,
-                        error=cur.error,
+            for agent_id in [str(i) for i in ids]:
+                cur = self._agents.get(agent_id)
+                if cur is not None:
+                    out.append(
+                        ChildAgentSnapshot(
+                            id=cur.id,
+                            agent_type=cur.agent_type,
+                            status=cur.status,
+                            final_output=cur.final_output,
+                            error=cur.error,
+                        )
                     )
-                )
+                    continue
+                terminal = self._terminal.get(agent_id)
+                if terminal is not None:
+                    out.append(terminal)
         return out
 
     def send_input(self, *, agent_id: str, message: str) -> None:
@@ -216,23 +238,27 @@ class CollabManager:
 
         h = self.get(str(agent_id))
         if h is None:
+            with self._lock:
+                if str(agent_id) in self._terminal:
+                    return
             raise KeyError("agent not found")
         h.cancel_event.set()
         self._set_status(h.id, status="cancelled", final_output=None, error=None)
 
-    def resume(self, *, agent_id: str) -> ChildAgentHandle:
+    def resume(self, *, agent_id: str) -> ChildAgentSnapshot:
         """恢复/查询子 agent 状态（最小：no-op，返回当前句柄快照）。"""
 
         h = self.get(str(agent_id))
-        if h is None:
+        if h is not None:
+            return ChildAgentSnapshot(
+                id=h.id,
+                agent_type=h.agent_type,
+                status=h.status,
+                final_output=h.final_output,
+                error=h.error,
+            )
+        with self._lock:
+            terminal = self._terminal.get(str(agent_id))
+        if terminal is None or terminal.status == "cancelled":
             raise KeyError("agent not found")
-        return ChildAgentHandle(
-            id=h.id,
-            agent_type=h.agent_type,
-            inbox=h.inbox,
-            cancel_event=h.cancel_event,
-            thread=h.thread,
-            status=h.status,
-            final_output=h.final_output,
-            error=h.error,
-        )
+        return terminal

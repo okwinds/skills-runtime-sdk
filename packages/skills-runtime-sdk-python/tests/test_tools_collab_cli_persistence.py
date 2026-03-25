@@ -76,3 +76,29 @@ def test_spawn_close_wait_across_processes(tmp_path: Path) -> None:
     it = r3["result"]["data"]["results"][0]
     assert it["id"] == aid
     assert it["status"] == "cancelled"
+
+
+def test_spawn_close_send_input_fails_across_processes(tmp_path: Path) -> None:
+    r1 = _run_tools_cli(tmp_path, ["spawn-agent", "--workspace-root", str(tmp_path), "--yes", "--message", "wait_input:x"])
+    aid = r1["result"]["data"]["id"]
+
+    r2 = _run_tools_cli(tmp_path, ["close-agent", "--workspace-root", str(tmp_path), "--yes", "--id", aid])
+    assert r2["result"]["ok"] is True
+
+    r3 = _run_tools_cli(tmp_path, ["send-input", "--workspace-root", str(tmp_path), "--yes", "--id", aid, "--message", "late"])
+    assert r3["tool"] == "send_input"
+    assert r3["result"]["ok"] is False
+    assert r3["result"]["error_kind"] == "not_found"
+
+
+def test_spawn_close_resume_is_validation_across_processes(tmp_path: Path) -> None:
+    r1 = _run_tools_cli(tmp_path, ["spawn-agent", "--workspace-root", str(tmp_path), "--yes", "--message", "wait_input:x"])
+    aid = r1["result"]["data"]["id"]
+
+    r2 = _run_tools_cli(tmp_path, ["close-agent", "--workspace-root", str(tmp_path), "--yes", "--id", aid])
+    assert r2["result"]["ok"] is True
+
+    r3 = _run_tools_cli(tmp_path, ["resume-agent", "--workspace-root", str(tmp_path), "--yes", "--id", aid])
+    assert r3["tool"] == "resume_agent"
+    assert r3["result"]["ok"] is False
+    assert r3["result"]["error_kind"] == "validation"

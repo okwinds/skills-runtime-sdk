@@ -342,6 +342,24 @@ def test_send_input_does_not_crash_on_fast_complete(tmp_path: Path) -> None:
     assert p["ok"] in {True, False}
 
 
+def test_send_input_after_close_is_not_found(tmp_path: Path) -> None:
+    ctx = _mk_ctx(tmp_path)
+    aid = _payload(spawn_agent(ToolCall(call_id="c1", name="spawn_agent", args={"message": "wait_input:x"}), ctx))["data"]["id"]
+    _ = close_agent(ToolCall(call_id="c2", name="close_agent", args={"id": aid}), ctx)
+    p = _payload(send_input(ToolCall(call_id="c3", name="send_input", args={"id": aid, "message": "late"}), ctx))
+    assert p["ok"] is False
+    assert p["error_kind"] == "not_found"
+
+
+def test_send_input_after_completed_child_is_not_found(tmp_path: Path) -> None:
+    ctx = _mk_ctx(tmp_path)
+    aid = _payload(spawn_agent(ToolCall(call_id="c1", name="spawn_agent", args={"message": "echo:hi"}), ctx))["data"]["id"]
+    _ = wait_tool(ToolCall(call_id="c2", name="wait", args={"ids": [aid]}), ctx)
+    p = _payload(send_input(ToolCall(call_id="c3", name="send_input", args={"id": aid, "message": "late"}), ctx))
+    assert p["ok"] is False
+    assert p["error_kind"] == "not_found"
+
+
 # --- close_agent (10+) ---
 
 
@@ -365,8 +383,8 @@ def test_close_agent_cancels_running_child(tmp_path: Path) -> None:
     p2 = _payload(close_agent(ToolCall(call_id="c2", name="close_agent", args={"id": aid}), ctx))
     assert p2["ok"] is True
     p3 = _payload(resume_agent(ToolCall(call_id="c3", name="resume_agent", args={"id": aid}), ctx))
-    assert p3["ok"] is True
-    assert p3["data"]["status"] == "cancelled"
+    assert p3["ok"] is False
+    assert p3["error_kind"] == "validation"
 
 
 def test_close_agent_extra_fields_forbidden(tmp_path: Path) -> None:
@@ -474,8 +492,8 @@ def test_resume_agent_after_close_is_cancelled(tmp_path: Path) -> None:
     aid = _payload(spawn_agent(ToolCall(call_id="c1", name="spawn_agent", args={"message": "sleep:200"}), ctx))["data"]["id"]
     _ = close_agent(ToolCall(call_id="c2", name="close_agent", args={"id": aid}), ctx)
     p = _payload(resume_agent(ToolCall(call_id="c3", name="resume_agent", args={"id": aid}), ctx))
-    assert p["ok"] is True
-    assert p["data"]["status"] == "cancelled"
+    assert p["ok"] is False
+    assert p["error_kind"] == "validation"
 
 
 def test_resume_agent_arg_type_validation(tmp_path: Path) -> None:
