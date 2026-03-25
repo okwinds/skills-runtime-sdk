@@ -57,6 +57,16 @@ class SafetyGate:
         self._sandbox_permissions = sandbox_permissions
         self._is_custom_tool_fn = is_custom_tool
 
+    def _sandbox_permissions_for_call(self, call: ToolCall) -> Optional[str]:
+        """提取单次 tool call 的 sandbox 权限语义；缺失时回退到构造默认值。"""
+
+        args = call.args if isinstance(call.args, dict) else {}
+        value = args.get("sandbox_permissions")
+        if value is None:
+            value = self._sandbox_permissions
+        text = str(value or "").strip().lower()
+        return text or None
+
     def _get_descriptor(self, tool_name: str) -> ToolSafetyDescriptor:
         """获取工具 descriptor；缺失时使用 passthrough 兜底。"""
 
@@ -191,6 +201,7 @@ class SafetyGate:
 
         argv, risk = self._extract_risk(descriptor, call.args)
         summary, sanitized = self._sanitize_for_approval(call, descriptor)
+        sandbox_permissions = self._sandbox_permissions_for_call(call)
 
         if category == "deny":
             policy = PolicyDecision(
@@ -203,11 +214,17 @@ class SafetyGate:
                 argv=argv,
                 risk=risk,
                 safety=self._safety_config,
-                sandbox_permissions=self._sandbox_permissions,
+                sandbox_permissions=sandbox_permissions,
             )
         elif category == "file":
             mode = str(getattr(self._safety_config, "mode", "ask") or "ask").strip().lower()
-            if mode == "deny":
+            if sandbox_permissions == "require_escalated":
+                policy = PolicyDecision(
+                    action="ask",
+                    reason="Tool requires escalated sandbox permissions.",
+                    matched_rule="sandbox",
+                )
+            elif mode == "deny":
                 policy = PolicyDecision(
                     action="deny",
                     reason="Tool is denied by safety.mode=deny.",

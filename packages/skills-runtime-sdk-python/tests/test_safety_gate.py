@@ -180,6 +180,19 @@ def test_file_write_mode_ask_returns_ask() -> None:
     assert decision.action == "ask"
 
 
+def test_file_write_require_escalated_returns_ask_even_when_mode_allow() -> None:
+    safety = _mk_safety(mode="allow")
+    gate = _mk_gate(
+        safety=safety,
+        descriptor_by_tool={"file_write": _StubDescriptor(policy_category="file")},
+    )
+    decision = gate.evaluate(
+        _mk_call("file_write", {"path": "a.txt", "content": "hello", "sandbox_permissions": "require_escalated"})
+    )
+    assert decision.action == "ask"
+    assert decision.matched_rule == "sandbox"
+
+
 def test_file_read_policy_none_returns_allow() -> None:
     safety = _mk_safety(mode="deny")
     gate = _mk_gate(

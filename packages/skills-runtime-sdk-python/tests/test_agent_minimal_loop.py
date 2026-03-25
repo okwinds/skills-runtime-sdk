@@ -183,6 +183,63 @@ def test_agent_repeated_denied_approval_aborts_to_prevent_loop(tmp_path: Path) -
     assert failed[-1].payload.get("error_kind") == "approval_denied"
 
 
+def test_agent_require_escalated_shell_exec_fails_fast_without_provider_even_when_mode_allow(tmp_path: Path) -> None:
+    overlay = _write_safety_overlay(tmp_path, mode="allow", allowlist=["/bin/echo"], denylist=[])
+
+    args = {"argv": ["/bin/echo", "hi"], "sandbox_permissions": "require_escalated"}
+    call = ToolCall(call_id="c1", name="shell_exec", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            )
+        ]
+    )
+
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=None, config_paths=[overlay])
+    result = agent.run("try escalated shell")
+
+    assert result.status == "failed"
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    assert any(e.type == "approval_requested" for e in events)
+    failed = [e for e in events if e.type == "run_failed"]
+    assert failed
+    assert failed[-1].payload.get("error_kind") == "config_error"
+
+
+def test_agent_require_escalated_file_write_fails_fast_without_provider_even_when_mode_allow(tmp_path: Path) -> None:
+    overlay = _write_safety_overlay(tmp_path, mode="allow")
+
+    args = {"path": "escalated.txt", "content": "hi", "sandbox_permissions": "require_escalated", "create_dirs": True}
+    call = ToolCall(call_id="c1", name="file_write", args=args, raw_arguments=json.dumps(args, ensure_ascii=False))
+
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(type="tool_calls", tool_calls=[call], finish_reason="tool_calls"),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            )
+        ]
+    )
+
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=None, config_paths=[overlay])
+    result = agent.run("try escalated file write")
+
+    assert result.status == "failed"
+    assert not (tmp_path / "escalated.txt").exists()
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    assert any(e.type == "approval_requested" for e in events)
+    failed = [e for e in events if e.type == "run_failed"]
+    assert failed
+    assert failed[-1].payload.get("error_kind") == "config_error"
+
+
 def test_agent_no_approval_provider_fails_fast_for_shell(tmp_path: Path) -> None:
     overlay = _write_safety_overlay(tmp_path, mode="ask", allowlist=[], denylist=[])
 
