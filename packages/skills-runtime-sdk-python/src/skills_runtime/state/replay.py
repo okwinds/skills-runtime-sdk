@@ -68,7 +68,31 @@ def rebuild_resume_replay_state(events: List[AgentEvent]) -> ResumeReplayState:
     denied_approvals_by_key: Dict[str, int] = {}
 
     for ev in seg:
-        if ev.type == "tool_call_finished":
+        if ev.type == "tool_call_requested":
+            call_id = str(ev.payload.get("call_id") or "").strip()
+            tool_name = str(ev.payload.get("tool") or ev.payload.get("name") or "").strip()
+            args_obj = ev.payload.get("arguments")
+            if not call_id or not tool_name:
+                continue
+            if not isinstance(args_obj, dict):
+                args_obj = {}
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "arguments": json.dumps(args_obj, ensure_ascii=False, separators=(",", ":")),
+                            },
+                        }
+                    ],
+                }
+            )
+        elif ev.type == "tool_call_finished":
             call_id = str(ev.payload.get("call_id") or "").strip()
             result_obj = ev.payload.get("result")
             if not call_id:
@@ -101,4 +125,3 @@ def rebuild_resume_replay_state(events: List[AgentEvent]) -> ResumeReplayState:
         approved_for_session_keys=approved_for_session_keys,
         denied_approvals_by_key=denied_approvals_by_key,
     )
-

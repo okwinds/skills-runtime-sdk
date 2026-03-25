@@ -21,22 +21,25 @@ class _AssertReplayHistoryBackend:
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
         # 不应再看到 Phase 2 的 resume summary 注入。
+        assistant_tool_call_idx = None
+        tool_result_idx = None
         for m in request.messages:
             if m.get("role") == "assistant" and isinstance(m.get("content"), str):
                 assert "[Resume Summary]" not in str(m.get("content"))
 
-        # 必须能看到之前的 tool message（由 tool_call_finished 事件重建）。
-        found_tool = False
-        for m in request.messages:
-            if m.get("role") != "tool":
-                continue
-            if m.get("tool_call_id") != self._expected_tool_call_id:
-                continue
-            content = m.get("content")
-            if isinstance(content, str) and "\"ok\"" in content:
-                found_tool = True
-                break
-        assert found_tool, "expected tool message reconstructed from WAL"
+        for idx, m in enumerate(request.messages):
+            if m.get("role") == "assistant" and isinstance(m.get("tool_calls"), list):
+                tool_calls = m.get("tool_calls") or []
+                if any((tc or {}).get("id") == self._expected_tool_call_id for tc in tool_calls if isinstance(tc, dict)):
+                    assistant_tool_call_idx = idx
+            if m.get("role") == "tool" and m.get("tool_call_id") == self._expected_tool_call_id:
+                content = m.get("content")
+                if isinstance(content, str) and "\"ok\"" in content:
+                    tool_result_idx = idx
+
+        assert assistant_tool_call_idx is not None, "expected assistant.tool_calls reconstructed from WAL"
+        assert tool_result_idx is not None, "expected tool message reconstructed from WAL"
+        assert assistant_tool_call_idx < tool_result_idx, "assistant.tool_calls must appear before tool result"
 
         yield ChatStreamEvent(type="text_delta", text=self._response_text)
         yield ChatStreamEvent(type="completed", finish_reason="stop")

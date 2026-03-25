@@ -13,19 +13,25 @@ from skills_runtime.tools.protocol import ToolCall
 
 
 class _AssertHasToolMessageBackend:
-    """断言 fork 后的 replay resume 能看到 tool message。"""
+    """断言 fork 后的 replay resume 能看到 assistant.tool_calls 与 tool message。"""
 
     def __init__(self, *, expected_tool_call_id: str) -> None:
         self._expected_tool_call_id = expected_tool_call_id
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:
         messages = request.messages
-        found = False
-        for m in messages:
+        assistant_tool_call_idx = None
+        tool_result_idx = None
+        for idx, m in enumerate(messages):
+            if m.get("role") == "assistant" and isinstance(m.get("tool_calls"), list):
+                tool_calls = m.get("tool_calls") or []
+                if any((tc or {}).get("id") == self._expected_tool_call_id for tc in tool_calls if isinstance(tc, dict)):
+                    assistant_tool_call_idx = idx
             if m.get("role") == "tool" and m.get("tool_call_id") == self._expected_tool_call_id:
-                found = True
-                break
-        assert found, "expected tool message in replayed history"
+                tool_result_idx = idx
+        assert assistant_tool_call_idx is not None, "expected assistant.tool_calls in replayed history"
+        assert tool_result_idx is not None, "expected tool message in replayed history"
+        assert assistant_tool_call_idx < tool_result_idx
         yield ChatStreamEvent(type="text_delta", text="ok")
         yield ChatStreamEvent(type="completed", finish_reason="stop")
 
