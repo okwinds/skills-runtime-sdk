@@ -16,8 +16,7 @@ export interface PendingApproval {
   approval_key: string;
   tool?: string;
   summary?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  request?: Record<string, any>;
+  request?: Record<string, unknown>;
   age_ms?: number;
   run_id?: string;
 }

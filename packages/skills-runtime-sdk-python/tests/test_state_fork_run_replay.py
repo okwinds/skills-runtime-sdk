@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from skills_runtime.agent import Agent
+from skills_runtime.core.contracts import AgentEvent
 from skills_runtime.llm.chat_sse import ChatStreamEvent
 from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
 from skills_runtime.llm.protocol import ChatRequest
 from skills_runtime.state.fork import fork_run
+from skills_runtime.state.replay import rebuild_resume_replay_state
 from skills_runtime.tools.protocol import ToolCall
 
 
@@ -78,3 +80,32 @@ def test_fork_run_then_replay_resume(tmp_path: Path) -> None:
     r = Agent(model="fake-model", backend=backend2, workspace_root=tmp_path, config_paths=[overlay]).run("t2", run_id=dst_run_id)
     assert r.status == "completed"
     assert r.final_output == "ok"
+
+
+def test_rebuild_resume_replay_state_groups_same_turn_tool_calls() -> None:
+    events = [
+        {"type": "run_started", "timestamp": "t0", "run_id": "r1", "payload": {}},
+        {
+            "type": "tool_call_requested",
+            "timestamp": "t1",
+            "run_id": "r1",
+            "turn_id": "turn_1",
+            "step_id": "step_1",
+            "payload": {"call_id": "c1", "tool": "read_file", "arguments": {"path": "a.txt"}},
+        },
+        {
+            "type": "tool_call_requested",
+            "timestamp": "t2",
+            "run_id": "r1",
+            "turn_id": "turn_1",
+            "step_id": "step_2",
+            "payload": {"call_id": "c2", "tool": "grep_files", "arguments": {"pattern": "x"}},
+        },
+    ]
+
+    state = rebuild_resume_replay_state([AgentEvent.model_validate(ev) for ev in events])
+
+    assert len(state.history) == 1
+    assert state.history[0]["role"] == "assistant"
+    tool_calls = state.history[0]["tool_calls"]
+    assert [tool_call["id"] for tool_call in tool_calls] == ["c1", "c2"]

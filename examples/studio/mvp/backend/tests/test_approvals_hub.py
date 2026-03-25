@@ -78,3 +78,28 @@ def test_approval_hub_invalid_decision_raises() -> None:
 
     assert hub.decide(run_id=run_id, approval_key=approval_key, decision="denied") is True
     t.join(timeout=2.0)
+
+
+def test_approval_hub_timeout_clears_pending_and_decide_returns_false() -> None:
+    hub = ApprovalHub()
+    run_id = "run_timeout"
+    approval_key = "k-timeout"
+
+    async def _await_timeout() -> None:
+        provider = hub.provider_for_run(run_id=run_id)
+        req = ApprovalRequest(
+            approval_key=approval_key,
+            tool="file_write",
+            summary="write file",
+            details={"path": "a.txt"},
+        )
+        try:
+            await provider.request_approval(request=req, timeout_ms=20)
+        except asyncio.TimeoutError:
+            return
+        assert False, "expected timeout"
+
+    asyncio.run(_await_timeout())
+
+    assert hub.list_pending(run_id=run_id) == []
+    assert hub.decide(run_id=run_id, approval_key=approval_key, decision="approved") is False

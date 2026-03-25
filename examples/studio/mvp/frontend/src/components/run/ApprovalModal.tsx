@@ -66,6 +66,10 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
   // If no approvals, don't render
   if (!currentApproval) return null;
 
+  const approvalTitle = currentApproval.tool?.trim() || 'Approval Required';
+  const approvalPrompt =
+    currentApproval.summary?.trim() || 'The agent is requesting approval to proceed.';
+
   return (
     <div className="approval-modal-overlay" onClick={onClose}>
       <div
@@ -77,7 +81,7 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
       >
         <div className="approval-modal__header">
           <h3 id="approval-modal-title" className="approval-modal__title">
-            {currentApproval.title || 'Approval Required'}
+            {approvalTitle}
           </h3>
           {hasMultiple && (
             <span className="approval-modal__counter">
@@ -87,16 +91,7 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
         </div>
 
         <div className="approval-modal__body">
-          <div className="approval-modal__prompt">
-            {currentApproval.prompt || 'The agent is requesting approval to proceed.'}
-          </div>
-
-          {currentApproval.metadata && Object.keys(currentApproval.metadata).length > 0 && (
-            <div className="approval-modal__section">
-              <h4 className="approval-modal__section-title">Metadata</h4>
-              <pre className="approval-modal__code">{formatJson(currentApproval.metadata)}</pre>
-            </div>
-          )}
+          <div className="approval-modal__prompt">{approvalPrompt}</div>
 
           {currentApproval.request && typeof currentApproval.request === 'object' && (
             <div className="approval-modal__section">

@@ -66,32 +66,38 @@ def rebuild_resume_replay_state(events: List[AgentEvent]) -> ResumeReplayState:
     history: List[Dict[str, Any]] = []
     approved_for_session_keys: set[str] = set()
     denied_approvals_by_key: Dict[str, int] = {}
+    last_tool_call_turn_id: str | None = None
 
     for ev in seg:
         if ev.type == "tool_call_requested":
             call_id = str(ev.payload.get("call_id") or "").strip()
             tool_name = str(ev.payload.get("tool") or ev.payload.get("name") or "").strip()
             args_obj = ev.payload.get("arguments")
+            turn_id = str(ev.turn_id or "").strip() or None
             if not call_id or not tool_name:
                 continue
             if not isinstance(args_obj, dict):
                 args_obj = {}
-            history.append(
-                {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": tool_name,
-                                "arguments": json.dumps(args_obj, ensure_ascii=False, separators=(",", ":")),
-                            },
-                        }
-                    ],
-                }
-            )
+            tool_call = {
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "arguments": json.dumps(args_obj, ensure_ascii=False, separators=(",", ":")),
+                },
+            }
+            if (
+                turn_id is not None
+                and turn_id == last_tool_call_turn_id
+                and history
+                and history[-1].get("role") == "assistant"
+                and history[-1].get("content") is None
+                and isinstance(history[-1].get("tool_calls"), list)
+            ):
+                history[-1]["tool_calls"].append(tool_call)
+            else:
+                history.append({"role": "assistant", "content": None, "tool_calls": [tool_call]})
+            last_tool_call_turn_id = turn_id
         elif ev.type == "tool_call_finished":
             call_id = str(ev.payload.get("call_id") or "").strip()
             result_obj = ev.payload.get("result")
@@ -99,6 +105,7 @@ def rebuild_resume_replay_state(events: List[AgentEvent]) -> ResumeReplayState:
                 continue
             if not isinstance(result_obj, dict):
                 continue
+            last_tool_call_turn_id = None
             history.append(
                 {
                     "role": "tool",
@@ -109,6 +116,7 @@ def rebuild_resume_replay_state(events: List[AgentEvent]) -> ResumeReplayState:
         elif ev.type == "run_completed":
             final_output = ev.payload.get("final_output")
             if isinstance(final_output, str) and final_output:
+                last_tool_call_turn_id = None
                 history.append({"role": "assistant", "content": final_output})
         elif ev.type == "approval_decided":
             approval_key = str(ev.payload.get("approval_key") or "").strip()

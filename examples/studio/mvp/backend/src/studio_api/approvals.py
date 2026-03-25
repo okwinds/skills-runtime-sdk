@@ -4,6 +4,7 @@ import asyncio
 import threading
 import time
 from dataclasses import dataclass
+from contextlib import suppress
 from typing import Dict, List, Optional, Tuple
 
 from skills_runtime.safety.approvals import ApprovalDecision, ApprovalProvider, ApprovalRequest
@@ -60,6 +61,15 @@ class ApprovalHub:
         """为某个 run 构造一个 run-scoped ApprovalProvider。"""
 
         return _RunScopedApprovalProvider(hub=self, run_id=run_id)
+
+    def _discard_pending(self, *, run_id: str, approval_key: str, pending: PendingApproval) -> None:
+        """仅当当前映射仍指向同一 pending 时移除，避免误删重注册项。"""
+
+        key = (run_id, str(approval_key))
+        with self._lock:
+            cur = self._pending.get(key)
+            if cur is pending:
+                self._pending.pop(key, None)
 
     def list_pending(self, *, run_id: str) -> List[Dict[str, object]]:
         """列出某个 run 的 pending approvals（用于前端刷新/断线恢复）。"""
@@ -121,6 +131,9 @@ class ApprovalHub:
         key = (run_id, str(approval_key))
         with self._lock:
             pending = self._pending.get(key)
+            if pending is not None and pending.future.done():
+                self._pending.pop(key, None)
+                pending = None
         if pending is None:
             return False
 
@@ -135,11 +148,7 @@ class ApprovalHub:
                     return
                 pending.future.set_result(parsed)
             finally:
-                with self._lock:
-                    # best-effort 清理
-                    cur = self._pending.get(key)
-                    if cur is pending:
-                        self._pending.pop(key, None)
+                self._discard_pending(run_id=run_id, approval_key=approval_key, pending=pending)
 
         try:
             pending.loop.call_soon_threadsafe(_resolve)
@@ -163,7 +172,18 @@ class _RunScopedApprovalProvider(ApprovalProvider):
 
     async def request_approval(self, *, request: ApprovalRequest, timeout_ms=None) -> ApprovalDecision:  # type: ignore[override]
         pending = self._hub._register(run_id=self._run_id, req=request)
-        if timeout_ms is None:
-            return await pending.future
-        return await asyncio.wait_for(pending.future, timeout=float(timeout_ms) / 1000.0)
-
+        try:
+            if timeout_ms is None:
+                return await pending.future
+            return await asyncio.wait_for(pending.future, timeout=float(timeout_ms) / 1000.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            with suppress(Exception):
+                if not pending.future.done():
+                    pending.future.cancel()
+            raise
+        finally:
+            self._hub._discard_pending(
+                run_id=self._run_id,
+                approval_key=request.approval_key,
+                pending=pending,
+            )

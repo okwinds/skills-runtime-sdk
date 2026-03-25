@@ -6,10 +6,10 @@
  */
 
 import { parseSseText, type ParsedSseEvent } from './sse';
-import { fetchJson, fetchNoContent } from './http';
+import { fetchJson, fetchNoContent, APIError, readErrorBody } from './http';
 import { isRecord } from './typeGuards';
 
-export { APIError } from './http';
+export { APIError };
 
 // ===== TYPES (exported for UI) =====
 

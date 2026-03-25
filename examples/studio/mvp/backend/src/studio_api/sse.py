@@ -61,9 +61,14 @@ def stream_jsonl_as_sse(
                 with p.open("r", encoding="utf-8") as f:
                     f.seek(offset)
                     while True:
+                        line_start = f.tell()
                         line = f.readline()
                         if not line:
                             offset = f.tell()
+                            break
+                        if not line.endswith("\n"):
+                            # 仅拿到尾部半行时保持 offset，不要把未补全的 JSON 永久跳过。
+                            offset = line_start
                             break
                         raw = line.strip()
                         if not raw:
