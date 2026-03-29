@@ -7,7 +7,10 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import time
+from pathlib import Path
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -84,7 +87,31 @@ def file_write(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
     try:
         if args.create_dirs:
             p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(args.content, encoding="utf-8")
+        parent = p.parent
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{p.name}.", dir=str(parent))
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as tmp_f:
+                tmp_f.write(args.content)
+                tmp_f.flush()
+                os.fsync(tmp_f.fileno())
+            os.replace(str(tmp_path), str(p))
+            # 目录 fsync（best-effort）：尽量确保 rename 元数据落盘。
+            try:
+                dir_fd = os.open(str(parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
+        except Exception:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
+            raise
     except PermissionError as e:
         duration_ms = int((time.monotonic() - start) * 1000)
         return ToolResult.error_payload(error_kind="permission", stderr=str(e), duration_ms=duration_ms)

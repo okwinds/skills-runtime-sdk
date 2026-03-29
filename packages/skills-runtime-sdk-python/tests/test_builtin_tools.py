@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
 
@@ -30,6 +31,25 @@ def test_builtin_file_write_read_roundtrip(tmp_path: Path) -> None:
     assert r.ok is True
     assert r.details is not None
     assert "hello" in (r.details.get("stdout") or "")
+
+
+def test_builtin_file_write_keeps_original_content_when_replace_fails(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    file_write_mod = importlib.import_module("skills_runtime.tools.builtin.file_write")
+
+    target = tmp_path / "a.txt"
+    target.write_text("old", encoding="utf-8")
+
+    ctx = ToolExecutionContext(workspace_root=tmp_path, run_id="r1", executor=Executor())
+    reg = ToolRegistry(ctx=ctx)
+    register_builtin_tools(reg)
+
+    def _boom(_src: str, _dst: str) -> None:
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(file_write_mod.os, "replace", _boom)
+    res = reg.dispatch(ToolCall(call_id="c1", name="file_write", args={"path": "a.txt", "content": "new"}))
+    assert res.ok is False
+    assert target.read_text(encoding="utf-8") == "old"
 
 
 def test_builtin_shell_exec_echo(tmp_path: Path) -> None:
