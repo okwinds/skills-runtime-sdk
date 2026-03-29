@@ -1,3 +1,4 @@
+import multiprocessing as mp
 import threading
 
 from skills_runtime.core.contracts import AgentEvent
@@ -47,3 +48,54 @@ def test_concurrent_append_monotonic_index(tmp_path):
         t.join()
 
     assert len(set(indices)) == 80
+
+
+def _append_from_process(
+    wal_path: str,
+    start_event,
+    ready_queue,
+    result_queue,
+    n_per_process: int,
+    process_name: str,
+) -> None:
+    wal = JsonlWal(path=wal_path)
+    ready_queue.put(process_name)
+    start_event.wait()
+    indices = []
+    for i in range(n_per_process):
+        idx = wal.append(AgentEvent(type="test", timestamp=f"{process_name}-{i}", run_id="r", payload={}))
+        indices.append(idx)
+    result_queue.put(indices)
+
+
+def test_multiprocess_append_keeps_indices_unique(tmp_path):
+    ctx = mp.get_context("spawn")
+    wal_path = str(tmp_path / "events.jsonl")
+    start_event = ctx.Event()
+    ready_queue = ctx.Queue()
+    result_queue = ctx.Queue()
+    n_per_process = 20
+    processes = [
+        ctx.Process(
+            target=_append_from_process,
+            args=(wal_path, start_event, ready_queue, result_queue, n_per_process, f"p{i}"),
+        )
+        for i in range(2)
+    ]
+    for proc in processes:
+        proc.start()
+    for _ in processes:
+        assert ready_queue.get(timeout=10) in {"p0", "p1"}
+    start_event.set()
+
+    indices = []
+    for _ in processes:
+        indices.extend(result_queue.get(timeout=10))
+
+    for proc in processes:
+        proc.join(timeout=10)
+        assert proc.exitcode == 0
+
+    assert len(indices) == len(processes) * n_per_process
+    assert len(set(indices)) == len(indices)
+    assert len(list(JsonlWal(path=wal_path).iter_events())) == len(indices)

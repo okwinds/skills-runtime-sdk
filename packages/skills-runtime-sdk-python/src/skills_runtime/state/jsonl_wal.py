@@ -6,11 +6,12 @@ JSONL WAL（Write-Ahead Log）。
 
 实现约定（M1 最小闭环）：
 - `append()` 返回值为 **0-based 行号**（line index），用于恢复/fork 指定位置。
-- 文件为 append-only；不做 compaction、不做并发写保证（后续阶段再增强）。
+- 文件为 append-only；不做 compaction。
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import json
 import os
@@ -20,6 +21,11 @@ from pathlib import Path
 from typing import Iterator, Optional, TextIO
 
 from skills_runtime.core.contracts import AgentEvent
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - 非 POSIX 平台兜底
+    fcntl = None  # type: ignore[assignment]
 
 # 终态事件集合：这些事件落盘后才视为 run 持久化完成，MUST fsync。
 # delta 类事件（如 llm_response_delta、tool_call_started）只需 flush，不强制 fsync。
@@ -54,7 +60,10 @@ class JsonlWal:
         self.path = Path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        self._lock_path = self.path.with_name(f"{self.path.name}.lock")
+        self._lock_fh: Optional[TextIO] = self._lock_path.open("a+", encoding="utf-8")
         self._next_index = self._scan_next_index()
+        self._observed_signature = self._stat_signature()
         # 复用同一文件句柄，避免每次 append 打开/关闭文件造成额外 syscalls。
         self._fh: Optional[TextIO] = self.path.open("a", encoding="utf-8")
 
@@ -83,13 +92,42 @@ class JsonlWal:
                     count += 1
         return count
 
+    def _stat_signature(self) -> tuple[int, int]:
+        """返回 `(size, mtime_ns)` 签名，用于检测外部进程是否已写入 WAL。"""
+
+        try:
+            st = self.path.stat()
+        except FileNotFoundError:
+            return (0, 0)
+        return (int(st.st_size), int(getattr(st, "st_mtime_ns", 0)))
+
+    @contextlib.contextmanager
+    def _process_append_lock(self):
+        """
+        进程级 append 锁（best-effort）。
+
+        说明：
+        - POSIX 下使用 `fcntl.flock`，用于多进程共享 WAL 时对齐 line index；
+        - 非 POSIX 平台退化为仅进程内线程安全，不破坏既有语义。
+        """
+
+        if fcntl is None or self._lock_fh is None or self._lock_fh.closed:
+            yield
+            return
+        fcntl.flock(self._lock_fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(self._lock_fh.fileno(), fcntl.LOCK_UN)
+
     def append(self, event: AgentEvent, *, force_fsync: bool = False) -> int:
         """
         追加一条事件，返回其 line index（0-based）。
 
         说明：
         - 本方法会将事件序列化为单行 JSON（by_alias=True），并追加换行。
-        - 返回的 index 在单进程内单调递增；若外部进程同时写同一文件，本实现不保证。
+        - 在同一 WAL 文件被多个进程共享时，append 会先进入进程级锁并在必要时重扫 index；
+          correctness 优先于极限吞吐。
         - fsync 分级：
           - `force_fsync=True`：调用方显式要求持久化（如终态事件写入路径）。
           - `force_fsync=False`（默认）：自动判断——终态事件（run_completed/
@@ -101,15 +139,21 @@ class JsonlWal:
         line = json.dumps(payload, ensure_ascii=False)
         is_terminal = force_fsync or (event.type in _TERMINAL_EVENT_TYPES)
         with self._lock:
-            index = self._next_index
-            if self._fh is None or self._fh.closed:
-                self._fh = self.path.open("a", encoding="utf-8")
-            self._fh.write(line)
-            self._fh.write("\n")
-            self._fh.flush()
-            if is_terminal:
-                os.fsync(self._fh.fileno())
-            self._next_index += 1
+            with self._process_append_lock():
+                current_signature = self._stat_signature()
+                if current_signature != self._observed_signature:
+                    self._next_index = self._scan_next_index()
+                    self._observed_signature = current_signature
+                index = self._next_index
+                if self._fh is None or self._fh.closed:
+                    self._fh = self.path.open("a", encoding="utf-8")
+                self._fh.write(line)
+                self._fh.write("\n")
+                self._fh.flush()
+                if is_terminal:
+                    os.fsync(self._fh.fileno())
+                self._next_index = index + 1
+                self._observed_signature = self._stat_signature()
         return index
 
     def iter_events(self, *, run_id: Optional[str] = None) -> Iterator[AgentEvent]:
@@ -183,14 +227,20 @@ class JsonlWal:
         """关闭 WAL 句柄（释放 fd）。"""
 
         with self._lock:
-            if self._fh is None:
-                return
-            try:
-                self._fh.close()
-            except OSError:
-                pass
-            finally:
-                self._fh = None
+            if self._fh is not None:
+                try:
+                    self._fh.close()
+                except OSError:
+                    pass
+                finally:
+                    self._fh = None
+            if self._lock_fh is not None:
+                try:
+                    self._lock_fh.close()
+                except OSError:
+                    pass
+                finally:
+                    self._lock_fh = None
 
     def __enter__(self) -> "JsonlWal":
         """上下文管理器入口：返回 self（便于 with 使用）。"""
