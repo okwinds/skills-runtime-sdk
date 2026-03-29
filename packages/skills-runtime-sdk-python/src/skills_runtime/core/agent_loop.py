@@ -1,37 +1,26 @@
 """AgentLoop（Phase 2）：对外入口与最小 run loop。"""
 from __future__ import annotations
-import asyncio, contextlib, inspect, time, uuid
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 from pydantic import BaseModel, create_model
 from skills_runtime.config.loader import AgentSdkConfig
-from skills_runtime.core.context_recovery import handle_context_length_exceeded
 from skills_runtime.core.contracts import AgentEvent
-from skills_runtime.core.errors import FrameworkError, UserError
+from skills_runtime.core.errors import UserError
 from skills_runtime.core.exec_sessions import ExecSessionsProvider
 from skills_runtime.core.executor import Executor
-from skills_runtime.core.loop_controller import LoopController
-from skills_runtime.core.resume_builder import prepare_resume
-from skills_runtime.core.run_context import RunContext
+from skills_runtime.core.run_lifecycle import RunBootstrap
 from skills_runtime.core.run_errors import _classify_run_exception
 from skills_runtime.core.skill_env import ensure_skill_env_vars
 from skills_runtime.core.stream_adapters import run_stream_async_iter, run_stream_sync, run_sync
 from skills_runtime.core.tool_orchestration import process_pending_tool_calls
-from skills_runtime.core.utils import now_rfc3339
-from skills_runtime.llm.protocol import ChatBackend, ChatRequest, _validate_chat_backend_protocol
+from skills_runtime.llm.protocol import ChatBackend, _validate_chat_backend_protocol
 from skills_runtime.prompts.manager import PromptManager
 from skills_runtime.safety.approvals import ApprovalProvider
-from skills_runtime.safety.descriptors import get_builtin_tool_safety_descriptor
-from skills_runtime.safety.gate import SafetyGate
-from skills_runtime.sandbox import create_default_os_sandbox_adapter
 from skills_runtime.skills.manager import SkillsManager
 from skills_runtime.skills.models import Skill
-from skills_runtime.state.jsonl_wal import JsonlWal
-from skills_runtime.state.wal_emitter import WalEmitter
 from skills_runtime.state.wal_protocol import WalBackend
-from skills_runtime.tools.builtin import register_builtin_tools
-from skills_runtime.tools.dispatcher import ToolDispatcher
 from skills_runtime.tools.protocol import HumanIOProvider, ToolCall, ToolResult, ToolResultPayload, ToolSpec
 from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 @dataclass(frozen=True)
@@ -97,7 +86,8 @@ class AgentLoop:
             for param_name, param in inspect.signature(f).parameters.items():
                 ann = param.annotation
                 if ann is inspect._empty:
-                    ann = str
+                    # 未显式注解时保持宽类型，避免隐式收窄到 str 导致运行时语义偏差。
+                    ann = Any
                 default = param.default if param.default is not inspect._empty else ...
                 fields[param_name] = (ann, default)
             Model: type[BaseModel] = create_model(f"_{tool_name}_Args", **fields)  # type: ignore[call-overload]
@@ -217,430 +207,85 @@ class AgentLoop:
         emit,
     ) -> None:
         """核心 run loop（async）。"""
-        run_id = run_id or f"run_{uuid.uuid4().hex}"
-        run_dir = (self._workspace_root / ".skills_runtime_sdk" / "runs" / run_id).resolve()
-        run_dir.mkdir(parents=True, exist_ok=True)
-        wal_jsonl_path = run_dir / "events.jsonl"
-        injected_wal = self._wal_backend
-        if injected_wal is not None:
-            wal = injected_wal
-            wal_locator = f"{wal.locator()}#run_id={run_id}"
-        else:
-            wal = JsonlWal(wal_jsonl_path)
-            wal_locator = str(wal_jsonl_path)
-        wal_emitter = WalEmitter(wal=wal, stream=emit, hooks=list(self._event_hooks))
-        max_steps = int(self._config.run.max_steps)
-        max_wall_time_sec = self._config.run.max_wall_time_sec
-        cr = self._config.run.context_recovery
-        ctx = RunContext(
-            run_id=run_id,
-            run_dir=run_dir,
-            wal=wal,
-            wal_locator=wal_locator,
-            wal_emitter=wal_emitter,
-            history=[],
-            artifacts_dir=(run_dir / "artifacts").resolve(),
-            profile_id=self._profile_id,
-            max_steps=max_steps,
-            max_wall_time_sec=float(max_wall_time_sec) if max_wall_time_sec is not None else None,
-            context_recovery_mode=str(cr.mode),
-            max_compactions_per_run=int(cr.max_compactions_per_run),
-            ask_first_fallback_mode=str(cr.ask_first_fallback_mode),
-            compaction_history_max_chars=int(cr.compaction_history_max_chars),
-            compaction_keep_last_messages=int(cr.compaction_keep_last_messages),
-            increase_budget_extra_steps=int(cr.increase_budget_extra_steps),
-            increase_budget_extra_wall_time_sec=int(cr.increase_budget_extra_wall_time_sec),
-        )
-        resume_strategy = str(self._config.run.resume_strategy)
-        resume = prepare_resume(wal=wal, run_id=run_id, initial_history=initial_history, resume_strategy=resume_strategy)
-        if resume.resume_replay_history:
-            ctx.history.extend(resume.resume_replay_history)
-            self._approved_for_session_keys.update(set(resume.resume_replay_approved))
-        elif resume.resume_summary:
-            ctx.history.append({"role": "assistant", "content": resume.resume_summary})
-        if initial_history:
-            for item in initial_history:
-                if not isinstance(item, dict):
-                    continue
-                role = item.get("role")
-                content = item.get("content")
-                if role not in ("user", "assistant"):
-                    continue
-                if not isinstance(content, str):
-                    continue
-                ctx.history.append({"role": role, "content": content})
-        ctx.emit_event(
-            AgentEvent(
-                type="run_started",
-                timestamp=now_rfc3339(),
-                run_id=run_id,
-                payload={
-                    "task": task,
-                    "config_summary": {
-                        "profile_id": self._profile_id,
-                        "models": {"planner": self._planner_model, "executor": self._executor_model},
-                        "llm": {"base_url": self._config.llm.base_url, "api_key_env": self._config.llm.api_key_env},
-                        "config_overlays": list(self._config_overlay_paths),
-                    },
-                    "workspace_root": str(self._workspace_root),
-                    "resume": {
-                        "enabled": bool(resume.resume_summary) or bool(resume.resume_replay_history),
-                        "strategy": resume_strategy,
-                        "previous_events": resume.existing_events_count,
-                    },
-                },
-            )
-        )
-        started_monotonic = time.monotonic()
-        loop = LoopController(
-            max_steps=max_steps,
-            max_wall_time_sec=float(max_wall_time_sec) if max_wall_time_sec is not None else None,
-            started_monotonic=started_monotonic,
-            cancel_checker=self._cancel_checker,
-            denied_approvals_by_key=dict(resume.resume_replay_denied or {}),
-        )
-        run_env_store: Dict[str, str] = dict(self._env_store or {})
-        # 记录 run 开始时 session 已有的 key 集合，用于 finally 增量合并（只把新增项写回 session）。
-        _run_env_initial_keys: set[str] = set(run_env_store.keys())
-        if self._backend is None:
-            ctx.emit_event(
-                AgentEvent(
-                    type="run_failed",
-                    timestamp=now_rfc3339(),
-                    run_id=run_id,
-                    payload={
-                        "error_kind": "config_error",
-                        "message": "未配置 LLM backend（backend=None）",
-                        "retryable": False,
-                        "wal_locator": wal_locator,
-                    },
-                )
-            )
-            return
-        backend = self._backend
-        try:
-            _validate_chat_backend_protocol(backend)
-        except BaseException as e:
-            failed = _classify_run_exception(e).to_payload()
-            failed["wal_locator"] = wal_locator
-            ctx.emit_event(AgentEvent(type="run_failed", timestamp=now_rfc3339(), run_id=run_id, payload=failed))
-            return
-        tool_ctx = ToolExecutionContext(
+        session = RunBootstrap(
             workspace_root=self._workspace_root,
-            run_id=run_id,
+            config=self._config,
+            config_overlay_paths=self._config_overlay_paths,
             profile_id=self._profile_id,
             child_profile_map=self._child_profile_map,
-            wal=None,
-            event_emitter=wal_emitter,
+            planner_model=self._planner_model,
+            executor_model=self._executor_model,
+            backend=self._backend,
             executor=self._executor,
             human_io=self._human_io,
-            env=run_env_store,
             cancel_checker=self._cancel_checker,
-            redaction_values=lambda: list(run_env_store.values()),
-            sandbox_policy_default=str(self._config.sandbox.default_policy or "none").strip().lower(),
-            sandbox_adapter=create_default_os_sandbox_adapter(
-                mode=str(self._config.sandbox.os.mode or "auto").strip().lower(),
-                seatbelt_profile=str(self._config.sandbox.os.seatbelt.profile or "").strip(),
-                bubblewrap_bwrap_path=str(self._config.sandbox.os.bubblewrap.bwrap_path or "bwrap").strip(),
-                bubblewrap_unshare_net=bool(self._config.sandbox.os.bubblewrap.unshare_net),
-            ),
-            emit_tool_events=False,
-            skills_manager=self._skills_manager,
+            safety=self._safety,
+            approved_for_session_keys=self._approved_for_session_keys,
             exec_sessions=self._exec_sessions,
             collab_manager=self._collab_manager,
-        )
-        registry = ToolRegistry(ctx=tool_ctx)
-        register_builtin_tools(registry)
-        # Fix 4：首次 run 时计算并缓存 builtin tool names frozenset；后续 run 直接复用缓存。
-        if self._builtin_tool_names_cache is None:
-            self._builtin_tool_names_cache = frozenset(s.name for s in registry.list_specs())
-        builtin_tool_names: frozenset = self._builtin_tool_names_cache
-        for spec, handler, override in self._extra_tools:
-            registry.register(spec, handler, override=bool(override))
-        custom_tool_names = set(s.name for s, _h, _o in self._extra_tools)
-        registered_tool_names = set(s.name for s in registry.list_specs())
-        dispatcher = ToolDispatcher(registry=registry, now_rfc3339=now_rfc3339)
-        safety_gate = SafetyGate(
-            safety_config=self._safety,
-            get_descriptor=get_builtin_tool_safety_descriptor,
+            wal_backend=self._wal_backend,
+            event_hooks=self._event_hooks,
+            env_store=self._env_store,
             skills_manager=self._skills_manager,
-            is_custom_tool=lambda tool_name: (tool_name in custom_tool_names)
-            or ((tool_name in registered_tool_names) and (tool_name not in builtin_tool_names)),
-        )
+            prompt_manager=self._prompt_manager,
+            extra_tools=self._extra_tools,
+            builtin_tool_names_cache=self._builtin_tool_names_cache,
+            ensure_skill_env_vars=self._ensure_skill_env_vars,
+            classify_run_exception=_classify_run_exception,
+        ).build(task=task, run_id=run_id, initial_history=initial_history, emit=emit)
+        self._builtin_tool_names_cache = session.builtin_tool_names
+
+        backend = session.backend
         try:
+            if backend is None:
+                session.finalizer.emit_failed(ValueError("未配置 LLM backend（backend=None）"))
+                return
+            try:
+                _validate_chat_backend_protocol(backend)
+            except BaseException as e:
+                session.finalizer.emit_failed(e)
+                return
             while True:
-                if loop.is_cancelled():
-                    ctx.emit_cancelled()
+                if session.loop.is_cancelled():
+                    session.finalizer.emit_cancelled()
                     return
-                if loop.wall_time_exceeded():
-                    ctx.emit_budget_exceeded(message=f"budget exceeded: max_wall_time_sec={max_wall_time_sec}")
+                if session.loop.wall_time_exceeded():
+                    session.finalizer.emit_budget_exceeded(
+                        message=f"budget exceeded: max_wall_time_sec={session.loop.max_wall_time_sec}"
+                    )
                     return
-                turn_id = loop.next_turn_id()
-                injected: List[Tuple[Any, str, Optional[str]]] = []
-                try:
-                    resolved = self._skills_manager.resolve_mentions(task)
-                except (FrameworkError, UserError):
-                    resolved = []
-                for skill, mention in resolved:
-                    ok_to_inject = await self._ensure_skill_env_vars(
-                        skill, env_store=run_env_store, run_id=run_id, turn_id=turn_id, emit=ctx.emit_event
-                    )
-                    if not ok_to_inject:
-                        continue
-                    injected.append((skill, "mention", mention.mention_text))
-                    payload = {
-                        "skill_name": skill.skill_name,
-                        "skill_path": str(skill.path or skill.locator),
-                        "namespace": str(mention.namespace),
-                        "skill_locator": str(skill.locator),
-                        "source": "mention",
-                        "mention_text": mention.mention_text,
-                    }
-                    if getattr(skill, "space_id", ""):
-                        payload["space_id"] = str(skill.space_id)
-                    if getattr(skill, "source_id", ""):
-                        payload["source_id"] = str(skill.source_id)
-                    ctx.emit_event(
-                        AgentEvent(
-                            type="skill_injected",
-                            timestamp=now_rfc3339(),
-                            run_id=run_id,
-                            turn_id=turn_id,
-                            payload=payload,
-                        )
-                    )
-                tools = registry.list_specs()
-                messages, _prompt_debug = self._prompt_manager.build_messages(
-                    task=task,
-                    cwd=str(self._workspace_root),
-                    tools=tools,
-                    skills_manager=self._skills_manager,
-                    injected_skills=injected,
-                    history=ctx.history,
-                    user_input=None,
+                turn_id = session.loop.next_turn_id()
+                result = await session.turn_orchestrator.run_turn(
+                    ctx=session.ctx,
+                    loop=session.loop,
+                    backend=backend,
+                    turn_id=turn_id,
+                    run_env_store=session.run_env_store,
+                    safety_gate=session.safety_gate,
                 )
-                ctx.emit_event(
-                    AgentEvent(
-                        type="llm_request_started",
-                        timestamp=now_rfc3339(),
-                        run_id=run_id,
-                        turn_id=turn_id,
-                        payload={
-                            "model": self._executor_model,
-                            "wire_api": "chat.completions",
-                            "messages_count": len(messages),
-                            "tools_count": len(tools),
-                        },
-                    )
-                )
-                assistant_text = ""
-                pending_tool_calls: List[ToolCall] = []
-                try:
-                    def _on_retry(info: Dict[str, Any]) -> None:
-                        """将 backend 重试调度信息转成可观测事件（best-effort）。"""
-                        try:
-                            ctx.emit_event(
-                                AgentEvent(
-                                    type="llm_retry_scheduled",
-                                    timestamp=now_rfc3339(),
-                                    run_id=run_id,
-                                    turn_id=turn_id,
-                                    payload=dict(info or {}),
-                                )
-                            )
-                        except Exception:
-                            pass
-                    agen = backend.stream_chat(
-                        ChatRequest(
-                            model=self._executor_model,
-                            messages=messages,
-                            tools=tools,
-                            run_id=run_id,
-                            turn_id=turn_id,
-                            extra={"on_retry": _on_retry},
+                if result.kind == "retry_turn":
+                    continue
+                if result.kind == "terminated":
+                    if result.terminal_state == "cancelled":
+                        session.finalizer.emit_cancelled()
+                    elif result.terminal_state == "budget_exceeded":
+                        session.finalizer.emit_budget_exceeded(
+                            message=f"budget exceeded: max_wall_time_sec={session.loop.max_wall_time_sec}"
                         )
-                    )
-                    q_backend: "asyncio.Queue[Any]" = asyncio.Queue()
-                    # 事件驱动取消检测：后台 watcher 每 10ms 轮询，发现取消/超时时 set stop_event。
-                    # 主 streaming 循环通过 asyncio.wait 竞争"队列有数据"和"stop_event 触发"，
-                    # 响应延迟 ≤ 10ms（替代原 50ms 超时轮询）。
-                    stop_event: asyncio.Event = asyncio.Event()
-
-                    async def _stop_watcher() -> None:
-                        """后台任务：每 10ms 检测取消/超时，触发时 set stop_event。"""
-                        try:
-                            while not stop_event.is_set():
-                                if loop.is_cancelled() or loop.wall_time_exceeded():
-                                    stop_event.set()
-                                    return
-                                await asyncio.sleep(0.01)
-                        except asyncio.CancelledError:
-                            pass
-
-                    async def _consume_backend() -> None:
-                        """消费 backend streaming 并写入队列（异常与 EOF 通过哨兵传递）。"""
-                        try:
-                            async for item in agen:
-                                await q_backend.put(item)
-                        except asyncio.CancelledError:
-                            with contextlib.suppress(Exception):
-                                await agen.aclose()
-                            raise
-                        except BaseException as e:
-                            await q_backend.put(e)
-                        finally:
-                            await q_backend.put(None)
-
-                    backend_task = asyncio.create_task(_consume_backend())
-                    watcher_task = asyncio.create_task(_stop_watcher())
-                    try:
-                        while True:
-                            # 竞争：等待下一个 backend 事件 OR stop_event 被触发（取消/超时）
-                            get_coro = asyncio.ensure_future(q_backend.get())
-                            stop_coro = asyncio.ensure_future(stop_event.wait())
-                            done, pending = await asyncio.wait(
-                                {get_coro, stop_coro},
-                                return_when=asyncio.FIRST_COMPLETED,
-                            )
-                            # 取消未完成的 future
-                            for f in pending:
-                                f.cancel()
-                                with contextlib.suppress(BaseException):
-                                    await f
-
-                            if stop_coro in done:
-                                # stop_event 触发：检查是取消还是超时
-                                if not get_coro.done():
-                                    get_coro.cancel()
-                                backend_task.cancel()
-                                with contextlib.suppress(BaseException):
-                                    await asyncio.gather(backend_task, return_exceptions=True)
-                                if loop.is_cancelled():
-                                    ctx.emit_cancelled()
-                                else:
-                                    ctx.emit_budget_exceeded(message=f"budget exceeded: max_wall_time_sec={max_wall_time_sec}")
-                                return
-
-                            # get_coro 完成：处理队列事件
-                            try:
-                                item = get_coro.result()
-                            except Exception as exc:
-                                raise exc from None
-                            if item is None:
-                                break
-                            if isinstance(item, BaseException):
-                                raise item
-                            ev = item
-                            t = getattr(ev, "type", None)
-                            if t == "text_delta":
-                                text = getattr(ev, "text", "") or ""
-                                assistant_text += text
-                                ctx.emit_event(
-                                    AgentEvent(
-                                        type="llm_response_delta",
-                                        timestamp=now_rfc3339(),
-                                        run_id=run_id,
-                                        turn_id=turn_id,
-                                        payload={"delta_type": "text", "text": text},
-                                    )
-                                )
-                            elif t == "tool_calls":
-                                calls = getattr(ev, "tool_calls", None) or []
-                                pending_tool_calls.extend(calls)
-                                redaction_values = list((run_env_store or {}).values())
-                                ctx.emit_event(
-                                    AgentEvent(
-                                        type="llm_response_delta",
-                                        timestamp=now_rfc3339(),
-                                        run_id=run_id,
-                                        turn_id=turn_id,
-                                        payload={
-                                            "delta_type": "tool_calls",
-                                            "tool_calls": [
-                                                {
-                                                    "call_id": c.call_id,
-                                                    "tool": c.name,
-                                                    "name": c.name,
-                                                    "arguments": safety_gate.sanitize_for_event(c, redaction_values=redaction_values),
-                                                }
-                                                for c in calls
-                                            ],
-                                        },
-                                    )
-                                )
-                            elif t == "completed":
-                                usage = getattr(ev, "usage", None)
-                                if isinstance(usage, dict):
-                                    try:
-                                        input_tokens = max(int(usage.get("input_tokens") or 0), 0)
-                                        output_tokens = max(int(usage.get("output_tokens") or 0), 0)
-                                        total_tokens = usage.get("total_tokens")
-                                        total_tokens = (
-                                            max(int(total_tokens), 0)
-                                            if total_tokens is not None
-                                            else input_tokens + output_tokens
-                                        )
-                                    except (TypeError, ValueError):
-                                        input_tokens = output_tokens = total_tokens = -1
-                                    if input_tokens >= 0 and output_tokens >= 0 and total_tokens >= 0:
-                                        payload = {
-                                            "model": str(getattr(ev, "model", None) or self._executor_model),
-                                            "input_tokens": input_tokens,
-                                            "output_tokens": output_tokens,
-                                            "total_tokens": total_tokens,
-                                        }
-                                        provider = getattr(ev, "provider", None)
-                                        if isinstance(provider, str) and provider:
-                                            payload["provider"] = provider
-                                        request_id = getattr(ev, "request_id", None)
-                                        if isinstance(request_id, str) and request_id:
-                                            payload["request_id"] = request_id
-                                        ctx.emit_event(
-                                            AgentEvent(
-                                                type="llm_usage",
-                                                timestamp=now_rfc3339(),
-                                                run_id=run_id,
-                                                turn_id=turn_id,
-                                                payload=payload,
-                                            )
-                                        )
-                                break
-                    finally:
-                        stop_event.set()  # 确保 watcher 退出
-                        if not watcher_task.done():
-                            watcher_task.cancel()
-                            with contextlib.suppress(BaseException):
-                                await asyncio.gather(watcher_task, return_exceptions=True)
-                        if not backend_task.done():
-                            backend_task.cancel()
-                            with contextlib.suppress(BaseException):
-                                await asyncio.gather(backend_task, return_exceptions=True)
-                except BaseException as e:
-                    retry = await handle_context_length_exceeded(
-                        exc=e,
-                        backend=backend,
-                        executor_model=self._executor_model,
-                        ctx=ctx,
-                        loop=loop,
-                        task=task,
-                        turn_id=turn_id,
-                        human_io=self._human_io,
-                        human_timeout_ms=self._config.run.human_timeout_ms,
-                    )
-                    if retry:
-                        continue
                     return
+                assistant_text = result.assistant_text
+                pending_tool_calls = list(result.pending_tool_calls)
                 if pending_tool_calls:
                     ok = await process_pending_tool_calls(
-                        ctx=ctx,
+                        ctx=session.ctx,
                         turn_id=turn_id,
                         pending_tool_calls=pending_tool_calls,
-                        loop=loop,
-                        max_steps=max_steps,
-                        max_wall_time_sec=max_wall_time_sec,
-                        env_store=run_env_store,
-                        safety_gate=safety_gate,
-                        dispatcher=dispatcher,
+                        loop=session.loop,
+                        max_steps=session.loop.max_steps,
+                        max_wall_time_sec=session.loop.max_wall_time_sec,
+                        env_store=session.run_env_store,
+                        safety_gate=session.safety_gate,
+                        dispatcher=session.dispatcher,
                         approval_provider=self._approval_provider,
                         safety_config=self._safety,
                         approved_for_session_keys=self._approved_for_session_keys,
@@ -649,36 +294,11 @@ class AgentLoop:
                         return
                     continue
                 if assistant_text:
-                    ctx.history.append({"role": "assistant", "content": assistant_text})
-                ctx.emit_event(
-                    AgentEvent(
-                        type="run_completed",
-                        timestamp=now_rfc3339(),
-                        run_id=run_id,
-                        payload={
-                            "final_output": assistant_text,
-                            "artifacts": list(ctx.compaction_artifacts),
-                            "wal_locator": wal_locator,
-                            "metadata": {"notices": list(ctx.terminal_notices)},
-                        },
-                    )
-                )
+                    session.ctx.history.append({"role": "assistant", "content": assistant_text})
+                session.finalizer.emit_completed(final_output=assistant_text)
                 return
         except BaseException as e:
-            failed = _classify_run_exception(e).to_payload()
-            failed["wal_locator"] = wal_locator
-            ctx.emit_event(
-                AgentEvent(
-                    type="run_failed",
-                    timestamp=now_rfc3339(),
-                    run_id=run_id,
-                    payload=failed,
-                )
-            )
+            session.finalizer.emit_failed(e)
             return
         finally:
-            # 增量合并：只把本次 run 期间新增的 env var 写回 session 级缓存。
-            # 不全量覆盖，避免 run 期间对已有 session var 的临时修改污染跨 run 状态。
-            for k, v in run_env_store.items():
-                if k not in _run_env_initial_keys:
-                    self._env_store[k] = v
+            session.finalizer.merge_new_env_vars()

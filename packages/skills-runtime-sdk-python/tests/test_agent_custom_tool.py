@@ -206,6 +206,36 @@ def test_agent_custom_tool_denylist_blocks_without_approvals(tmp_path: Path) -> 
     assert finished[0].payload["result"]["data"]["reason"] == "tool_denylist"
 
 
+def test_agent_tool_without_annotations_keeps_runtime_types(tmp_path: Path) -> None:
+    backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(
+                        type="tool_calls",
+                        tool_calls=[ToolCall(call_id="c1", name="add_raw", args={"x": 1, "y": 2}, raw_arguments='{"x":1,"y":2}')],
+                    ),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            ),
+            FakeChatCall(events=[ChatStreamEvent(type="text_delta", text="done"), ChatStreamEvent(type="completed", finish_reason="stop")]),
+        ]
+    )
+    agent = Agent(model="fake-model", backend=backend, workspace_root=tmp_path, approval_provider=_AlwaysApprove())
+
+    @agent.tool
+    def add_raw(x, y):  # type: ignore[no-untyped-def]
+        return x + y
+
+    result = agent.run("use add_raw tool")
+    assert result.final_output == "done"
+
+    events = list(JsonlWal(Path(result.wal_locator)).iter_events())
+    finished = [e for e in events if e.type == "tool_call_finished" and (e.payload or {}).get("tool") == "add_raw"]
+    assert finished
+    assert (finished[-1].payload or {}).get("result", {}).get("stdout") == "3"
+
+
 def test_agent_register_tool_is_dispatchable_and_obeys_allowlist(tmp_path: Path) -> None:
     overlay = _write_overlay(
         tmp_path,

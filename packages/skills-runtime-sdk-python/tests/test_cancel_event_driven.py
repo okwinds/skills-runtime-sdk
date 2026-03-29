@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
 from skills_runtime.core.agent import Agent
-from skills_runtime.core.contracts import AgentEvent
 from skills_runtime.llm.chat_sse import ChatStreamEvent
 from skills_runtime.llm.protocol import ChatRequest
 
@@ -71,6 +70,39 @@ def test_cancel_checker_triggers_run_cancelled_within_20ms(tmp_path: Path) -> No
     assert total_elapsed < 0.150, (
         f"取消响应过慢：总耗时 {total_elapsed*1000:.1f}ms，期望 < 150ms"
     )
+
+
+def test_cancel_checker_emits_single_terminal_cancel_event(tmp_path: Path) -> None:
+    """
+    取消路径 MUST 只发出一次 terminal event，且不得混入 run_failed。
+
+    该用例用于冻结 Phase B 重构期间的终态语义，避免 streaming bridge 与外层 loop 重复发终态。
+    """
+    cancel_flag = [False]
+
+    def cancel_checker() -> bool:
+        return cancel_flag[0]
+
+    agent = Agent(
+        backend=_SlowBackend(),
+        workspace_root=tmp_path,
+        cancel_checker=cancel_checker,
+    )
+
+    import threading
+
+    def trigger_cancel() -> None:
+        time.sleep(0.050)
+        cancel_flag[0] = True
+
+    t = threading.Thread(target=trigger_cancel, daemon=True)
+    t.start()
+
+    events = list(agent.run_stream("hi"))
+    types = [e.type for e in events]
+
+    assert types.count("run_cancelled") == 1
+    assert "run_failed" not in types
 
 
 def test_cancel_checker_none_run_completes_normally(tmp_path: Path) -> None:

@@ -200,7 +200,8 @@ class Agent:
             for param_name, param in inspect.signature(f).parameters.items():
                 ann = param.annotation
                 if ann is inspect._empty:
-                    ann = str
+                    # 未显式注解时保持宽类型，避免隐式收窄到 str 导致运行时语义偏差。
+                    ann = Any
                 default = param.default if param.default is not inspect._empty else ...
                 fields[param_name] = (ann, default)
 

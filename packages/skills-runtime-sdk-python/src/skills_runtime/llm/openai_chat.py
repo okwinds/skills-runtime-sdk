@@ -56,7 +56,7 @@ class OpenAIChatCompletionsBackend:
 
         key = self._api_key_override or os.environ.get(self._cfg.api_key_env, "")
         if not key:
-            raise ValueError(f"缺少 API key 环境变量：{self._cfg.api_key_env}")
+            raise ValueError("缺少 API key，请在运行环境中配置有效凭据。")
         return {"Authorization": f"Bearer {key}"}
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ChatStreamEvent]:

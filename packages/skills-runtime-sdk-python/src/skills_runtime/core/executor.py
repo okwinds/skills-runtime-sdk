@@ -16,6 +16,7 @@ Executor（命令/脚本/文件系统执行引擎）。
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import subprocess
@@ -25,6 +26,8 @@ from pathlib import Path
 from typing import Callable, Mapping, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
 
 
 class CommandResult(BaseModel):
@@ -252,7 +255,7 @@ class Executor:
                 truncated=False,
                 error_kind="not_found",
             )
-        except Exception as e:  # pragma: no cover (极少数环境差异)
+        except (OSError, ValueError) as e:  # pragma: no cover (极少数环境差异)
             duration_ms = int((time.monotonic() - start) * 1000)
             return CommandResult(
                 ok=False,
@@ -288,7 +291,7 @@ class Executor:
                             break
                     except Exception:
                         # 防御性兜底：cancel_checker 由外部注入，可能抛出任意异常；fail-open 不中断执行器。
-                        pass
+                        logger.debug("cancel_checker raised an exception; ignoring and continuing", exc_info=True)
 
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:

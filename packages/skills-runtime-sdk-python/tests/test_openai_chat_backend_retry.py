@@ -118,6 +118,21 @@ def _run_stream(backend: OpenAIChatCompletionsBackend) -> List[str]:
     return asyncio.run(_go())
 
 
+def test_openai_chat_missing_api_key_error_does_not_leak_env_name(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.delenv("SHOULD_NOT_APPEAR_ENV", raising=False)
+    cfg = AgentSdkLlmConfig(
+        base_url="http://example.test/v1",
+        api_key_env="SHOULD_NOT_APPEAR_ENV",
+        timeout_sec=1,
+    )
+    backend = OpenAIChatCompletionsBackend(cfg, api_key=None)
+
+    with pytest.raises(ValueError) as exc:
+        backend._auth_header()  # noqa: SLF001
+    msg = str(exc.value)
+    assert "SHOULD_NOT_APPEAR_ENV" not in msg
+
+
 def test_openai_chat_retries_on_429_with_retry_after(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import skills_runtime.llm.openai_chat as mod
 
