@@ -23,31 +23,31 @@ Conceptual model:
 ## Architecture at a glance
 
 ```text
-┌──────────────┐
-│ Bootstrap     │  workspace_root + .env + runtime.yaml overlays
-└──────┬───────┘
-       │ config loader (pydantic validate + sources map)
-       v
-┌──────────────┐     ┌────────────────┐
-│ Agent API     │────▶ PromptManager   │───(skills injection / history compaction)
-│ skills_runtime/core/agent.py │     └────────────────┘
-└──────┬───────┘
-       │ stream chat events
-       v
-┌──────────────┐
-│ LLM backend   │  fake backend (offline) / OpenAI-compatible backend
-└──────┬───────┘
-       │ tool_calls
-       v
-┌──────────────────────────────────────────────┐
-│ Tool orchestration                            │
-│ approvals gate  →  OS sandbox  →  exec session │
-└──────────────────────────────────────────────┘
-       │
-       v
-┌──────────────┐
-│ WAL events    │  `<workspace>/.skills_runtime_sdk/runs/<run_id>/events.jsonl`
-└──────────────┘
+┌─────────────────────────────┐
+│  Bootstrap                  │  workspace_root + .env + runtime.yaml overlays
+└──────────────┬──────────────┘
+               │ config loader (pydantic validate + sources map)
+               v
+┌─────────────────────────────┐      ┌──────────────────────┐
+│  Agent API                  │─────▶│  PromptManager       │───(skills injection / history compaction)
+│  skills_runtime.agent       │      └──────────────────────┘
+└──────────────┬──────────────┘
+               │ stream chat events
+               v
+┌─────────────────────────────┐
+│  LLM backend                │  fake backend (offline) / OpenAI-compatible backend
+└──────────────┬──────────────┘
+               │ tool_calls
+               v
+┌───────────────────────────────────────────────────────────────┐
+│  Tool orchestration                                           │
+│  approvals gate  →  OS sandbox  →  exec session               │
+└───────────────────────────────────────────────────────────────┘
+               │
+               v
+┌─────────────────────────────┐
+│  WAL events                 │  <workspace>/.skills_runtime_sdk/runs/<run_id>/events.jsonl
+└─────────────────────────────┘
 ```
 
 ## Safety model (Gatekeeper vs Fence)
