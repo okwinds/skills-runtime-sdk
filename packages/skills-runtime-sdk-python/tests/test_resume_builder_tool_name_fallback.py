@@ -32,3 +32,31 @@ def test_resume_summary_recent_tools_falls_back_to_name_field() -> None:
     assert out is not None
     assert "legacy_tool" in out
 
+
+def test_resume_summary_recognizes_run_waiting_human_as_terminal() -> None:
+    events_tail = [
+        AgentEvent(type="run_started", timestamp="2026-03-30T09:00:00Z", run_id="r1", payload={"task": "t"}),
+        AgentEvent(
+            type="tool_call_finished",
+            timestamp="2026-03-30T09:00:01Z",
+            run_id="r1",
+            payload={"call_id": "c1", "tool": "ask_human", "result": {"ok": False, "error_kind": "human_required"}},
+        ),
+        AgentEvent(
+            type="run_waiting_human",
+            timestamp="2026-03-30T09:00:02Z",
+            run_id="r1",
+            payload={"tool": "ask_human", "call_id": "c1", "message": "need human input", "error_kind": "human_required"},
+        ),
+    ]
+
+    out = _build_resume_summary(
+        existing_events_count=3,
+        existing_events_tail=events_tail,
+        initial_history=None,
+        resume_strategy="summary",
+        resume_replay_history=None,
+    )
+    assert out is not None
+    assert "previous_terminal: run_waiting_human" in out
+    assert "previous_terminal_text: need human input" in out

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from skills_runtime.safety.descriptors import get_builtin_tool_safety_descriptor
+from skills_runtime.tools.protocol import PassthroughDescriptor
 from skills_runtime.tools.builtin import register_builtin_tools
 from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 
@@ -52,3 +54,15 @@ def test_register_builtin_tools_has_expected_codex_parity_set(tmp_path: Path) ->
 
     assert got == expected
 
+
+def test_register_builtin_tools_registers_non_passthrough_descriptors_when_defined(tmp_path: Path) -> None:
+    ctx = ToolExecutionContext(workspace_root=tmp_path, run_id="r_tools")
+    reg = ToolRegistry(ctx=ctx)
+    register_builtin_tools(reg)
+
+    for tool_name in ("shell_exec", "shell", "shell_command", "exec_command", "file_write", "apply_patch", "skill_exec", "write_stdin"):
+        expected = get_builtin_tool_safety_descriptor(tool_name)
+        assert expected is not None
+        actual = reg.get_descriptor(tool_name)
+        assert actual.__class__ is expected.__class__
+        assert not isinstance(actual, PassthroughDescriptor)

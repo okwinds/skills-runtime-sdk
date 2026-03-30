@@ -41,6 +41,13 @@ def test_spawn_send_wait_across_processes(tmp_path: Path) -> None:
     aid = r1["result"]["data"]["id"]
     assert isinstance(aid, str) and aid
 
+    r_waiting = _run_tools_cli(tmp_path, ["wait", "--workspace-root", str(tmp_path), "--ids", aid, "--timeout-ms", "100"])
+    assert r_waiting["tool"] == "wait"
+    assert r_waiting["result"]["ok"] is True
+    waiting_item = r_waiting["result"]["data"]["results"][0]
+    assert waiting_item["id"] == aid
+    assert waiting_item["status"] == "waiting_human"
+
     r2 = _run_tools_cli(tmp_path, ["send-input", "--workspace-root", str(tmp_path), "--yes", "--id", aid, "--message", "ping"])
     assert r2["tool"] == "send_input"
     assert r2["result"]["ok"] is True
@@ -53,6 +60,57 @@ def test_spawn_send_wait_across_processes(tmp_path: Path) -> None:
     assert it["status"] in {"completed", "running", "failed", "cancelled"}
     if it["status"] == "completed":
         assert it.get("final_output") == "got:ping"
+
+
+def test_spawn_resume_reports_waiting_human_across_processes(tmp_path: Path) -> None:
+    """
+    回归：runtime-backed collab child 在等待输入时，resume-agent 必须显式返回 waiting_human。
+    """
+
+    r1 = _run_tools_cli(tmp_path, ["spawn-agent", "--workspace-root", str(tmp_path), "--yes", "--message", "wait_input:x"])
+    assert r1["tool"] == "spawn_agent"
+    assert r1["result"]["ok"] is True
+    aid = r1["result"]["data"]["id"]
+    assert isinstance(aid, str) and aid
+
+    r2 = _run_tools_cli(tmp_path, ["resume-agent", "--workspace-root", str(tmp_path), "--yes", "--id", aid])
+    assert r2["tool"] == "resume_agent"
+    assert r2["result"]["ok"] is True
+    assert r2["result"]["data"]["id"] == aid
+    assert r2["result"]["data"]["status"] == "waiting_human"
+
+
+def test_waiting_human_visible_and_resumable_across_processes(tmp_path: Path) -> None:
+    """
+    回归：wait_input child 在跨进程场景应显式暴露 waiting_human，并可被 send_input 恢复。
+    """
+
+    r1 = _run_tools_cli(tmp_path, ["spawn-agent", "--workspace-root", str(tmp_path), "--yes", "--message", "wait_input:x"])
+    aid = r1["result"]["data"]["id"]
+
+    # 先观察等待态（允许极短竞态，最多重试几次）
+    status = None
+    for _ in range(5):
+        r_wait = _run_tools_cli(tmp_path, ["wait", "--workspace-root", str(tmp_path), "--ids", aid, "--timeout-ms", "80"])
+        assert r_wait["result"]["ok"] is True
+        status = r_wait["result"]["data"]["results"][0]["status"]
+        if status == "waiting_human":
+            break
+    assert status == "waiting_human"
+
+    r_resume = _run_tools_cli(tmp_path, ["resume-agent", "--workspace-root", str(tmp_path), "--yes", "--id", aid])
+    assert r_resume["tool"] == "resume_agent"
+    assert r_resume["result"]["ok"] is True
+    assert r_resume["result"]["data"]["status"] == "waiting_human"
+
+    r_send = _run_tools_cli(tmp_path, ["send-input", "--workspace-root", str(tmp_path), "--yes", "--id", aid, "--message", "hello"])
+    assert r_send["result"]["ok"] is True
+
+    r_done = _run_tools_cli(tmp_path, ["wait", "--workspace-root", str(tmp_path), "--ids", aid, "--timeout-ms", "1500"])
+    assert r_done["result"]["ok"] is True
+    it = r_done["result"]["data"]["results"][0]
+    assert it["status"] == "completed"
+    assert it.get("final_output") == "got:hello"
 
 
 def test_spawn_close_wait_across_processes(tmp_path: Path) -> None:

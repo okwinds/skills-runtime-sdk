@@ -19,6 +19,30 @@ from skills_runtime.runtime.server import RuntimeServer
 
 
 @pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
+def test_runtime_status_counts_waiting_human_child_as_active(tmp_path: Path) -> None:
+    """
+    回归：child 进入 waiting_human 后，runtime.status 仍必须把它视为 active child。
+    """
+
+    client = RuntimeClient(workspace_root=tmp_path)
+    _ = client.ensure_server()
+
+    child = client.call(method="collab.spawn", params={"message": "wait_input:1", "agent_type": "default"})
+    cid = str(child.get("id") or "")
+    assert cid
+
+    resumed = client.call(method="collab.resume", params={"id": cid})
+    assert resumed.get("id") == cid
+    assert resumed.get("status") == "waiting_human"
+
+    st = client.call(method="runtime.status")
+    assert int(st.get("active_children") or 0) >= 1
+
+    client.call(method="runtime.cleanup", params={"children": True, "exec": False})
+    client.call(method="shutdown")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
 def test_runtime_status_reports_health_and_counts(tmp_path: Path) -> None:
     """
     BL-020（可观测性）：runtime server 必须提供 status，包含健康状态与关键计数。
@@ -219,6 +243,44 @@ def test_collab_wait_keeps_send_input_interactive_and_then_returns(tmp_path: Pat
         else:
             with contextlib.suppress(Exception):
                 os.kill(int(info.pid), signal.SIGKILL)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
+def test_collab_wait_and_resume_expose_waiting_human(tmp_path: Path) -> None:
+    """
+    回归：runtime-backed collab 在 wait_input 阶段必须显式外显 waiting_human。
+    """
+
+    client = RuntimeClient(workspace_root=tmp_path)
+    _ = client.ensure_server()
+
+    child = client.call(method="collab.spawn", params={"message": "wait_input:1", "agent_type": "default"})
+    cid = str(child.get("id") or "")
+    assert cid
+
+    status = None
+    for _ in range(5):
+        out = client.call(method="collab.wait", params={"ids": [cid], "timeout_ms": 80})
+        results = out.get("results") or []
+        assert len(results) == 1
+        status = results[0].get("status")
+        if status == "waiting_human":
+            break
+    assert status == "waiting_human"
+
+    resumed = client.call(method="collab.resume", params={"id": cid})
+    assert resumed.get("status") == "waiting_human"
+
+    st = client.call(method="runtime.status")
+    assert int(st.get("active_children") or 0) >= 1
+
+    _ = client.call(method="collab.send_input", params={"id": cid, "message": "ok"})
+    done = client.call(method="collab.wait", params={"ids": [cid], "timeout_ms": 1500})
+    it = (done.get("results") or [])[0]
+    assert it.get("status") == "completed"
+    assert it.get("final_output") == "got:ok"
+
+    client.call(method="shutdown")
 
 
 def test_orphan_cleanup_does_not_kill_when_marker_verification_fails_even_if_argv0_matches(tmp_path: Path, monkeypatch) -> None:

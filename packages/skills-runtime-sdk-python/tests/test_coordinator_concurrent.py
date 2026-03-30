@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -11,7 +12,9 @@ import pytest
 from skills_runtime.core.agent import Agent
 from skills_runtime.core.coordinator import Coordinator
 from skills_runtime.llm.chat_sse import ChatStreamEvent
+from skills_runtime.llm.fake import FakeChatBackend, FakeChatCall
 from skills_runtime.llm.protocol import ChatRequest
+from skills_runtime.tools.protocol import ToolCall
 
 
 class _DelayedBackend:
@@ -102,3 +105,39 @@ async def test_run_children_concurrent_raises_on_insufficient_agents(tmp_path: P
 
     with pytest.raises(ValueError, match="agent 数量不足"):
         await coordinator.run_children_concurrent(["t1", "t2"])  # 需要 agents[1] 和 agents[2]，但只有 agents[1]
+
+
+@pytest.mark.asyncio
+async def test_run_children_concurrent_propagates_waiting_human_status(tmp_path: Path) -> None:
+    primary = Agent(backend=_ImmediateBackend(), workspace_root=tmp_path)
+    args = {"question": "need human input"}
+    waiting_backend = FakeChatBackend(
+        calls=[
+            FakeChatCall(
+                events=[
+                    ChatStreamEvent(
+                        type="tool_calls",
+                        tool_calls=[
+                            ToolCall(
+                                call_id="c1",
+                                name="ask_human",
+                                args=args,
+                                raw_arguments=json.dumps(args, ensure_ascii=False),
+                            )
+                        ],
+                        finish_reason="tool_calls",
+                    ),
+                    ChatStreamEvent(type="completed", finish_reason="tool_calls"),
+                ]
+            )
+        ]
+    )
+    waiting_child = Agent(backend=waiting_backend, workspace_root=tmp_path, human_io=None)
+
+    coordinator = Coordinator(agents=[primary, waiting_child])
+    results = await coordinator.run_children_concurrent(["needs-human"], start_index=1)
+
+    assert len(results) == 1
+    assert results[0].status == "waiting_human"
+    assert "HumanIOProvider" in results[0].summary
+    assert results[0].wal_locator

@@ -131,6 +131,24 @@ def test_run_metrics_cancelled(tmp_path: Path) -> None:
     assert m["status"] == "cancelled"
 
 
+def test_run_metrics_waiting_human(tmp_path: Path) -> None:
+    events_jsonl_path = tmp_path / "events.jsonl"
+    _write_events(
+        events_jsonl_path,
+        [
+            {"type": "run_started", "timestamp": "2026-03-30T00:00:00Z", "run_id": "r1", "payload": {}},
+            {
+                "type": "run_waiting_human",
+                "timestamp": "2026-03-30T00:00:01Z",
+                "run_id": "r1",
+                "payload": {"tool": "ask_human", "call_id": "c1", "message": "need human input", "error_kind": "human_required"},
+            },
+        ],
+    )
+    m = compute_run_metrics_summary(wal_locator=str(events_jsonl_path))
+    assert m["status"] == "waiting_human"
+
+
 def test_run_metrics_inconsistent_run_id_is_invalid(tmp_path: Path) -> None:
     events_jsonl_path = tmp_path / "events.jsonl"
     _write_events(
