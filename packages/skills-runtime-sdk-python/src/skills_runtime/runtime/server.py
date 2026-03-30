@@ -101,6 +101,18 @@ class RuntimeServer:
         self._last_activity = time.monotonic()
         self._last_orphan_cleanup: Dict[str, Any] = {"ok": True, "killed": 0, "skipped": 0, "errors": []}
 
+    @staticmethod
+    def _is_live_child_status(status: str) -> bool:
+        """
+        判断 child 状态是否属于“仍占用 runtime 活性”的 live 状态。
+
+        约定：
+        - `running`：执行中
+        - `waiting_human`：等待人工输入，可恢复
+        """
+
+        return str(status) in {"running", "waiting_human"}
+
     def _write_server_info(self) -> None:
         """写入 `server.json`（pid/secret/socket_path/created_at_ms）。"""
 
@@ -408,7 +420,7 @@ class RuntimeServer:
                 return True
         with self._children_lock:
             for c in self._children.values():
-                if c.status == "running":
+                if self._is_live_child_status(c.status):
                     return True
         return False
 
@@ -536,7 +548,7 @@ class RuntimeServer:
         _ = params
         with self._children_lock:
             children = list(self._children.values())
-        active_children = sum(1 for c in children if c.status == "running")
+        active_children = sum(1 for c in children if self._is_live_child_status(c.status))
 
         # ExecSessionManager 当前未公开 list API，先走 best-effort 私有字段快照（单线程 server 内使用可接受）。
         with self._exec_lock:
@@ -609,6 +621,11 @@ class RuntimeServer:
             return "cancelled"
         msg = str(message)
         if msg.startswith("wait_input:"):
+            # wait_input:* 是显式的 human wait 阶段：对外应可观测为 waiting_human。
+            with self._children_lock:
+                cur = self._children.get(child.id)
+                if cur is not None and not cur.cancel_event.is_set():
+                    cur.status = "waiting_human"
             while not child.cancel_event.is_set():
                 try:
                     x = child.inbox.get(timeout=0.05)

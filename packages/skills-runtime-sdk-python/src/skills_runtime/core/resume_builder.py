@@ -69,7 +69,7 @@ def _build_resume_summary(
     last_tools: List[AgentEvent] = []
 
     for ev in reversed(existing_events_tail):
-        if last_terminal is None and ev.type in ("run_completed", "run_failed", "run_cancelled"):
+        if last_terminal is None and ev.type in ("run_completed", "run_failed", "run_cancelled", "run_waiting_human"):
             last_terminal = ev
         if last_run_started is None and ev.type == "run_started":
             last_run_started = ev

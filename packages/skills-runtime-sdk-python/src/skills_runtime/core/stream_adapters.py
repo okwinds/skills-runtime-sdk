@@ -64,6 +64,10 @@ def run_sync(
             final_output = str(ev.payload.get("message") or "")
             wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
             status = "cancelled"
+        if ev.type == "run_waiting_human":
+            final_output = str(ev.payload.get("message") or "")
+            wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
+            status = "waiting_human"
     return RunSyncSummary(status=status, final_output=final_output, wal_locator=wal_locator)
 
 

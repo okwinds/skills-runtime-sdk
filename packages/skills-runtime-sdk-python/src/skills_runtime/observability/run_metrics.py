@@ -89,9 +89,7 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
     run_id: Optional[str] = None
     started_at: Optional[str] = None
     ended_at: Optional[str] = None
-    has_completed = False
-    has_failed = False
-    has_cancelled = False
+    last_terminal_type: Optional[str] = None
     run_failed_payload: Optional[Dict[str, Any]] = None
     turn_ids: set[str] = set()
 
@@ -153,18 +151,21 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
 
             if typ == "run_started" and started_at is None and ts_str:
                 started_at = ts_str
-            if typ in {"run_completed", "run_failed", "run_cancelled"} and ts_str:
+            if typ in {"run_completed", "run_failed", "run_cancelled", "run_waiting_human"} and ts_str:
                 ended_at = ts_str
+                last_terminal_type = typ
 
             if typ == "run_completed":
-                has_completed = True
+                last_terminal_type = typ
             elif typ == "run_failed":
-                has_failed = True
+                last_terminal_type = typ
                 payload = ev.get("payload")
                 if isinstance(payload, dict):
                     run_failed_payload = payload
             elif typ == "run_cancelled":
-                has_cancelled = True
+                last_terminal_type = typ
+            elif typ == "run_waiting_human":
+                last_terminal_type = typ
 
             # counts
             if typ == "llm_request_started":
@@ -219,16 +220,18 @@ def compute_run_metrics_summary(*, wal_locator: str) -> Dict[str, Any]:
     summary["started_at"] = started_at
     summary["ended_at"] = ended_at
 
-    if has_completed:
+    if last_terminal_type == "run_completed":
         summary["status"] = "completed"
-    elif has_failed:
+    elif last_terminal_type == "run_failed":
         summary["status"] = "failed"
-    elif has_cancelled:
+    elif last_terminal_type == "run_cancelled":
         summary["status"] = "cancelled"
+    elif last_terminal_type == "run_waiting_human":
+        summary["status"] = "waiting_human"
     else:
         summary["status"] = "unknown"
 
-    if has_failed and run_failed_payload is not None:
+    if last_terminal_type == "run_failed" and run_failed_payload is not None:
         kind = str(run_failed_payload.get("error_kind") or "")
         msg = str(run_failed_payload.get("message") or "")
         if kind or msg:

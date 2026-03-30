@@ -33,6 +33,7 @@ _TERMINAL_EVENT_TYPES: frozenset[str] = frozenset({
     "run_completed",
     "run_failed",
     "run_cancelled",
+    "run_waiting_human",
     "budget_exceeded",
 })
 

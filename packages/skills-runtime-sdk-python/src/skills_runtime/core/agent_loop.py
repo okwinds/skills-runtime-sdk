@@ -26,7 +26,7 @@ from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 @dataclass(frozen=True)
 class RunResult:
     """Agent.run 的返回结构（Phase 2 最小）。"""
-    status: str  # completed|failed|cancelled
+    status: str  # completed|failed|cancelled|waiting_human
     final_output: str
     artifacts: List[str]
     wal_locator: str

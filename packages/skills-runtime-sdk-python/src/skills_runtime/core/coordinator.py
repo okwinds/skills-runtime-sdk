@@ -22,7 +22,7 @@ class ChildResult:
 
     字段：
     - summary：子 agent 的最终输出（作为主 agent 的上下文摘要注入）。
-    - status：completed/failed/cancelled（透传 RunResult.status）。
+    - status：completed/failed/cancelled/waiting_human（透传 RunResult.status）。
     - artifacts：子 agent 产物路径列表（Phase 2 可能为空）。
     - wal_locator：推荐字段；WAL 定位符（用于审计/调试；可能为空字符串）。
     """
@@ -189,6 +189,10 @@ class Coordinator:
                     final_output = str(ev.payload.get("message") or "")
                     wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
                     status = "cancelled"
+                elif ev.type == "run_waiting_human":
+                    final_output = str(ev.payload.get("message") or "")
+                    wal_locator = str(ev.payload.get("wal_locator") or wal_locator or "")
+                    status = "waiting_human"
             return ChildResult(summary=final_output, status=status, artifacts=[], wal_locator=wal_locator)
 
         agents_and_tasks = [

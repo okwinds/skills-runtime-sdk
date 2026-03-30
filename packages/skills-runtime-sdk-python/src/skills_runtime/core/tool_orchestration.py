@@ -327,12 +327,36 @@ async def process_pending_tool_calls(
         call.call_id: result
         for (call, _step_id), result in zip(approved_batch, dispatch_results)
     }
+    approved_step_id_map: Dict[str, str] = {call.call_id: step_id for call, step_id in approved_batch}
     for call in pending_tool_calls:
         if call.call_id in denied_results:
             continue  # Phase 1 已写入
         result = approved_result_map.get(call.call_id)
         if result is not None:
             ctx.history.append({"role": "tool", "tool_call_id": call.call_id, "content": result.content})
+
+    for call in pending_tool_calls:
+        result = denied_results.get(call.call_id) or approved_result_map.get(call.call_id)
+        if result is None or result.error_kind != "human_required":
+            continue
+        details = result.details if isinstance(result.details, dict) else None
+        message = ""
+        if isinstance(result.message, str) and result.message.strip():
+            message = result.message.strip()
+        elif isinstance(details, dict):
+            stderr = details.get("stderr")
+            if isinstance(stderr, str) and stderr.strip():
+                message = stderr.strip()
+        if not message:
+            message = f"tool '{call.name}' requires human input before the run can continue"
+        ctx.emit_waiting_human(
+            tool=call.name,
+            call_id=call.call_id,
+            message=message,
+            details=details,
+            step_id=approved_step_id_map.get(call.call_id),
+        )
+        return False
 
     return True
 

@@ -91,6 +91,37 @@ class RunContext:
             )
         )
 
+    def emit_waiting_human(
+        self,
+        *,
+        tool: str,
+        call_id: str,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+        step_id: Optional[str] = None,
+    ) -> None:
+        """发出 `run_waiting_human` 事件，表示本次 run 进入可恢复暂停态。"""
+
+        payload: Dict[str, Any] = {
+            "tool": str(tool or ""),
+            "call_id": str(call_id or ""),
+            "message": str(message or "human input required"),
+            "error_kind": "human_required",
+            "wal_locator": self.wal_locator,
+        }
+        if isinstance(details, dict) and details:
+            payload["details"] = details
+
+        self.emit_event(
+            AgentEvent(
+                type="run_waiting_human",
+                timestamp=now_rfc3339(),
+                run_id=self.run_id,
+                step_id=step_id,
+                payload=payload,
+            )
+        )
+
     def write_text_artifact(self, *, kind: str, content: str) -> str:
         """将文本写入 run artifacts 目录并返回文件路径（字符串）。"""
 
