@@ -19,6 +19,7 @@ import uuid
 from skills_runtime.config.loader import AgentSdkSkillsConfig
 from skills_runtime.core.errors import FrameworkError, FrameworkIssue, UserError
 from skills_runtime.skills.bundles import ExtractedBundle
+from skills_runtime.skills.mentions import SkillMention
 from skills_runtime.skills.models import ScanReport, Skill
 from skills_runtime.skills.manager_ops import (
     render_injected_skill as _render_injected_skill,
@@ -35,17 +36,15 @@ from skills_runtime.skills.config_validator import (
     scan_options_from_config as _scan_options_from_config,
     validate_and_normalize_config as _validate_and_normalize_config,
 )
-from skills_runtime.skills.sources._utils import source_dsn_from_env as _source_dsn_from_env
+from skills_runtime.skills.source_client_registry import SourceClientRegistry
 from skills_runtime.skills.sources.filesystem import scan_filesystem_source as _scan_filesystem_source_impl
 from skills_runtime.skills.sources.in_memory import scan_in_memory_source as _scan_in_memory_source_impl
 from skills_runtime.skills.sources.pgsql import (
-    get_pgsql_client as _get_pgsql_client_impl,
     pgsql_client_context as _pgsql_client_context_impl,
     scan_pgsql_source as _scan_pgsql_source_impl,
 )
 from skills_runtime.skills.sources.redis import (
     ensure_redis_bundle_extracted as _ensure_redis_bundle_extracted_impl,
-    get_redis_client as _get_redis_client_impl,
     scan_redis_source as _scan_redis_source_impl,
 )
 class SkillsManager:
@@ -68,8 +67,9 @@ class SkillsManager:
         """
         self._workspace_root = Path(workspace_root).resolve()
         self._in_memory_registry = in_memory_registry or {}
-        self._source_clients = dict(source_clients or {})
-        self._runtime_source_clients: Dict[str, Any] = {}
+        self._client_registry = SourceClientRegistry(
+            source_clients=source_clients,
+        )
 
         if skills_config is None:
             self._skills_config = AgentSdkSkillsConfig()
@@ -256,70 +256,16 @@ class SkillsManager:
         )
 
     def _source_dsn_from_env(self, source: AgentSdkSkillsConfig.Source) -> str:
-        """从环境变量读取 source dsn。"""
-        return _source_dsn_from_env(source)
+        """从环境变量读取 source DSN。"""
+        return self._client_registry.source_dsn_from_env(source)
 
     def _get_redis_client(self, source: AgentSdkSkillsConfig.Source) -> Any:
-        """获取 redis client（优先注入，其次按 dsn_env 初始化）。"""
-        return _get_redis_client_impl(
-            source=source,
-            source_clients=self._source_clients,
-            runtime_source_clients=self._runtime_source_clients,
-            source_dsn_from_env=self._source_dsn_from_env,
-        )
+        """获取 redis client。"""
+        return self._client_registry.get_redis_client(source)
 
     def _get_pgsql_client(self, source: AgentSdkSkillsConfig.Source) -> Any:
-        """获取 pgsql client（优先注入，其次按 dsn_env 初始化）。"""
-        return _get_pgsql_client_impl(
-            source=source,
-            source_clients=self._source_clients,
-            source_dsn_from_env=self._source_dsn_from_env,
-        )
-
-    def _parse_json_string_field(self, value: Any, *, field: str, source_id: str, locator: str) -> Any:
-        """解析以 JSON 字符串编码的 metadata 字段。"""
-        if value is None:
-            return None
-        if not isinstance(value, str):
-            raise FrameworkError(
-                code="SKILL_SCAN_METADATA_INVALID",
-                message="Skill metadata is invalid.",
-                details={"source_id": source_id, "locator": locator, "field": field},
-            )
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError as exc:
-            raise FrameworkError(
-                code="SKILL_SCAN_METADATA_INVALID",
-                message="Skill metadata is invalid.",
-                details={"source_id": source_id, "locator": locator, "field": field, "reason": str(exc)},
-            ) from exc
-
-    def _ensure_metadata_string(self, value: Any, *, field: str, source_id: str, locator: str) -> str:
-        """校验 metadata 字段为非空字符串。"""
-
-        if not isinstance(value, str) or not value:
-            raise FrameworkError(
-                code="SKILL_SCAN_METADATA_INVALID",
-                message="Skill metadata is invalid.",
-                details={"source_id": source_id, "locator": locator, "field": field},
-            )
-        return value
-
-    def _normalize_optional_int(self, value: Any, *, field: str, source_id: str, locator: str) -> Optional[int]:
-        """把可选整数字段归一化为 int/None。"""
-
-        if value is None:
-            return None
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str) and value.strip().isdigit():
-            return int(value.strip())
-        raise FrameworkError(
-            code="SKILL_SCAN_METADATA_INVALID",
-            message="Skill metadata is invalid.",
-            details={"source_id": source_id, "locator": locator, "field": field},
-        )
+        """获取 pgsql client。"""
+        return self._client_registry.get_pgsql_client(source)
 
     def _scan_redis_source(
         self,
@@ -338,44 +284,6 @@ class SkillsManager:
             get_redis_client_for_source=self._get_redis_client,
         )
 
-    def _safe_identifier(self, raw: Any, *, field: str, source_id: str) -> str:
-        """校验 SQL 标识符安全性。"""
-        if not isinstance(raw, str) or not raw:
-            raise FrameworkError(
-                code="SKILL_SCAN_METADATA_INVALID",
-                message="Skill metadata is invalid.",
-                details={"source_id": source_id, "field": field},
-            )
-        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", raw):
-            raise FrameworkError(
-                code="SKILL_SCAN_METADATA_INVALID",
-                message="Skill metadata is invalid.",
-                details={"source_id": source_id, "field": field},
-            )
-        return raw
-
-    def _fetchall_as_rows(self, cursor: Any) -> List[Dict[str, Any]]:
-        """把 DB 游标结果归一化为 dict rows。"""
-
-        rows = cursor.fetchall()
-        if not rows:
-            return []
-
-        if isinstance(rows[0], Mapping):
-            return [dict(row) for row in rows]
-
-        description = getattr(cursor, "description", None)
-        if not description:
-            raise TypeError("cursor.description is required for tuple rows")
-
-        columns = [col[0] for col in description]
-        out: List[Dict[str, Any]] = []
-        for row in rows:
-            if not isinstance(row, (list, tuple)):
-                raise TypeError(f"unsupported row type: {type(row)!r}")
-            out.append(dict(zip(columns, row, strict=False)))
-        return out
-
     def _scan_pgsql_source(
         self,
         *,
@@ -390,7 +298,7 @@ class SkillsManager:
             """为 pgsql source 提供 client 上下文管理器（支持注入 client）。"""
             return _pgsql_client_context_impl(
                 source=src,
-                source_clients=self._source_clients,
+                source_clients=self._client_registry._source_clients,
                 get_pgsql_client_for_source=lambda s: self._get_pgsql_client(s),
             )
 
@@ -473,23 +381,8 @@ class SkillsManager:
         return _render_injected_skill(self, skill, source=source, mention_text=mention_text)
 
     def close(self) -> None:
-        """
-        释放运行态创建的 source clients（例如 redis 连接）。
-
-        约束：
-        - 仅关闭运行态内部创建/缓存的 clients（`_runtime_source_clients`）；
-        - 注入的 clients（`_source_clients`）由调用方管理，不在此处关闭。
-        """
-
-        clients = list((self._runtime_source_clients or {}).values())
-        self._runtime_source_clients.clear()
-        for client in clients:
-            close = getattr(client, "close", None)
-            if callable(close):
-                try:
-                    close()
-                except Exception:
-                    pass
+        """释放运行时创建的 source client。"""
+        self._client_registry.close()
 
     def __enter__(self) -> "SkillsManager":
         """上下文管理器入口（返回 self）。"""
