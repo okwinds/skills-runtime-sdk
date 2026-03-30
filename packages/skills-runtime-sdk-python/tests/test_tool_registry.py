@@ -5,8 +5,16 @@ from pathlib import Path
 import pytest
 
 from skills_runtime.core.errors import UserError
+from skills_runtime.safety.descriptors import ShellExecDescriptor
 from skills_runtime.state.jsonl_wal import JsonlWal
-from skills_runtime.tools.protocol import ToolCall, ToolResult, ToolResultPayload, ToolSpec, tool_spec_to_openai_tool
+from skills_runtime.tools.protocol import (
+    PassthroughDescriptor,
+    ToolCall,
+    ToolResult,
+    ToolResultPayload,
+    ToolSpec,
+    tool_spec_to_openai_tool,
+)
 from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 
 
@@ -46,6 +54,67 @@ def test_tool_registry_override_allowed(tmp_path: Path) -> None:
 
     reg.register(spec, handler_a)
     reg.register(spec, handler_b, override=True)
+
+
+def test_tool_registry_default_descriptor_is_passthrough(tmp_path: Path) -> None:
+    ctx = ToolExecutionContext(workspace_root=tmp_path, run_id="r1")
+    reg = ToolRegistry(ctx=ctx)
+
+    spec = ToolSpec(
+        name="t1",
+        description="test tool",
+        parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+    )
+
+    def handler(_call: ToolCall, _ctx: ToolExecutionContext) -> ToolResult:
+        return ToolResult.from_payload(ToolResultPayload(ok=True, stdout="ok", exit_code=0, duration_ms=1))
+
+    reg.register(spec, handler)
+
+    assert isinstance(reg.get_descriptor("t1"), PassthroughDescriptor)
+
+
+def test_tool_registry_registers_explicit_descriptor(tmp_path: Path) -> None:
+    ctx = ToolExecutionContext(workspace_root=tmp_path, run_id="r1")
+    reg = ToolRegistry(ctx=ctx)
+
+    spec = ToolSpec(
+        name="shell_exec",
+        description="test tool",
+        parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+    )
+    descriptor = ShellExecDescriptor()
+
+    def handler(_call: ToolCall, _ctx: ToolExecutionContext) -> ToolResult:
+        return ToolResult.from_payload(ToolResultPayload(ok=True, stdout="ok", exit_code=0, duration_ms=1))
+
+    reg.register(spec, handler, descriptor=descriptor)
+
+    assert reg.get_descriptor("shell_exec") is descriptor
+
+
+def test_tool_registry_override_updates_descriptor(tmp_path: Path) -> None:
+    ctx = ToolExecutionContext(workspace_root=tmp_path, run_id="r1")
+    reg = ToolRegistry(ctx=ctx)
+
+    spec = ToolSpec(
+        name="shell_exec",
+        description="test tool",
+        parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+    )
+    descriptor_a = PassthroughDescriptor()
+    descriptor_b = ShellExecDescriptor()
+
+    def handler_a(_call: ToolCall, _ctx: ToolExecutionContext) -> ToolResult:
+        return ToolResult.from_payload(ToolResultPayload(ok=True, stdout="a", exit_code=0, duration_ms=1))
+
+    def handler_b(_call: ToolCall, _ctx: ToolExecutionContext) -> ToolResult:
+        return ToolResult.from_payload(ToolResultPayload(ok=True, stdout="b", exit_code=0, duration_ms=1))
+
+    reg.register(spec, handler_a, descriptor=descriptor_a)
+    reg.register(spec, handler_b, descriptor=descriptor_b, override=True)
+
+    assert reg.get_descriptor("shell_exec") is descriptor_b
 
 
 def test_tool_spec_to_openai_tool_shape() -> None:

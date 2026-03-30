@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+from skills_runtime.safety.descriptors import get_builtin_tool_safety_descriptor
 from skills_runtime.tools.builtin.apply_patch import APPLY_PATCH_SPEC, apply_patch
 from skills_runtime.tools.builtin.ask_human import ASK_HUMAN_SPEC, ask_human
 from skills_runtime.tools.builtin.close_agent import CLOSE_AGENT_SPEC, close_agent
@@ -91,4 +92,9 @@ def register_builtin_tools(registry: ToolRegistry, *, override: bool = False) ->
     """
 
     for spec, handler in _BUILTIN_TOOL_ENTRIES:
-        registry.register(spec, handler, override=override)
+        registry.register(
+            spec,
+            handler,
+            descriptor=get_builtin_tool_safety_descriptor(spec.name),
+            override=override,
+        )

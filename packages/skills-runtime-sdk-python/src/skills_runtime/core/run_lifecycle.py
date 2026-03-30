@@ -27,7 +27,6 @@ from skills_runtime.core.streaming_bridge import StreamingBridge
 from skills_runtime.core.turn_orchestrator import TurnOrchestrator
 from skills_runtime.core.utils import now_rfc3339
 from skills_runtime.prompts.manager import PromptManager
-from skills_runtime.safety.descriptors import get_builtin_tool_safety_descriptor
 from skills_runtime.safety.gate import SafetyGate
 from skills_runtime.sandbox import create_default_os_sandbox_adapter
 from skills_runtime.skills.manager import SkillsManager
@@ -261,7 +260,7 @@ class RunBootstrap:
         dispatcher = ToolDispatcher(registry=registry, now_rfc3339=now_rfc3339)
         safety_gate = SafetyGate(
             safety_config=self._safety,
-            get_descriptor=get_builtin_tool_safety_descriptor,
+            get_descriptor=registry.get_descriptor,
             skills_manager=self._skills_manager,
             is_custom_tool=lambda tool_name: (tool_name in custom_tool_names)
             or ((tool_name in registered_tool_names) and (tool_name not in builtin_tool_names)),

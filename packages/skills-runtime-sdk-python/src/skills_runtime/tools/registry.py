@@ -27,7 +27,15 @@ from skills_runtime.core.exec_sessions import ExecSessionManager
 from skills_runtime.core.utils import now_rfc3339
 from skills_runtime.state.jsonl_wal import JsonlWal
 from skills_runtime.state.wal_emitter import WalEmitter
-from skills_runtime.tools.protocol import HumanIOProvider, ToolCall, ToolResult, ToolResultPayload, ToolSpec
+from skills_runtime.tools.protocol import (
+    HumanIOProvider,
+    PassthroughDescriptor,
+    ToolCall,
+    ToolResult,
+    ToolResultPayload,
+    ToolSafetyDescriptor,
+    ToolSpec,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from skills_runtime.skills.manager import SkillsManager
@@ -260,14 +268,23 @@ class ToolRegistry:
         self._ctx = ctx
         self._specs: Dict[str, ToolSpec] = {}
         self._handlers: Dict[str, ToolHandler] = {}
+        self._descriptors: Dict[str, ToolSafetyDescriptor] = {}
 
-    def register(self, spec: ToolSpec, handler: ToolHandler, *, override: bool = False) -> None:
+    def register(
+        self,
+        spec: ToolSpec,
+        handler: ToolHandler,
+        *,
+        descriptor: Optional[ToolSafetyDescriptor] = None,
+        override: bool = False,
+    ) -> None:
         """
         注册工具。
 
         参数：
         - spec：工具规格
         - handler：工具执行函数
+        - descriptor：工具安全描述符；未提供时自动回退到 `PassthroughDescriptor`
         - override：是否允许覆盖同名工具；默认 False（重复注册抛 UserError）
         """
 
@@ -276,6 +293,7 @@ class ToolRegistry:
             raise UserError(f"重复注册 tool：{name}")
         self._specs[name] = spec
         self._handlers[name] = handler
+        self._descriptors[name] = descriptor if descriptor is not None else PassthroughDescriptor()
 
     def get_spec(self, name: str) -> ToolSpec:
         """获取工具规格；不存在则抛 `UserError`。"""
@@ -289,6 +307,14 @@ class ToolRegistry:
         """按注册顺序返回所有工具规格。"""
 
         return list(self._specs.values())
+
+    def get_descriptor(self, name: str) -> ToolSafetyDescriptor:
+        """获取工具安全描述符；不存在则抛 `UserError`。"""
+
+        try:
+            return self._descriptors[name]
+        except KeyError as e:
+            raise UserError(f"未注册的 tool：{name}") from e
 
     def dispatch(
         self,
