@@ -77,17 +77,22 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/sessions \
 - 若 `filesystem_sources` 传 `null`（或不传），后端会使用默认 filesystem source（generated root）。
 - 若你传 `[]`，表示“显式为空”，后续创建 skill 会因为 sources 为空而报错（这是有意的安全约束）。
 
-### 2) 设置 filesystem sources
+### 2) 设置 filesystem sources（可选）
 
 ```bash
 SESSION_ID='<session_id>'
-WORKSPACE_ROOT="$(curl -s http://127.0.0.1:8000/api/v1/health | jq -r .workspace_root)"
-ROOT="${WORKSPACE_ROOT}/.skills_runtime_sdk/skills"
+BACKEND_WORKSPACE_ROOT="$(cd examples/studio/mvp/backend && pwd)"
+ROOT="${BACKEND_WORKSPACE_ROOT}/.skills_runtime_sdk/skills"
 
 curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/skills/sources" \
   -H 'Content-Type: application/json' \
   -d "{\"filesystem_sources\":[\"${ROOT}\"]}" | jq .
 ```
+
+说明：
+- 如果你在创建 session 时传的是 `filesystem_sources: null`（或干脆不传），这一步可以直接跳过。后端默认已经把 generated skills root 配进去了。
+- 按默认的 `examples/studio/mvp/backend/scripts/dev.sh` 启动方式，backend 的 workspace root 就是 `examples/studio/mvp/backend/`，除非你显式设置了 `STUDIO_WORKSPACE_ROOT`。
+- `GET /api/v1/health` 现在只返回存活状态，不再暴露 `workspace_root`。
 
 ### 3) 创建 skill
 

@@ -81,13 +81,18 @@ Notes:
 
 ```bash
 SESSION_ID='<session_id>'
-WORKSPACE_ROOT="$(curl -s http://127.0.0.1:8000/api/v1/health | jq -r .workspace_root)"
-ROOT="${WORKSPACE_ROOT}/.skills_runtime_sdk/skills"
+BACKEND_WORKSPACE_ROOT="$(cd examples/studio/mvp/backend && pwd)"
+ROOT="${BACKEND_WORKSPACE_ROOT}/.skills_runtime_sdk/skills"
 
 curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/skills/sources" \
   -H 'Content-Type: application/json' \
   -d "{\"filesystem_sources\":[\"${ROOT}\"]}" | jq .
 ```
+
+Notes:
+- If you created the session with `filesystem_sources: null` (or omitted it), you can skip this step. The backend already uses its generated skills root by default.
+- With the default `examples/studio/mvp/backend/scripts/dev.sh`, the backend workspace root is `examples/studio/mvp/backend/` unless you explicitly set `STUDIO_WORKSPACE_ROOT`.
+- `GET /api/v1/health` only returns liveness information; it does not expose `workspace_root`.
 
 ### 3) Create a file-based skill
 

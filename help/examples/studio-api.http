@@ -16,7 +16,7 @@ Content-Type: application/json
 
 {
   "filesystem_sources": [
-    "<workspace_root>/.skills_runtime_sdk/skills"
+    "<backend_workspace_root>/.skills_runtime_sdk/skills"
   ]
 }
 
