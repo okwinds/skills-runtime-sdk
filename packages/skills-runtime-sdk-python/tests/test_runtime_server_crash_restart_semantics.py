@@ -284,8 +284,12 @@ def test_collab_wait_and_resume_expose_waiting_human(tmp_path: Path) -> None:
 
 
 def test_orphan_cleanup_does_not_kill_when_marker_verification_fails_even_if_argv0_matches(tmp_path: Path, monkeypatch) -> None:
+    from skills_runtime.runtime.process_reaper import ProcessReaper
+    from skills_runtime.runtime.paths import get_runtime_paths
+
+    paths = get_runtime_paths(workspace_root=tmp_path)
     server = RuntimeServer(workspace_root=tmp_path, secret="test-secret")
-    server._write_exec_registry(
+    server._exec_service._write_exec_registry(
         {
             "schema": 1,
             "workspace_root": str(tmp_path),
@@ -304,9 +308,10 @@ def test_orphan_cleanup_does_not_kill_when_marker_verification_fails_even_if_arg
 
     kill_calls: list[int] = []
 
-    monkeypatch.setattr(server, "_pid_alive", lambda pid: True)
-    monkeypatch.setattr(server, "_ps_env_contains_marker", lambda pid, marker: False)
-    monkeypatch.setattr(server, "_kill_process_group", lambda pid: kill_calls.append(pid) or True)
+    reaper = ProcessReaper(exec_registry_path=paths.exec_registry_path)
+    monkeypatch.setattr(reaper, "pid_alive", lambda pid: True)
+    monkeypatch.setattr(reaper, "ps_env_contains_marker", lambda pid, marker: False)
+    monkeypatch.setattr(reaper, "kill_process_group", lambda pid: kill_calls.append(pid) or True)
 
     class _FakeCompletedProcess:
         def __init__(self) -> None:
@@ -315,10 +320,11 @@ def test_orphan_cleanup_does_not_kill_when_marker_verification_fails_even_if_arg
 
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _FakeCompletedProcess())
 
-    server._orphan_cleanup_on_startup()
+    result = reaper.orphan_cleanup_on_startup(workspace_root=tmp_path)
+    server._last_orphan_cleanup = result
 
     assert kill_calls == []
-    reg = server._read_exec_registry()
+    reg = server._exec_service._read_exec_registry()
     item = (reg.get("exec_sessions") or {}).get("1") or {}
     assert item.get("needs_manual_cleanup") is True
     assert server._last_orphan_cleanup.get("skipped") == 1

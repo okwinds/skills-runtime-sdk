@@ -325,7 +325,7 @@ def test_redis_source_body_loader_uses_client_factory(tmp_path: Path) -> None:
     mgr.scan()
     skill, mention = mgr.resolve_mentions("$[alice:engineering].python_testing")[0]
 
-    mgr._source_clients["src-redis"] = new
+    mgr._client_registry._source_clients["src-redis"] = new
     old.get_calls.clear()
     new.get_calls.clear()
 
