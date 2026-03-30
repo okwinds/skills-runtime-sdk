@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to validate before publish (e.g. v0.1.9)"
+        description: "Release tag to validate before publish (e.g. v0.1.10)"
         required: true
         type: string
   push:

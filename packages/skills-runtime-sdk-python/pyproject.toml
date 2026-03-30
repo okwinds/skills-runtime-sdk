@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "skills-runtime-sdk"
 version = "0.1.10"
-description = "通用 Skills Runtime SDK（Python）最小可测骨架（M1）"
+description = "General Skills Runtime SDK for Python with a minimal, testable core."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }

@@ -88,6 +88,8 @@ class RunBootstrap:
         ensure_skill_env_vars: Callable[..., Any],
         classify_run_exception: Optional[Callable[[BaseException], Any]] = None,
     ) -> None:
+        """缓存单次 run 装配所需依赖，供 `build()` 创建完整运行会话。"""
+
         self._workspace_root = Path(workspace_root).resolve()
         self._config = config
         self._config_overlay_paths = list(config_overlay_paths)
@@ -314,6 +316,8 @@ class RunFinalizer:
         initial_env_keys: set[str],
         classify_run_exception: Optional[Callable[[BaseException], Any]] = None,
     ) -> None:
+        """绑定终态发射与 env-store merge 所需状态。"""
+
         self._ctx = ctx
         self._session_env_store = session_env_store
         self._run_env_store = run_env_store
