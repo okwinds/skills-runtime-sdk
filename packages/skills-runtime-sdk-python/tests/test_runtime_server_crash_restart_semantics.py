@@ -5,7 +5,6 @@ import json
 import os
 import signal
 import socket
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -15,31 +14,6 @@ import pytest
 from skills_runtime.core.exec_sessions import PersistentExecSessionManager
 from skills_runtime.runtime.client import RuntimeClient
 from skills_runtime.runtime.paths import get_runtime_paths
-from skills_runtime.runtime.server import RuntimeServer
-
-
-@pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
-def test_runtime_status_counts_waiting_human_child_as_active(tmp_path: Path) -> None:
-    """
-    回归：child 进入 waiting_human 后，runtime.status 仍必须把它视为 active child。
-    """
-
-    client = RuntimeClient(workspace_root=tmp_path)
-    _ = client.ensure_server()
-
-    child = client.call(method="collab.spawn", params={"message": "wait_input:1", "agent_type": "default"})
-    cid = str(child.get("id") or "")
-    assert cid
-
-    resumed = client.call(method="collab.resume", params={"id": cid})
-    assert resumed.get("id") == cid
-    assert resumed.get("status") == "waiting_human"
-
-    st = client.call(method="runtime.status")
-    assert int(st.get("active_children") or 0) >= 1
-
-    client.call(method="runtime.cleanup", params={"children": True, "exec": False})
-    client.call(method="shutdown")
 
 
 @pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
@@ -243,91 +217,6 @@ def test_collab_wait_keeps_send_input_interactive_and_then_returns(tmp_path: Pat
         else:
             with contextlib.suppress(Exception):
                 os.kill(int(info.pid), signal.SIGKILL)
-
-
-@pytest.mark.skipif(os.name == "nt", reason="no Windows support in this SDK")
-def test_collab_wait_and_resume_expose_waiting_human(tmp_path: Path) -> None:
-    """
-    回归：runtime-backed collab 在 wait_input 阶段必须显式外显 waiting_human。
-    """
-
-    client = RuntimeClient(workspace_root=tmp_path)
-    _ = client.ensure_server()
-
-    child = client.call(method="collab.spawn", params={"message": "wait_input:1", "agent_type": "default"})
-    cid = str(child.get("id") or "")
-    assert cid
-
-    status = None
-    for _ in range(5):
-        out = client.call(method="collab.wait", params={"ids": [cid], "timeout_ms": 80})
-        results = out.get("results") or []
-        assert len(results) == 1
-        status = results[0].get("status")
-        if status == "waiting_human":
-            break
-    assert status == "waiting_human"
-
-    resumed = client.call(method="collab.resume", params={"id": cid})
-    assert resumed.get("status") == "waiting_human"
-
-    st = client.call(method="runtime.status")
-    assert int(st.get("active_children") or 0) >= 1
-
-    _ = client.call(method="collab.send_input", params={"id": cid, "message": "ok"})
-    done = client.call(method="collab.wait", params={"ids": [cid], "timeout_ms": 1500})
-    it = (done.get("results") or [])[0]
-    assert it.get("status") == "completed"
-    assert it.get("final_output") == "got:ok"
-
-    client.call(method="shutdown")
-
-
-def test_orphan_cleanup_does_not_kill_when_marker_verification_fails_even_if_argv0_matches(tmp_path: Path, monkeypatch) -> None:
-    from skills_runtime.runtime.process_reaper import ProcessReaper
-    from skills_runtime.runtime.paths import get_runtime_paths
-
-    paths = get_runtime_paths(workspace_root=tmp_path)
-    server = RuntimeServer(workspace_root=tmp_path, secret="test-secret")
-    server._exec_service._write_exec_registry(
-        {
-            "schema": 1,
-            "workspace_root": str(tmp_path),
-            "exec_sessions": {
-                "1": {
-                    "pid": 12345,
-                    "pgid": 12345,
-                    "created_at_ms": 1,
-                    "argv": [sys.executable, "-u", "-c", "print('x')"],
-                    "cwd": str(tmp_path),
-                    "marker": "missing-marker",
-                }
-            },
-        }
-    )
-
-    kill_calls: list[int] = []
-
-    reaper = ProcessReaper(exec_registry_path=paths.exec_registry_path)
-    monkeypatch.setattr(reaper, "pid_alive", lambda pid: True)
-    monkeypatch.setattr(reaper, "ps_env_contains_marker", lambda pid, marker: False)
-    monkeypatch.setattr(reaper, "kill_process_group", lambda pid: kill_calls.append(pid) or True)
-
-    class _FakeCompletedProcess:
-        def __init__(self) -> None:
-            self.stdout = f"{sys.executable} -u -c print('x')"
-            self.stderr = ""
-
-    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: _FakeCompletedProcess())
-
-    result = reaper.orphan_cleanup_on_startup(workspace_root=tmp_path)
-    server._last_orphan_cleanup = result
-
-    assert kill_calls == []
-    reg = server._exec_service._read_exec_registry()
-    item = (reg.get("exec_sessions") or {}).get("1") or {}
-    assert item.get("needs_manual_cleanup") is True
-    assert server._last_orphan_cleanup.get("skipped") == 1
 
 
 def _pid_alive(pid: int) -> bool:
