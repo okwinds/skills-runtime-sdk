@@ -298,7 +298,7 @@ class SkillsManager:
             """为 pgsql source 提供 client 上下文管理器（支持注入 client）。"""
             return _pgsql_client_context_impl(
                 source=src,
-                source_clients=self._client_registry._source_clients,
+                source_clients=self._client_registry.injected_clients,
                 get_pgsql_client_for_source=lambda s: self._get_pgsql_client(s),
             )
 

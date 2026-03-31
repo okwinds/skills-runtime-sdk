@@ -74,6 +74,11 @@ class SourceClientRegistry:
             source_dsn_from_env=self.source_dsn_from_env,
         )
 
+    @property
+    def injected_clients(self) -> Dict[str, Any]:
+        """返回注入 client 的只读快照。"""
+        return dict(self._source_clients)
+
     def close(self) -> None:
         """
         释放运行时创建的 source client。

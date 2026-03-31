@@ -13,13 +13,14 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import os
 import signal
 import time
 from pathlib import Path
 from typing import Any, Dict
+
+from skills_runtime.runtime.exec_registry_io import read_exec_registry, write_exec_registry
 
 logger = logging.getLogger(__name__)
 
@@ -43,22 +44,10 @@ class ProcessReaper:
         返回：
         - dict：至少包含 `exec_sessions`（mapping）
         """
-        p = self._exec_registry_path
-        if not p.exists():
-            return {"schema": 1, "workspace_root": str(workspace_root), "exec_sessions": {}}
-        try:
-            obj = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"schema": 1, "workspace_root": str(workspace_root), "exec_sessions": {}}
-        if not isinstance(obj, dict):
-            return {"schema": 1, "workspace_root": str(workspace_root), "exec_sessions": {}}
-        if not isinstance(obj.get("exec_sessions"), dict):
-            obj["exec_sessions"] = {}
-        if not isinstance(obj.get("workspace_root"), str):
-            obj["workspace_root"] = str(workspace_root)
-        if not isinstance(obj.get("schema"), int):
-            obj["schema"] = 1
-        return obj
+        return read_exec_registry(
+            exec_registry_path=self._exec_registry_path,
+            workspace_root=workspace_root,
+        )
 
     def _write_exec_registry(self, obj: Dict[str, Any]) -> None:
         """
@@ -67,11 +56,7 @@ class ProcessReaper:
         参数：
         - obj：registry dict
         """
-        self._exec_registry_path.parent.mkdir(parents=True, exist_ok=True)
-        p = self._exec_registry_path
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(p)
+        write_exec_registry(exec_registry_path=self._exec_registry_path, obj=obj)
 
     def pid_alive(self, pid: int) -> bool:
         """判断 pid 是否存活（best-effort）。"""

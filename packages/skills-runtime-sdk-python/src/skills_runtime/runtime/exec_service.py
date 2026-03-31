@@ -14,13 +14,13 @@ Exec session 管理服务（跨进程持久化）。
 from __future__ import annotations
 
 import contextlib
-import json
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from skills_runtime.core.exec_sessions import ExecSessionManager, ExecSessionWriteResult
+from skills_runtime.runtime.exec_registry_io import read_exec_registry, write_exec_registry
 from skills_runtime.runtime.paths import RuntimePaths
 
 
@@ -55,22 +55,10 @@ class ExecSessionService:
         返回：
         - dict：至少包含 `exec_sessions`（mapping）
         """
-        p = self._paths.exec_registry_path
-        if not p.exists():
-            return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
-        try:
-            obj = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
-        if not isinstance(obj, dict):
-            return {"schema": 1, "workspace_root": str(self._workspace_root), "exec_sessions": {}}
-        if not isinstance(obj.get("exec_sessions"), dict):
-            obj["exec_sessions"] = {}
-        if not isinstance(obj.get("workspace_root"), str):
-            obj["workspace_root"] = str(self._workspace_root)
-        if not isinstance(obj.get("schema"), int):
-            obj["schema"] = 1
-        return obj
+        return read_exec_registry(
+            exec_registry_path=self._paths.exec_registry_path,
+            workspace_root=self._workspace_root,
+        )
 
     def _write_exec_registry(self, obj: Dict[str, Any]) -> None:
         """
@@ -79,11 +67,7 @@ class ExecSessionService:
         参数：
         - obj：registry dict
         """
-        self._paths.runtime_dir.mkdir(parents=True, exist_ok=True)
-        p = self._paths.exec_registry_path
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(p)
+        write_exec_registry(exec_registry_path=self._paths.exec_registry_path, obj=obj)
 
     def _register_exec_session(self, *, session_id: int, pid: int, created_at_ms: int, argv: list[str], cwd: str) -> None:
         """
