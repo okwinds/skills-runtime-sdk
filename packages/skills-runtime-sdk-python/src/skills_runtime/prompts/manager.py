@@ -9,12 +9,44 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+import re
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 from skills_runtime.prompts.history import trim_history
+from skills_runtime.skills.mentions import extract_skill_mentions
 from skills_runtime.skills.manager import SkillsManager
 from skills_runtime.skills.models import Skill
 from skills_runtime.tools.protocol import ToolSpec
+
+PromptProfile = Literal["default_agent", "generation_direct", "structured_transform"]
+SkillInjectionMode = Literal["all", "explicit_only", "none"]
+SkillRenderMode = Literal["body", "method_only", "summary", "none"]
+HistoryMode = Literal["none", "compacted", "full"]
+ToolsExposure = Literal["none", "explicit_only", "all"]
+
+_PROFILE_DEFAULTS: Dict[str, Dict[str, object]] = {
+    "default_agent": {
+        "include_skills_list": True,
+        "skill_injection_mode": "all",
+        "skill_render": "body",
+        "history_mode": "full",
+        "tools_exposure": "all",
+    },
+    "generation_direct": {
+        "include_skills_list": False,
+        "skill_injection_mode": "explicit_only",
+        "skill_render": "body",
+        "history_mode": "none",
+        "tools_exposure": "none",
+    },
+    "structured_transform": {
+        "include_skills_list": False,
+        "skill_injection_mode": "explicit_only",
+        "skill_render": "summary",
+        "history_mode": "none",
+        "tools_exposure": "none",
+    },
+}
 
 
 def _render_template(template: str, *, variables: Dict[str, str]) -> str:
@@ -34,6 +66,14 @@ def _read_text_file(path: Path) -> str:
     """读取 UTF-8 文本文件并返回内容（用于加载 prompt 模板）。"""
 
     return Path(path).read_text(encoding="utf-8")
+
+
+def _coerce_choice(value: str, *, allowed: Sequence[str], field_name: str) -> str:
+    """校验 profile 策略枚举值，失败时给出可读错误。"""
+
+    if value not in allowed:
+        raise ValueError(f"{field_name} must be one of {', '.join(allowed)}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -97,7 +137,12 @@ class PromptManager:
         self,
         *,
         templates: PromptTemplates,
-        include_skills_list: bool = True,
+        profile: PromptProfile = "default_agent",
+        include_skills_list: Optional[bool] = None,
+        skill_injection_mode: Optional[SkillInjectionMode] = None,
+        skill_render: Optional[SkillRenderMode] = None,
+        history_mode: Optional[HistoryMode] = None,
+        tools_exposure: Optional[ToolsExposure] = None,
         history_max_messages: int = 40,
         history_max_chars: int = 120_000,
     ) -> None:
@@ -106,14 +151,161 @@ class PromptManager:
 
         参数：
         - `templates`：system/developer 模板来源。
-        - `include_skills_list`：是否注入可用 skills 列表（Phase 2 默认开启）。
+        - `profile`：prompt profile，决定默认注入策略。
+        - `include_skills_list`：是否注入可用 skills 列表；`None` 时使用 profile 默认。
+        - `skill_injection_mode/skill_render`：控制 skill 注入范围和渲染形态。
+        - `history_mode`：控制是否注入历史。
+        - `tools_exposure`：控制传给 provider 的 tools 范围。
         - `history_max_messages/history_max_chars`：历史滑窗限制（用于控制上下文长度）。
         """
 
+        profile_value = _coerce_choice(
+            str(profile),
+            allowed=("default_agent", "generation_direct", "structured_transform"),
+            field_name="profile",
+        )
+        defaults = _PROFILE_DEFAULTS[profile_value]
         self._templates = templates
-        self._include_skills_list = include_skills_list
+        self._profile = profile_value
+        self._include_skills_list = (
+            bool(defaults["include_skills_list"]) if include_skills_list is None else bool(include_skills_list)
+        )
+        self._skill_injection_mode = _coerce_choice(
+            str(skill_injection_mode or defaults["skill_injection_mode"]),
+            allowed=("all", "explicit_only", "none"),
+            field_name="skill_injection_mode",
+        )
+        self._skill_render = _coerce_choice(
+            str(skill_render or defaults["skill_render"]),
+            allowed=("body", "method_only", "summary", "none"),
+            field_name="skill_render",
+        )
+        self._history_mode = _coerce_choice(
+            str(history_mode or defaults["history_mode"]),
+            allowed=("none", "compacted", "full"),
+            field_name="history_mode",
+        )
+        self._tools_exposure = _coerce_choice(
+            str(tools_exposure or defaults["tools_exposure"]),
+            allowed=("none", "explicit_only", "all"),
+            field_name="tools_exposure",
+        )
         self._history_max_messages = history_max_messages
         self._history_max_chars = history_max_chars
+
+    @property
+    def tools_exposure(self) -> str:
+        """返回当前 prompt profile 的 tools 暴露策略。"""
+
+        return self._tools_exposure
+
+    def filter_tools_for_task(self, tools: Sequence[ToolSpec], *, task: str, user_input: Optional[str] = None) -> List[ToolSpec]:
+        """
+        按 `tools_exposure` 过滤 provider tools。
+
+        - `all`：保留全部工具；
+        - `none`：返回空列表；
+        - `explicit_only`：仅保留当前文本中显式出现的工具名。
+        """
+
+        if self._tools_exposure == "all":
+            return list(tools)
+        if self._tools_exposure == "none":
+            return []
+
+        text = "\n".join(part for part in (task, user_input or "") if part)
+        return [tool for tool in tools if re.search(rf"(?<![\w.-]){re.escape(tool.name)}(?![\w.-])", text)]
+
+    def _load_template_texts(self) -> Tuple[str, str]:
+        """
+        加载模板，并应用非默认 profile 的 developer policy 空默认值。
+
+        `PromptTemplates.load()` 的兼容默认会补通用 developer policy；direct/structured profile
+        在未显式提供 developer 模板时必须保持空 developer policy。
+        """
+
+        system_t, developer_t = self._templates.load()
+        if (
+            self._profile in {"generation_direct", "structured_transform"}
+            and self._templates.developer_text is None
+            and self._templates.developer_path is None
+        ):
+            developer_t = ""
+        return system_t, developer_t
+
+    def should_inject_skill(self, skill: Skill, mention_text: Optional[str], *, task: str, user_input: Optional[str] = None) -> bool:
+        """判断某个 skill 是否应进入 messages。"""
+
+        if self._skill_injection_mode == "none" or self._skill_render == "none":
+            return False
+        if self._skill_injection_mode == "all":
+            return True
+
+        mentioned = {
+            (mention.namespace, mention.skill_name)
+            for mention in extract_skill_mentions("\n".join(part for part in (task, user_input or "") if part))
+        }
+        if mention_text:
+            return (skill.namespace, skill.skill_name) in mentioned
+        return False
+
+    def _render_skill_summary(self, skill: Skill) -> str:
+        """渲染不读取正文的 skill metadata 摘要。"""
+
+        return "\n".join(
+            [
+                "Skill summary:",
+                f"- mention: $[{skill.namespace}].{skill.skill_name}",
+                f"- description: {skill.description}",
+                f"- locator: {skill.locator}",
+            ]
+        )
+
+    def _render_skill_method_only(self, skill: Skill, raw_content: str) -> str:
+        """尽力提取 method/workflow/usage 片段；找不到时降级为 metadata summary。"""
+
+        lines = raw_content.splitlines()
+        start_index: Optional[int] = None
+        heading_re = re.compile(r"^\s{0,3}#{1,6}\s+(method|workflow|usage|how to|steps)\b", re.IGNORECASE)
+        for index, line in enumerate(lines):
+            if heading_re.search(line):
+                start_index = index
+                break
+        if start_index is None:
+            return self._render_skill_summary(skill)
+
+        selected: List[str] = []
+        for line in lines[start_index:]:
+            if selected and re.match(r"^\s{0,3}#{1,6}\s+\S", line):
+                break
+            selected.append(line)
+        body = "\n".join(selected).strip()
+        if not body:
+            return self._render_skill_summary(skill)
+        return "\n".join(["<skill_method>", f"<name>{skill.skill_name}</name>", body, "</skill_method>"])
+
+    def _render_injected_skill(
+        self,
+        *,
+        skills_manager: SkillsManager,
+        skill: Skill,
+        source: str,
+        mention_text: Optional[str],
+    ) -> Optional[str]:
+        """按 `skill_render` 渲染 skill 注入内容。"""
+
+        if self._skill_render == "none":
+            return None
+        if self._skill_render == "summary":
+            return self._render_skill_summary(skill)
+        if self._skill_render == "body":
+            return skills_manager.render_injected_skill(skill, source=source, mention_text=mention_text)
+
+        try:
+            raw = skills_manager.render_injected_skill(skill, source=source, mention_text=mention_text)
+        except Exception:
+            return self._render_skill_summary(skill)
+        return self._render_skill_method_only(skill, raw)
 
     def build_messages(
         self,
@@ -142,13 +334,14 @@ class PromptManager:
         - debug_summary：不含密钥的摘要（可用于 prompt_compiled 事件）
         """
 
-        system_t, developer_t = self._templates.load()
+        provider_tools = self.filter_tools_for_task(tools, task=task, user_input=user_input)
+        system_t, developer_t = self._load_template_texts()
         # 提前获取 skills 列表，避免后续两处引用各自调用 list_skills() 造成冗余扫描。
         enabled_skills = skills_manager.list_skills(enabled_only=True)
         variables = {
             "task": task,
             "cwd": cwd,
-            "tools": "\n".join(f"- {t.name}" for t in tools),
+            "tools": "\n".join(f"- {t.name}" for t in provider_tools),
             "skills": "\n".join(
                 f"- $[{s.namespace}].{s.skill_name}: {s.description}"
                 for s in enabled_skills
@@ -174,15 +367,30 @@ class PromptManager:
                 skills_lines.append(f"- $[{s.namespace}].{s.skill_name}: {s.description}")
             messages.append({"role": "user", "content": "\n".join(skills_lines)})
 
+        injected_count = 0
         for skill, source, mention_text in injected_skills:
-            content = skills_manager.render_injected_skill(skill, source=source, mention_text=mention_text)
+            if not self.should_inject_skill(skill, mention_text, task=task, user_input=user_input):
+                continue
+            content = self._render_injected_skill(
+                skills_manager=skills_manager,
+                skill=skill,
+                source=source,
+                mention_text=mention_text,
+            )
+            if content is None:
+                continue
             messages.append({"role": "user", "content": content})
+            injected_count += 1
 
-        kept_history, dropped = trim_history(
-            history,
-            max_messages=self._history_max_messages,
-            max_chars=self._history_max_chars,
-        )
+        if self._history_mode == "none":
+            kept_history: List[Dict[str, Any]] = []
+            dropped = len(history)
+        else:
+            kept_history, dropped = trim_history(
+                history,
+                max_messages=self._history_max_messages,
+                max_chars=self._history_max_chars,
+            )
         messages.extend(kept_history)
 
         if user_input:
@@ -191,9 +399,15 @@ class PromptManager:
             messages.append({"role": "user", "content": task})
 
         debug = {
+            "profile": self._profile,
             "templates": [{"name": self._templates.name, "version": self._templates.version}],
             "skills_count": len(enabled_skills),
-            "tools_count": len(list(tools)),
+            "injected_skills_count": injected_count,
+            "skill_injection_mode": self._skill_injection_mode,
+            "skill_render": self._skill_render,
+            "tools_count": len(provider_tools),
+            "tools_exposure": self._tools_exposure,
+            "history_mode": self._history_mode,
             "history_kept": len(kept_history),
             "history_dropped": dropped,
         }

@@ -76,13 +76,20 @@ skills:
     default_max_bytes: 65536
 
 prompt:
+  profile: "default_agent"
   template: "default"
   system_text: null
   developer_text: null
   system_path: null
   developer_path: null
-  include_skills_list: true
+  include_skills_list: null
   include_cwd_tree: false
+  skill_injection:
+    mode: null
+    render: null
   history:
+    mode: null
     max_messages: 40
     max_chars: 120000
+  tools:
+    exposure: null

@@ -129,24 +129,47 @@ class Agent:
 
         if prompt_templates is None:
             pcfg = self._config.prompt
+            prompt_profile = str(pcfg.profile or "default_agent")
+            effective_template = str(pcfg.template or "default")
+            if (
+                prompt_profile in {"generation_direct", "structured_transform"}
+                and effective_template == "default"
+                and pcfg.system_text is None
+                and pcfg.developer_text is None
+                and pcfg.system_path is None
+                and pcfg.developer_path is None
+            ):
+                effective_template = prompt_profile
             system_text: Optional[str] = pcfg.system_text
             developer_text: Optional[str] = pcfg.developer_text
             system_path: Optional[Path] = _resolve_under_workspace(Path(pcfg.system_path)) if pcfg.system_path else None
             developer_path: Optional[Path] = (
                 _resolve_under_workspace(Path(pcfg.developer_path)) if pcfg.developer_path else None
             )
+            has_explicit_prompt_template = (
+                system_text is not None
+                or developer_text is not None
+                or system_path is not None
+                or developer_path is not None
+            )
 
-            if system_text is None and developer_text is None and system_path is None and developer_path is None:
-                sys_t, dev_t = _load_builtin_prompt_template(pcfg.template or "default")
+            if not has_explicit_prompt_template:
+                sys_t, dev_t = _load_builtin_prompt_template(effective_template)
                 prompt_templates = PromptTemplates(
-                    name=str(pcfg.template or "default"),
-                    version=f"builtin:{pcfg.template or 'default'}",
+                    name=effective_template,
+                    version=f"builtin:{effective_template}",
                     system_text=sys_t,
                     developer_text=dev_t,
                 )
             else:
+                if (
+                    prompt_profile in {"generation_direct", "structured_transform"}
+                    and developer_text is None
+                    and developer_path is None
+                ):
+                    developer_text = ""
                 prompt_templates = PromptTemplates(
-                    name=str(pcfg.template or "default"),
+                    name=effective_template,
                     version="configured",
                     system_text=system_text,
                     developer_text=developer_text,
@@ -156,7 +179,12 @@ class Agent:
 
         self._prompt_manager = PromptManager(
             templates=prompt_templates,
-            include_skills_list=bool(self._config.prompt.include_skills_list),
+            profile=self._config.prompt.profile,
+            include_skills_list=self._config.prompt.include_skills_list,
+            skill_injection_mode=self._config.prompt.skill_injection.mode,
+            skill_render=self._config.prompt.skill_injection.render,
+            history_mode=self._config.prompt.history.mode,
+            tools_exposure=self._config.prompt.tools.exposure,
             history_max_messages=int(self._config.prompt.history.max_messages),
             history_max_chars=int(self._config.prompt.history.max_chars),
         )

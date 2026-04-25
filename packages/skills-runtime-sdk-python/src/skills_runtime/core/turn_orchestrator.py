@@ -122,6 +122,14 @@ class TurnOrchestrator:
             resolved = []
 
         for skill, mention in resolved:
+            should_inject = getattr(self._prompt_manager, "should_inject_skill", None)
+            if callable(should_inject) and not should_inject(
+                skill,
+                mention.mention_text,
+                task=self._task,
+                user_input=None,
+            ):
+                continue
             ok_to_inject = await self._maybe_await(
                 self._ensure_skill_env_vars(
                     skill,
@@ -157,10 +165,19 @@ class TurnOrchestrator:
             )
 
         tools = self._registry.list_specs()
+        filter_tools = getattr(self._prompt_manager, "filter_tools_for_task", None)
+        if callable(filter_tools):
+            provider_tools = filter_tools(
+                tools,
+                task=self._task,
+                user_input=None,
+            )
+        else:
+            provider_tools = list(tools)
         messages, _prompt_debug = self._prompt_manager.build_messages(
             task=self._task,
             cwd=str(self._workspace_root),
-            tools=tools,
+            tools=provider_tools,
             skills_manager=self._skills_manager,
             injected_skills=injected,
             history=ctx.history,
@@ -176,7 +193,7 @@ class TurnOrchestrator:
                     "model": self._executor_model,
                     "wire_api": "chat.completions",
                     "messages_count": len(messages),
-                    "tools_count": len(tools),
+                    "tools_count": len(provider_tools),
                 },
             )
         )
@@ -211,7 +228,7 @@ class TurnOrchestrator:
                 request=ChatRequest(
                     model=self._executor_model,
                     messages=messages,
-                    tools=tools,
+                    tools=provider_tools,
                     run_id=self._run_id,
                     turn_id=turn_id,
                     extra={"on_retry": _on_retry},

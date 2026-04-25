@@ -377,8 +377,26 @@ class AgentSdkPromptHistoryConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    mode: Optional[Literal["none", "compacted", "full"]] = None
     max_messages: int = Field(default=40, ge=1)
     max_chars: int = Field(default=120_000, ge=1)
+
+
+class AgentSdkPromptSkillInjectionConfig(BaseModel):
+    """Prompt skill 注入策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Optional[Literal["all", "explicit_only", "none"]] = None
+    render: Optional[Literal["body", "method_only", "summary", "none"]] = None
+
+
+class AgentSdkPromptToolsConfig(BaseModel):
+    """Prompt tools 暴露策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    exposure: Optional[Literal["none", "explicit_only", "all"]] = None
 
 
 class AgentSdkPromptConfig(BaseModel):
@@ -386,14 +404,17 @@ class AgentSdkPromptConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    profile: Literal["default_agent", "generation_direct", "structured_transform"] = Field(default="default_agent")
     template: str = Field(default="default")
     system_text: Optional[str] = None
     developer_text: Optional[str] = None
     system_path: Optional[str] = None
     developer_path: Optional[str] = None
-    include_skills_list: bool = True
+    include_skills_list: Optional[bool] = None
     include_cwd_tree: bool = False
+    skill_injection: AgentSdkPromptSkillInjectionConfig = Field(default_factory=AgentSdkPromptSkillInjectionConfig)
     history: AgentSdkPromptHistoryConfig = Field(default_factory=AgentSdkPromptHistoryConfig)
+    tools: AgentSdkPromptToolsConfig = Field(default_factory=AgentSdkPromptToolsConfig)
 
 
 class AgentSdkConfig(BaseModel):

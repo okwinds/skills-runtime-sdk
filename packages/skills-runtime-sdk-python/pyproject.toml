@@ -36,7 +36,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"skills_runtime.assets" = ["default.yaml", "prompts/default/*.md", "migrations/pgsql/*.sql"]
+"skills_runtime.assets" = ["default.yaml", "prompts/*/*.md", "migrations/pgsql/*.sql"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
