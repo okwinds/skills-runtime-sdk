@@ -261,10 +261,12 @@ PromptManager 负责：
 - system/developer 模板选择
 - skills 注入（可开关）
 - 历史滑窗裁剪（messages/chars）
+- 应用 prompt profile（`default_agent`、`generation_direct`、`structured_transform`），决定是否暴露 skills list、skill body、history 与 provider tools
+- 在 `template: default` 且未显式提供 system/developer 文本或路径时，选择 profile 对应的内置 prompt 模板
 
 ### 8.4.1 固定注入顺序（为什么重要）
 
-Prompt 的注入顺序是固定的，这样你才能定位“prompt 为何变了”（减少漂移）：
+Prompt 的注入顺序是固定的，这样你才能定位“prompt 为何变了”（减少漂移）。下面是 `default_agent` 基线；`generation_direct` 等 profile 可在发起请求前关闭 skills list、skill 注入、history 或 provider tools。
 
 1) system template
 2) developer policy（为了兼容 chat.completions，会合并到 system）

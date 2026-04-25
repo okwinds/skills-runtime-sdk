@@ -265,10 +265,12 @@ Code:
 - choosing system/developer templates
 - injecting skills (toggleable)
 - trimming history with sliding windows (messages/chars)
+- applying prompt profiles (`default_agent`, `generation_direct`, `structured_transform`) to decide whether skills list, skill bodies, history, and provider tools are exposed
+- selecting profile-specific built-in prompt templates when `template: default` is used without explicit system/developer text or paths
 
 ### 8.4.1 Fixed injection order (why it matters)
 
-Prompt injection order is fixed so you can reason about prompt drift:
+Prompt injection order is fixed so you can reason about prompt drift. The list below is the `default_agent` baseline; profiles such as `generation_direct` can turn off the skills list, injected skills, history, or provider tools before the request is sent.
 
 1) system template
 2) developer policy (merged into system for chat.completions compatibility)

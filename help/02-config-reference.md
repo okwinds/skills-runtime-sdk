@@ -120,11 +120,60 @@ Recommended values (for default `max_bytes=1MiB`):
 
 ### `prompt`
 
+- `profile`: `default_agent|generation_direct|structured_transform`
+  - `default_agent` keeps the coding/tool-agent baseline: developer policy, skills list, history, and all currently enabled/registered provider tools are exposed by default.
+  - `generation_direct` is for low-noise production text generation: no coding/TDD developer policy, no full skills list, explicit skill mentions only, no history, and no provider tools by default.
+  - `structured_transform` is for extraction/transformation tasks: no full skills list, summary-style explicit skill injection, no history, and no provider tools by default.
 - `template`
 - `system_text/developer_text`
 - `system_path/developer_path`
-- `include_skills_list`
+- When `template: default` and none of `system_text`, `developer_text`, `system_path`, or `developer_path` is set, `generation_direct` and `structured_transform` automatically use their matching built-in prompt templates instead of the default agent template.
+- `include_skills_list`: `null` means "use the profile default"; set `true|false` to override.
+- `skill_injection.mode`: `all|explicit_only|none`
+- `skill_injection.render`: `body|method_only|summary|none`
+- `history.mode`: `none|compacted|full`; `null` means "use the profile default".
+- In the current release, `history.mode: compacted` is a reserved mode with the same runtime behavior as `full`: both use the sliding-window `max_messages` / `max_chars` trimming path, while debug metadata preserves the selected mode. Automatic summary compaction can be added later without changing the config shape.
 - `history.max_messages / history.max_chars`
+- `tools.exposure`: `none|explicit_only|all`; this controls the provider `tools[]`, not just the prompt text. `explicit_only` matches exact registered tool names in the current request text (`task` + `user_input`), such as `file_read`; natural-language phrases like "read a file" do not expose tools automatically.
+
+Low-noise generation agent example:
+
+```yaml
+config_version: 1
+
+prompt:
+  profile: "generation_direct"
+  system_text: "Write polished customer-facing copy that follows the requested brief."
+  developer_text: ""
+  # Optional overrides; these are already the generation_direct defaults:
+  include_skills_list: false
+  skill_injection:
+    mode: "explicit_only"
+    render: "body"
+  history:
+    mode: "none"
+  tools:
+    exposure: "none"
+```
+
+Use `generation_direct` when the host app wants direct generation rather than agentic/tool behavior.
+Keep `default_agent` for coding/repo agents that need tools, history, and the available-skills list.
+
+Setting any of `system_text`, `developer_text`, `system_path`, or `developer_path` makes the prompt template explicit. In that case, profile-specific built-in template auto-selection no longer applies; the profile still controls skills list, skill injection, history, and tools exposure.
+
+Structured transformation agent example:
+
+```yaml
+config_version: 1
+
+prompt:
+  profile: "structured_transform"
+  # Optional: omit system/developer fields to use the built-in structured_transform template.
+  history:
+    mode: "none"
+  tools:
+    exposure: "none"
+```
 
 ## 2.4 Dev-friendly recommended config (low interruption)
 

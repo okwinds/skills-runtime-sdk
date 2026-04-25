@@ -120,11 +120,60 @@ SDK 运行时有效配置可来自四层（高到低）：
 
 ### `prompt`
 
+- `profile`：`default_agent|generation_direct|structured_transform`
+  - `default_agent` 保持 coding/tool agent 基线：默认注入 developer policy、skills list、history，并向 provider 暴露当前已启用/已注册的 provider tools。
+  - `generation_direct` 面向低噪音生产文本生成：默认不注入 coding/TDD developer policy、不注入全量 skills list、只注入显式 mention 的 skill、不注入 history、不向 provider 暴露 tools。
+  - `structured_transform` 面向抽取/转换任务：默认不注入全量 skills list，显式 skill 以 summary 形态注入，不注入 history，不向 provider 暴露 tools。
 - `template`
 - `system_text/developer_text`
 - `system_path/developer_path`
-- `include_skills_list`
+- 当 `template: default` 且没有设置 `system_text`、`developer_text`、`system_path`、`developer_path` 时，`generation_direct` 与 `structured_transform` 会自动使用同名内置 prompt 模板，而不是继续使用 default agent 模板。
+- `include_skills_list`：`null` 表示使用 profile 默认值；写 `true|false` 可显式覆盖。
+- `skill_injection.mode`：`all|explicit_only|none`
+- `skill_injection.render`：`body|method_only|summary|none`
+- `history.mode`：`none|compacted|full`；`null` 表示使用 profile 默认值。
+- 当前版本中，`history.mode: compacted` 是预留模式，运行时行为与 `full` 相同：两者都走 `max_messages` / `max_chars` 滑窗裁剪路径，但 debug 元数据会保留所选模式。自动摘要压缩可在后续版本接入，而不需要改变配置形态。
 - `history.max_messages / history.max_chars`
+- `tools.exposure`：`none|explicit_only|all`；该字段控制 provider `tools[]`，不只是 prompt 文本。`explicit_only` 按当前请求文本（`task` + `user_input`）中的精确注册 tool name 匹配，例如 `file_read`；“读取文件”这类自然语言不会自动暴露工具。
+
+低噪音生成 agent 示例：
+
+```yaml
+config_version: 1
+
+prompt:
+  profile: "generation_direct"
+  system_text: "Write polished customer-facing copy that follows the requested brief."
+  developer_text: ""
+  # 以下字段已是 generation_direct 默认值，仅在需要显式覆盖时填写：
+  include_skills_list: false
+  skill_injection:
+    mode: "explicit_only"
+    render: "body"
+  history:
+    mode: "none"
+  tools:
+    exposure: "none"
+```
+
+当宿主应用需要 direct generation，而不是 agentic/tool 行为时，使用 `generation_direct`。
+coding/repo agent 仍使用 `default_agent`，保留 tools、history 与 available-skills list。
+
+只要设置了 `system_text`、`developer_text`、`system_path`、`developer_path` 中任一字段，prompt 模板就视为显式配置。此时不再触发 profile 同名内置模板自动选择；profile 仍会控制 skills list、skill 注入、history 和 tools 暴露。
+
+结构化转换 agent 示例：
+
+```yaml
+config_version: 1
+
+prompt:
+  profile: "structured_transform"
+  # 可省略 system/developer 字段，直接使用内置 structured_transform 模板。
+  history:
+    mode: "none"
+  tools:
+    exposure: "none"
+```
 
 ## 2.4 开发环境推荐配置（低打扰）
 
