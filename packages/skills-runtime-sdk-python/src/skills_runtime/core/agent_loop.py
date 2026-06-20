@@ -254,6 +254,11 @@ class AgentLoop:
                         message=f"budget exceeded: max_wall_time_sec={session.loop.max_wall_time_sec}"
                     )
                     return
+                if session.loop.is_turn_budget_exceeded():
+                    session.finalizer.emit_budget_exceeded(
+                        message=f"budget exceeded: max_turns={session.loop.max_turns}"
+                    )
+                    return
                 turn_id = session.loop.next_turn_id()
                 result = await session.turn_orchestrator.run_turn(
                     ctx=session.ctx,

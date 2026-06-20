@@ -28,9 +28,11 @@ class LoopController:
     字段：
     - max_steps：最大允许执行的 tool call 次数（仅统计“实际开始执行”的 tool call）
     - max_wall_time_sec：wall time 预算（None 表示不限制）
+    - max_turns：turn 预算（None 表示不限制；0 表示首轮前立即耗尽）
     - started_monotonic：起始 monotonic 时间戳（用于 wall time 计算）
     - cancel_checker：取消检测回调（返回 True 表示应尽快停止；异常时 fail-open）
     - denied_approvals_by_key：同一 approval_key 的 denied 次数统计（用于 loop guard）
+    - denied_approvals_by_tool：同一 tool 的 denied 次数统计（用于变参 loop guard）
     """
 
     max_steps: int
@@ -38,12 +40,16 @@ class LoopController:
     started_monotonic: float
     cancel_checker: Optional[Callable[[], bool]] = None
     denied_approvals_by_key: Dict[str, int] = None  # type: ignore[assignment]
+    denied_approvals_by_tool: Dict[str, int] = None  # type: ignore[assignment]
+    max_turns: Optional[int] = None
 
     def __post_init__(self) -> None:
         """初始化内部计数器与默认字段。"""
 
         if self.denied_approvals_by_key is None:
             self.denied_approvals_by_key = {}
+        if self.denied_approvals_by_tool is None:
+            self.denied_approvals_by_tool = {}
         self._turn = 0
         self._step = 0
         self._steps_executed = 0
@@ -85,6 +91,11 @@ class LoopController:
         elapsed = time.monotonic() - float(self.started_monotonic)
         return elapsed > float(self.max_wall_time_sec)
 
+    def is_turn_budget_exceeded(self) -> bool:
+        """检查 turn 预算是否耗尽（未配置则返回 False）。"""
+
+        return self.max_turns is not None and self._turn >= int(self.max_turns)
+
     def try_consume_tool_step(self) -> bool:
         """
         尝试消耗一次 tool call 执行预算（max_steps）。
@@ -103,34 +114,52 @@ class LoopController:
         self._steps_executed += 1
         return True
 
-    def record_denied_approval(self, approval_key: str) -> int:
+    def record_denied_approval(self, *, approval_key: Optional[str] = None, tool: Optional[str] = None) -> None:
         """
-        记录一次 approval denied，并返回该 key 的累计 denied 次数。
+        记录一次 denied，并按 approval_key / tool 两个维度累计。
 
         参数：
-        - approval_key：审批缓存 key
-
-        返回：
-        - denied 次数（包含本次）
+        - approval_key：审批缓存 key；None/空串不入桶
+        - tool：工具名；None/空串不入桶
         """
 
-        k = str(approval_key or "")
-        self.denied_approvals_by_key[k] = int(self.denied_approvals_by_key.get(k, 0)) + 1
-        return int(self.denied_approvals_by_key.get(k, 0))
+        if approval_key is not None:
+            k = str(approval_key)
+            if k:
+                self.denied_approvals_by_key[k] = int(self.denied_approvals_by_key.get(k, 0)) + 1
+        if tool is not None:
+            t = str(tool)
+            if t:
+                self.denied_approvals_by_tool[t] = int(self.denied_approvals_by_tool.get(t, 0)) + 1
 
-    def should_abort_due_to_repeated_denial(self, *, approval_key: str, threshold: int = 2) -> bool:
+    def should_abort_due_to_repeated_denial(
+        self,
+        *,
+        approval_key: Optional[str] = None,
+        tool: Optional[str] = None,
+        key_threshold: int = 2,
+        tool_threshold: int = 5,
+    ) -> bool:
         """
-        判断是否应因同一 approval_key 的重复 denied 而中止（loop guard）。
+        判断是否应因同一 approval_key 或同一 tool 的重复 denied 而中止（loop guard）。
 
         参数：
-        - approval_key：审批缓存 key
-        - threshold：阈值（默认 2；即第二次 denied 触发中止）
+        - approval_key：审批缓存 key；None/空串不参与 key 级判断
+        - tool：工具名；None/空串不参与 tool 级判断
+        - key_threshold：key 级阈值（默认 2）
+        - tool_threshold：tool 级阈值（默认 5）
 
         返回：
         - True：应中止
         - False：继续
         """
 
-        k = str(approval_key or "")
-        return int(self.denied_approvals_by_key.get(k, 0)) >= int(threshold)
-
+        if approval_key is not None:
+            k = str(approval_key)
+            if k and int(self.denied_approvals_by_key.get(k, 0)) >= int(key_threshold):
+                return True
+        if tool is not None:
+            t = str(tool)
+            if t and int(self.denied_approvals_by_tool.get(t, 0)) >= int(tool_threshold):
+                return True
+        return False

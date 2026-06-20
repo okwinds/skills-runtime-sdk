@@ -153,6 +153,23 @@ async def process_pending_tool_calls(
             )
             ctx.history.append({"role": "tool", "tool_call_id": call.call_id, "content": denied_result.content})
             denied_results[call.call_id] = denied_result
+            loop.record_denied_approval(tool=call.name)
+            if loop.should_abort_due_to_repeated_denial(tool=call.name):
+                ctx.emit_event(
+                    AgentEvent(
+                        type="run_failed",
+                        timestamp=now_rfc3339(),
+                        run_id=ctx.run_id,
+                        payload={
+                            "error_kind": "policy_denied",
+                            "message": "Tool was denied by policy repeatedly; aborting to prevent an infinite loop.",
+                            "retryable": False,
+                            "wal_locator": ctx.wal_locator,
+                            "details": {"tool": call.name},
+                        },
+                    )
+                )
+                return False
             continue
 
         requires_approval = policy_decision.action == "ask"
@@ -221,7 +238,7 @@ async def process_pending_tool_calls(
                 return False
 
             if decision == ApprovalDecision.DENIED:
-                loop.record_denied_approval(approval_key)
+                loop.record_denied_approval(approval_key=approval_key, tool=call.name)
                 denied_payload = ToolResultPayload(
                     ok=False,
                     stdout="",
@@ -265,7 +282,7 @@ async def process_pending_tool_calls(
                     )
                     return False
 
-                if loop.should_abort_due_to_repeated_denial(approval_key=approval_key):
+                if loop.should_abort_due_to_repeated_denial(approval_key=approval_key, tool=call.name):
                     ctx.emit_event(
                         AgentEvent(
                             type="run_failed",

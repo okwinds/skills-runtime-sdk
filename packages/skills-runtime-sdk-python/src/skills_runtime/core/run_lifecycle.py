@@ -221,6 +221,7 @@ class RunBootstrap:
             started_monotonic=time.monotonic(),
             cancel_checker=self._cancel_checker,
             denied_approvals_by_key=dict(resume.resume_replay_denied or {}),
+            max_turns=self._config.run.max_turns,
         )
         run_env_store: Dict[str, str] = dict(self._env_store or {})
         initial_env_keys = set(run_env_store.keys())

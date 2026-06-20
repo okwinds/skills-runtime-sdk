@@ -131,37 +131,40 @@ class TestIsCancelled:
 # ---------------------------------------------------------------------------
 
 class TestDeniedApprovals:
-    def test_first_denial_returns_one(self) -> None:
+    def test_first_denial_records_key_count(self) -> None:
         c = _make()
-        assert c.record_denied_approval("key_a") == 1
+        assert c.record_denied_approval(approval_key="key_a") is None
+        assert c.denied_approvals_by_key["key_a"] == 1
 
-    def test_second_denial_returns_two(self) -> None:
+    def test_second_denial_records_key_count(self) -> None:
         c = _make()
-        c.record_denied_approval("key_a")
-        assert c.record_denied_approval("key_a") == 2
+        c.record_denied_approval(approval_key="key_a")
+        c.record_denied_approval(approval_key="key_a")
+        assert c.denied_approvals_by_key["key_a"] == 2
 
     def test_different_keys_are_independent(self) -> None:
         c = _make()
-        c.record_denied_approval("key_a")
-        c.record_denied_approval("key_a")
-        assert c.record_denied_approval("key_b") == 1
+        c.record_denied_approval(approval_key="key_a")
+        c.record_denied_approval(approval_key="key_a")
+        c.record_denied_approval(approval_key="key_b")
+        assert c.denied_approvals_by_key["key_b"] == 1
 
     def test_should_abort_below_threshold(self) -> None:
         c = _make()
-        c.record_denied_approval("key_a")  # count = 1
-        assert c.should_abort_due_to_repeated_denial(approval_key="key_a", threshold=2) is False
+        c.record_denied_approval(approval_key="key_a")  # count = 1
+        assert c.should_abort_due_to_repeated_denial(approval_key="key_a", key_threshold=2) is False
 
     def test_should_abort_at_threshold(self) -> None:
         c = _make()
-        c.record_denied_approval("key_a")
-        c.record_denied_approval("key_a")  # count = 2
-        assert c.should_abort_due_to_repeated_denial(approval_key="key_a", threshold=2) is True
+        c.record_denied_approval(approval_key="key_a")
+        c.record_denied_approval(approval_key="key_a")  # count = 2
+        assert c.should_abort_due_to_repeated_denial(approval_key="key_a", key_threshold=2) is True
 
     def test_should_abort_above_threshold(self) -> None:
         c = _make()
         for _ in range(5):
-            c.record_denied_approval("key_a")
-        assert c.should_abort_due_to_repeated_denial(approval_key="key_a", threshold=2) is True
+            c.record_denied_approval(approval_key="key_a")
+        assert c.should_abort_due_to_repeated_denial(approval_key="key_a", key_threshold=2) is True
 
     def test_should_abort_unknown_key_returns_false(self) -> None:
         c = _make()
@@ -169,22 +172,25 @@ class TestDeniedApprovals:
 
     def test_default_threshold_is_two(self) -> None:
         c = _make()
-        c.record_denied_approval("k")
+        c.record_denied_approval(approval_key="k")
         assert c.should_abort_due_to_repeated_denial(approval_key="k") is False
-        c.record_denied_approval("k")
+        c.record_denied_approval(approval_key="k")
         assert c.should_abort_due_to_repeated_denial(approval_key="k") is True
 
     def test_independent_default_dict_across_instances(self) -> None:
         c1 = _make()
         c2 = _make()
-        c1.record_denied_approval("k")
-        c1.record_denied_approval("k")
+        c1.record_denied_approval(approval_key="k", tool="tool_a")
+        c1.record_denied_approval(approval_key="k", tool="tool_a")
         assert c2.denied_approvals_by_key == {}
+        assert c2.denied_approvals_by_tool == {}
 
-    def test_none_approval_key_normalised_to_empty_string(self) -> None:
+    def test_none_and_empty_denial_values_are_ignored(self) -> None:
         c = _make()
-        c.record_denied_approval(None)  # type: ignore[arg-type]
-        assert c.denied_approvals_by_key.get("") == 1
+        c.record_denied_approval(approval_key=None, tool=None)
+        c.record_denied_approval(approval_key="", tool="")
+        assert c.denied_approvals_by_key == {}
+        assert c.denied_approvals_by_tool == {}
 
 
 # ---------------------------------------------------------------------------
