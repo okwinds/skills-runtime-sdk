@@ -72,3 +72,40 @@ async def test_async_iter_normal_stream_unchanged() -> None:
     async for ev in run_stream_async_iter(_NormalLoop(), "task", run_id="r", initial_history=None):
         events.append(ev)
     assert [e.type for e in events] == ["run_started", "run_completed"]
+
+
+class _LongLoop:
+    """伪 loop：持续发事件不结束，模拟消费者中途 break 的场景。"""
+
+    async def _run_stream_async(
+        self, task: str, *, run_id: Optional[str], initial_history: Optional[List[Any]], emit: Any
+    ) -> None:
+        # 模拟长 run：循环发事件，被 cancel 时退出（await 抛 CancelledError）。
+        try:
+            while True:
+                emit(AgentEvent(type="tool_call_requested", timestamp="t", run_id=run_id or "r", payload={}))
+                # 让出控制权，允许消费者消费 + cancel 传播。
+                import asyncio
+
+                await asyncio.sleep(0)
+        except BaseException:
+            # runner 被 cancel 时收 CancelledError；不向外抛（由 stream_adapters 统一处理）。
+            raise
+
+
+@pytest.mark.asyncio
+async def test_async_iter_early_break_does_not_raise_cancelled() -> None:
+    """消费者提前 break（干净的中途退出）不应向消费者抛 CancelledError。
+
+    回归护栏：BL-038 早先版本会在 break→t.cancel()→runner 收 CancelledError→finally re-raise，
+    把干净退出变成异常抛出。
+    """
+
+    events = []
+    # 消费首个事件后立即 break
+    async for ev in run_stream_async_iter(_LongLoop(), "task", run_id="r", initial_history=None):
+        events.append(ev)
+        break
+    assert len(events) == 1
+    # break 后 async for 正常结束（GeneratorExit 收尾），不应抛 CancelledError
+    # （若抛出，此测试会以 CancelledError 失败）

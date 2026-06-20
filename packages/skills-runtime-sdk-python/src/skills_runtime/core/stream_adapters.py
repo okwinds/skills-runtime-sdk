@@ -171,8 +171,12 @@ async def run_stream_async_iter(
             with contextlib.suppress(BaseException):
                 await asyncio.gather(t, return_exceptions=True)
         # 传播后台异常：不得让启动期/运行期失败静默为空流（对齐 run_stream_sync 的 err_q 语义）。
+        # 但排除消费者早退（break/GeneratorExit）触发 t.cancel() 产生的 CancelledError —— 那不是 runner
+        # 真实失败，干净的中途退出不应向消费者抛异常。
         if runner_exc:
-            raise runner_exc[0]
+            exc = runner_exc[0]
+            if not isinstance(exc, (asyncio.CancelledError, GeneratorExit)):
+                raise exc
 
 
 __all__ = ["RunSyncSummary", "run_sync", "run_stream_sync", "run_stream_async_iter"]
