@@ -40,6 +40,7 @@ class RunContext:
     compactions_performed: int = 0
     compaction_artifacts: List[str] = field(default_factory=list)
     terminal_notices: List[Dict[str, Any]] = field(default_factory=list)
+    _last_terminal_state: Optional[str] = None
 
     max_steps: int = 100
     max_wall_time_sec: Optional[float] = None
@@ -51,9 +52,31 @@ class RunContext:
     increase_budget_extra_steps: int = 50
     increase_budget_extra_wall_time_sec: int = 300
 
-    def emit_event(self, ev: AgentEvent) -> None:
-        """统一事件出口：WAL append（如启用）→ hooks → stream（保持顺序一致）。"""
+    # 终态事件 type → 终态名映射（在 emit_event 收口统一设置，覆盖所有终态来源）。
+    _TERMINAL_STATE_BY_TYPE: Dict[str, str] = field(
+        default_factory=lambda: {
+            "run_completed": "completed",
+            "run_cancelled": "cancelled",
+            "run_failed": "failed",
+            "run_waiting_human": "waiting_human",
+        }
+    )
 
+    @property
+    def last_terminal_state(self) -> Optional[str]:
+        """只读：本 run 最近一次终态事件对应的终态名（completed/cancelled/failed/waiting_human），未到终态为 None。"""
+
+        return self._last_terminal_state
+
+    def emit_event(self, ev: AgentEvent) -> None:
+        """统一事件出口：WAL append（如启用）→ hooks → stream（保持顺序一致）。
+
+        同时按 event.type 收口记录终态（覆盖 RunFinalizer / tool_orchestration 直接 emit 的所有路径）。
+        """
+
+        terminal = self._TERMINAL_STATE_BY_TYPE.get(str(ev.type))
+        if terminal is not None:
+            self._last_terminal_state = terminal
         self.wal_emitter.emit(ev)
 
     def emit_cancelled(self) -> None:

@@ -22,12 +22,15 @@ import select
 import subprocess
 import time
 import signal
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol, runtime_checkable
 
 
 _CLOSE_GRACE_SEC = 0.2
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -38,6 +41,7 @@ class ExecSession:
     proc: subprocess.Popen[bytes]
     master_fd: int
     created_at_ms: int
+    run_id: Optional[str] = None
 
 
 @dataclass
@@ -79,6 +83,7 @@ class ExecSessionManager:
         cwd: Path,
         env: Optional[Mapping[str, str]] = None,
         tty: bool = True,
+        run_id: Optional[str] = None,
     ) -> ExecSession:
         """
         启动一个新的 exec session。
@@ -88,6 +93,7 @@ class ExecSessionManager:
         - cwd：工作目录
         - env：环境变量（会覆盖父进程同名项）
         - tty：是否分配 TTY（当前实现始终使用 PTY；该字段仅为协议占位）
+        - run_id：归属 run id（用于 run 结束时按 run 清理，避免跨 run 误杀）
 
         返回：
         - ExecSession：包含 session_id/proc/master_fd
@@ -125,7 +131,9 @@ class ExecSessionManager:
 
         sid = self._next_id
         self._next_id += 1
-        session = ExecSession(session_id=sid, proc=proc, master_fd=master_fd, created_at_ms=int(time.time() * 1000))
+        session = ExecSession(
+            session_id=sid, proc=proc, master_fd=master_fd, created_at_ms=int(time.time() * 1000), run_id=run_id
+        )
         self._sessions[sid] = session
         return session
 
@@ -257,10 +265,41 @@ class ExecSessionManager:
         self._cleanup_session(sid)
 
     def close_all(self) -> None:
-        """关闭所有 session（用于 run 结束清理）。"""
+        """关闭所有 session（用于 run 结束清理）。
+
+        fail-soft：单个 session 清理异常不中断其余清理。
+        """
 
         for sid in list(self._sessions.keys()):
-            self.close(sid)
+            try:
+                self.close(sid)
+            except Exception:  # 防御性兜底：close 已处理 OSError/TimeoutExpired，此处兜底其他异常。
+                logger.warning("close_all: failed to close session %s", sid, exc_info=True)
+
+    def close_all_for_run(self, run_id: Optional[str]) -> int:
+        """关闭归属指定 run 的 session（run-scoped 清理）。
+
+        参数：
+        - run_id：run 标识；None 时为 no-op（不退化为 close_all，避免跨 run 误杀）。
+
+        返回：
+        - 实际关闭的 session 数。
+        """
+
+        if run_id is None:
+            logger.warning("close_all_for_run: run_id is None, skipping (no-op to avoid cross-run kill)")
+            return 0
+        closed = 0
+        for sid in list(self._sessions.keys()):
+            session = self._sessions.get(sid)
+            if session is None or session.run_id != run_id:
+                continue
+            try:
+                self.close(sid)
+                closed += 1
+            except Exception:  # fail-soft：单 session 异常不中断其余清理。
+                logger.warning("close_all_for_run: failed to close session %s", sid, exc_info=True)
+        return closed
 
     def _cleanup_session(self, sid: int) -> None:
         """
@@ -295,12 +334,14 @@ class ExecSessionsProvider(Protocol):
         cwd: Path,
         env: Optional[Mapping[str, str]] = None,
         tty: bool = True,
+        run_id: Optional[str] = None,
     ) -> Any:
         """
         启动一个新的 exec session（协议）。
 
         参数：
         - argv/cwd/env/tty：语义同 `ExecSessionManager.spawn`
+        - run_id：归属 run id（persistent 实现可忽略；in-process 用于 run-scoped 清理）
         """
 
         ...
@@ -374,6 +415,7 @@ class PersistentExecSessionManager:
         cwd: Path,
         env: Optional[Mapping[str, str]] = None,
         tty: bool = True,
+        run_id: Optional[str] = None,
     ) -> ExecSessionRef:
         """
         启动一个新的跨进程 session（PTY）。
@@ -383,8 +425,10 @@ class PersistentExecSessionManager:
         - cwd：工作目录
         - env：环境变量（会覆盖 server 进程同名项）
         - tty：是否分配 TTY（占位；当前 server 总是 PTY）
+        - run_id：归属 run id（persistent 路径当前忽略；run-scoped 清理列入 backlog）
         """
 
+        _ = run_id  # persistent 路径不按 run 清理（backlog）；接受参数以与 in-process 签名对齐。
         params: dict[str, Any] = {"argv": list(argv), "cwd": str(Path(cwd).resolve()), "tty": bool(tty)}
         if env is not None:
             params["env"] = {str(k): str(v) for k, v in dict(env).items()}

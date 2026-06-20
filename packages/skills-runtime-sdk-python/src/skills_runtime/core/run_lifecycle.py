@@ -9,6 +9,7 @@ Run lifecycle 内部对象：RunBootstrap / RunSession / RunFinalizer。
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from skills_runtime.config.loader import AgentSdkConfig
 from skills_runtime.core.context_recovery import handle_context_length_exceeded
 from skills_runtime.core.contracts import AgentEvent
-from skills_runtime.core.exec_sessions import ExecSessionsProvider
+from skills_runtime.core.exec_sessions import ExecSessionManager, ExecSessionsProvider
 from skills_runtime.core.executor import Executor
 from skills_runtime.core.loop_controller import LoopController
 from skills_runtime.core.resume_builder import prepare_resume
@@ -38,6 +39,8 @@ from skills_runtime.tools.dispatcher import ToolDispatcher
 from skills_runtime.tools.protocol import HumanIOProvider, ToolSpec
 from skills_runtime.tools.registry import ToolExecutionContext, ToolRegistry
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class RunSession:
@@ -55,6 +58,28 @@ class RunSession:
     finalizer: "RunFinalizer"
     run_env_store: Dict[str, str]
     builtin_tool_names: frozenset[str]
+    exec_sessions: Optional[ExecSessionManager] = None
+
+    def cleanup_exec_sessions(self) -> None:
+        """run 结束时清理本 run 拥有的 in-process exec session。
+
+        约束：
+        - 仅当终态为 completed/cancelled/failed 时清理（budget 耗尽实际 emit run_failed → failed）；
+          waiting_human（可恢复暂停）或 None（未到终态异常路径）不清理。
+        - manager 为 None（run 未用 in-process manager，如 persistent 路径）时跳过。
+        - 清理异常不覆盖既有终态事件（仅 logging.error）。
+        """
+
+        manager = self.exec_sessions
+        if manager is None:
+            return
+        terminal = self.ctx.last_terminal_state
+        if terminal not in {"completed", "cancelled", "failed"}:
+            return
+        try:
+            manager.close_all_for_run(self.run_id)
+        except Exception:  # 防御性兜底：清理不得覆盖既有终态事件。
+            logger.error("cleanup_exec_sessions: failed for run %s", self.run_id, exc_info=True)
 
 
 class RunBootstrap:
@@ -302,6 +327,7 @@ class RunBootstrap:
             finalizer=finalizer,
             run_env_store=run_env_store,
             builtin_tool_names=builtin_tool_names,
+            exec_sessions=self._exec_sessions if isinstance(self._exec_sessions, ExecSessionManager) else None,
         )
 
 

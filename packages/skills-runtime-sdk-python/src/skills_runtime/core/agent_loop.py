@@ -307,3 +307,4 @@ class AgentLoop:
             return
         finally:
             session.finalizer.merge_new_env_vars()
+            session.cleanup_exec_sessions()
