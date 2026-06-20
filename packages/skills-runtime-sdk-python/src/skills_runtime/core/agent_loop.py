@@ -306,5 +306,7 @@ class AgentLoop:
             session.finalizer.emit_failed(e)
             return
         finally:
-            session.finalizer.merge_new_env_vars()
+            # 资源释放优先于簿记：先清理 exec session（PTY/进程组），再合并 env vars，
+            # 避免 env merge 异常时跳过资源清理导致进程泄漏。
             session.cleanup_exec_sessions()
+            session.finalizer.merge_new_env_vars()

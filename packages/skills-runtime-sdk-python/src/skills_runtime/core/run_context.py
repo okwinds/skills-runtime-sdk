@@ -17,6 +17,15 @@ from skills_runtime.core.utils import now_rfc3339
 from skills_runtime.state.wal_emitter import WalEmitter
 from skills_runtime.state.wal_protocol import WalBackend
 
+# 终态事件 type → 终态名映射（在 emit_event 收口统一设置，覆盖所有终态来源）。
+# 模块常量：避免每实例副本与构造参数注入泄漏。
+_TERMINAL_STATE_BY_TYPE: Dict[str, str] = {
+    "run_completed": "completed",
+    "run_cancelled": "cancelled",
+    "run_failed": "failed",
+    "run_waiting_human": "waiting_human",
+}
+
 
 @dataclass
 class RunContext:
@@ -40,7 +49,7 @@ class RunContext:
     compactions_performed: int = 0
     compaction_artifacts: List[str] = field(default_factory=list)
     terminal_notices: List[Dict[str, Any]] = field(default_factory=list)
-    _last_terminal_state: Optional[str] = None
+    _last_terminal_state: Optional[str] = field(default=None, init=False, repr=False)
 
     max_steps: int = 100
     max_wall_time_sec: Optional[float] = None
@@ -51,16 +60,6 @@ class RunContext:
     compaction_keep_last_messages: int = 10
     increase_budget_extra_steps: int = 50
     increase_budget_extra_wall_time_sec: int = 300
-
-    # 终态事件 type → 终态名映射（在 emit_event 收口统一设置，覆盖所有终态来源）。
-    _TERMINAL_STATE_BY_TYPE: Dict[str, str] = field(
-        default_factory=lambda: {
-            "run_completed": "completed",
-            "run_cancelled": "cancelled",
-            "run_failed": "failed",
-            "run_waiting_human": "waiting_human",
-        }
-    )
 
     @property
     def last_terminal_state(self) -> Optional[str]:
@@ -74,7 +73,7 @@ class RunContext:
         同时按 event.type 收口记录终态（覆盖 RunFinalizer / tool_orchestration 直接 emit 的所有路径）。
         """
 
-        terminal = self._TERMINAL_STATE_BY_TYPE.get(str(ev.type))
+        terminal = _TERMINAL_STATE_BY_TYPE.get(str(ev.type))
         if terminal is not None:
             self._last_terminal_state = terminal
         self.wal_emitter.emit(ev)

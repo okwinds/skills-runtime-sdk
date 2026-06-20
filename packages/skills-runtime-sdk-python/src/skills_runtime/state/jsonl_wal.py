@@ -30,6 +30,9 @@ except ImportError:  # pragma: no cover - 非 POSIX 平台兜底
 
 # 终态事件集合：这些事件落盘后才视为 run 持久化完成，MUST fsync。
 # delta 类事件（如 llm_response_delta、tool_call_started）只需 flush，不强制 fsync。
+# 注：budget 耗尽实际经 RunContext.emit_budget_exceeded 以 type="run_failed" +
+# payload.error_kind="budget_exceeded" 发出（见 run_context.py），"budget_exceeded"
+# type 当前无直接 emit 点，保留于此为前瞻性兜底（若未来直接 emit 该 type 仍触发 fsync）。
 _TERMINAL_EVENT_TYPES: frozenset[str] = frozenset({
     "run_completed",
     "run_failed",
@@ -92,11 +95,21 @@ class JsonlWal:
         self._lock_fh: Optional[TextIO] = self._lock_path.open("a+", encoding="utf-8")
         # 复用同一文件句柄，避免每次 append 打开/关闭文件造成额外 syscalls。
         self._fh: Optional[TextIO] = self.path.open("a", encoding="utf-8")
-        if was_missing:
-            self._fsync_parent_directory()
-        self._repair_truncated_tail()
-        self._next_index = self._scan_next_index()
-        self._observed_signature = self._stat_signature()
+        try:
+            if was_missing:
+                self._fsync_parent_directory()
+            self._repair_truncated_tail()
+            self._next_index = self._scan_next_index()
+            self._observed_signature = self._stat_signature()
+        except BaseException:
+            # 构造期 I/O（repair/fsync/scan）失败时关闭已打开句柄，避免泄漏 + 半构造对象。
+            for fh in (self._fh, self._lock_fh):
+                try:
+                    if fh is not None and not fh.closed:
+                        fh.close()
+                except OSError:
+                    pass
+            raise
 
     def locator(self) -> str:
         """

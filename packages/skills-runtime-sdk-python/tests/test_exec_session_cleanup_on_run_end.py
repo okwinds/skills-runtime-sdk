@@ -52,13 +52,16 @@ def test_spawn_records_run_id_and_close_all_for_run_filters(tmp_path: Path) -> N
         mgr.close_all()
 
 
-def test_close_all_for_run_none_is_noop(tmp_path: Path) -> None:
+def test_close_all_for_run_none_is_noop(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     mgr = ExecSessionManager()
     s = mgr.spawn(argv=["python", "-c", "import time;time.sleep(30)"], cwd=tmp_path, run_id="run-a")
     try:
-        closed = mgr.close_all_for_run(None)
+        with caplog.at_level("WARNING", logger="skills_runtime.core.exec_sessions"):
+            closed = mgr.close_all_for_run(None)
         assert closed == 0
         assert mgr.has(s.session_id)  # None 不退化，不清理任何 session
+        # 钉死规格 P0-3 契约 2：None → no-op + logging.warning
+        assert "run_id is None" in caplog.text
     finally:
         mgr.close_all()
 
@@ -184,6 +187,19 @@ def test_cleanup_on_completed(tmp_path: Path) -> None:
     assert not mgr.has(s.session_id)
 
 
+def test_cleanup_on_cancelled(tmp_path: Path) -> None:
+    """钉死 P0-3 AC：run_cancelled 终态后 exec session 被清理。"""
+
+    ctx = _make_ctx(tmp_path, run_id="run-a")
+    mgr = ExecSessionManager()
+    s = mgr.spawn(argv=["python", "-c", "import time;time.sleep(30)"], cwd=tmp_path, run_id="run-a")
+    session = _make_run_session(ctx, mgr)
+    ctx.emit_event(AgentEvent(type="run_cancelled", timestamp="t", run_id="run-a", payload={}))
+    assert ctx.last_terminal_state == "cancelled"
+    session.cleanup_exec_sessions()
+    assert not mgr.has(s.session_id)
+
+
 def test_cleanup_on_failed_includes_denial_abort(tmp_path: Path) -> None:
     """denial-abort 直接 emit run_failed（不经具名 setter），收口仍应覆盖。"""
 
@@ -262,3 +278,5 @@ def test_cleanup_fail_soft_does_not_raise(tmp_path: Path, monkeypatch) -> None: 
     monkeypatch.setattr(mgr, "close_all_for_run", _boom)
     # 不抛，吞异常
     session.cleanup_exec_sessions()
+    # 钉死 P0-3 AC：清理异常不覆盖既有终态事件
+    assert ctx.last_terminal_state == "completed"
