@@ -18,9 +18,10 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Optional, TextIO
+from typing import BinaryIO, Iterator, Optional, TextIO
 
 from skills_runtime.core.contracts import AgentEvent
+from skills_runtime.core.errors import StateError
 
 try:
     import fcntl
@@ -36,6 +37,31 @@ _TERMINAL_EVENT_TYPES: frozenset[str] = frozenset({
     "run_waiting_human",
     "budget_exceeded",
 })
+_TAIL_SCAN_BLOCK_SIZE = 64 * 1024
+_CORRUPT_LINE_SNIPPET_LIMIT = 200
+
+
+class WalCorruptError(StateError):
+    """WAL 中已换行落盘的 JSON 行损坏，读取方必须 fail-loud。"""
+
+    def __init__(self, *, path: Path, line_no: int, snippet: str, cause: Exception) -> None:
+        """
+        创建 WAL 损坏异常。
+
+        参数：
+        - path：损坏 WAL 文件路径；
+        - line_no：1-based 行号；
+        - snippet：原始行片段，已由调用方做截断展示；
+        - cause：底层 JSON 解析异常。
+        """
+
+        super().__init__(
+            f"WAL corrupt line (path={path} line={line_no} snippet={snippet!r}): {cause}"
+        )
+        self.path = Path(path)
+        self.line_no = int(line_no)
+        self.snippet = snippet
+        self.cause = cause
 
 
 @dataclass
@@ -60,13 +86,17 @@ class JsonlWal:
 
         self.path = Path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        was_missing = not self.path.exists()
         self._lock = threading.RLock()
         self._lock_path = self.path.with_name(f"{self.path.name}.lock")
         self._lock_fh: Optional[TextIO] = self._lock_path.open("a+", encoding="utf-8")
-        self._next_index = self._scan_next_index()
-        self._observed_signature = self._stat_signature()
         # 复用同一文件句柄，避免每次 append 打开/关闭文件造成额外 syscalls。
         self._fh: Optional[TextIO] = self.path.open("a", encoding="utf-8")
+        if was_missing:
+            self._fsync_parent_directory()
+        self._repair_truncated_tail()
+        self._next_index = self._scan_next_index()
+        self._observed_signature = self._stat_signature()
 
     def locator(self) -> str:
         """
@@ -101,6 +131,120 @@ class JsonlWal:
         except FileNotFoundError:
             return (0, 0)
         return (int(st.st_size), int(getattr(st, "st_mtime_ns", 0)))
+
+    def _run_id_for_log(self) -> str:
+        """返回用于 WAL 修复日志的 run_id 近似值。"""
+
+        return self.path.parent.name or "unknown"
+
+    def _fsync_parent_directory(self) -> None:
+        """
+        新建 WAL 文件后 best-effort fsync 父目录，持久化目录项。
+
+        平台不支持目录 fd 或 fsync 失败时只记录 warning，不阻断 WAL 初始化。
+        """
+
+        fd: Optional[int] = None
+        try:
+            fd = os.open(self.path.parent, os.O_RDONLY)
+            os.fsync(fd)
+        except OSError as exc:
+            logging.warning(
+                "WAL parent directory fsync skipped (path=%s parent=%s): %s",
+                self.path,
+                self.path.parent,
+                exc,
+            )
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError as exc:
+                    logging.warning(
+                        "WAL parent directory close after fsync skipped (path=%s parent=%s): %s",
+                        self.path,
+                        self.path.parent,
+                        exc,
+                    )
+
+    def _repair_truncated_tail(self) -> None:
+        """
+        持锁修复 WAL 尾部真半行。
+
+        只按字节级换行边界判断完整行：无换行尾部会被截断；带换行但 JSON
+        不可解析的行保留给 `iter_events()` 抛 `WalCorruptError`。
+        """
+
+        with self._lock:
+            with self._process_append_lock():
+                self._repair_truncated_tail_locked()
+                self._observed_signature = self._stat_signature()
+
+    def _repair_truncated_tail_locked(self) -> None:
+        """在已持有线程锁和进程锁时执行尾部半行截断。"""
+
+        if not self.path.exists():
+            return
+
+        with self.path.open("r+b") as repair_fh:
+            repair_fh.seek(0, os.SEEK_END)
+            file_size = repair_fh.tell()
+            if file_size == 0:
+                return
+
+            last_newline_pos = self._find_last_newline_pos(repair_fh, file_size)
+            run_id = self._run_id_for_log()
+            if last_newline_pos is None:
+                repair_fh.truncate(0)
+                logging.warning(
+                    "WAL truncated whole half-line file (path=%s run_id=%s truncated_bytes=%s)",
+                    self.path,
+                    run_id,
+                    file_size,
+                )
+                return
+
+            truncate_at = last_newline_pos + 1
+            truncated_bytes = file_size - truncate_at
+            if truncated_bytes <= 0:
+                return
+
+            repair_fh.truncate(truncate_at)
+            logging.warning(
+                "WAL truncated tail half-line (path=%s run_id=%s truncated_bytes=%s)",
+                self.path,
+                run_id,
+                truncated_bytes,
+            )
+
+    def _find_last_newline_pos(self, fh: BinaryIO, file_size: int) -> Optional[int]:
+        """
+        从文件尾按块向前查找最后一个换行字节的位置。
+
+        参数：
+        - fh：以二进制读写方式打开的 WAL 句柄；
+        - file_size：当前文件大小，单位字节。
+        """
+
+        cursor = file_size
+        while cursor > 0:
+            read_size = min(_TAIL_SCAN_BLOCK_SIZE, cursor)
+            cursor -= read_size
+            fh.seek(cursor)
+            block = fh.read(read_size)
+            offset = block.rfind(b"\n")
+            if offset >= 0:
+                return cursor + offset
+        return None
+
+    def _format_corrupt_snippet(self, raw_line: str) -> str:
+        """返回用于异常消息的原始行截断片段。"""
+
+        snippet = raw_line.rstrip("\n").rstrip("\r")
+        snippet = snippet.replace("\r", "\\r").replace("\n", "\\n")
+        if len(snippet) > _CORRUPT_LINE_SNIPPET_LIMIT:
+            return f"{snippet[:_CORRUPT_LINE_SNIPPET_LIMIT]}..."
+        return snippet
 
     @contextlib.contextmanager
     def _process_append_lock(self):
@@ -178,9 +322,21 @@ class JsonlWal:
                     try:
                         obj = json.loads(line)
                     except Exception as exc:
-                        logging.warning("WAL line is not valid JSON (path=%s line=%s): %s", self.path, line_no, exc)
-                        invalid_json_lines += 1
-                        continue
+                        if not raw_line.endswith("\n"):
+                            logging.warning(
+                                "WAL trailing half-line is not valid JSON; skipped (path=%s line=%s): %s",
+                                self.path,
+                                line_no,
+                                exc,
+                            )
+                            invalid_json_lines += 1
+                            continue
+                        raise WalCorruptError(
+                            path=self.path,
+                            line_no=line_no,
+                            snippet=self._format_corrupt_snippet(raw_line),
+                            cause=exc,
+                        ) from exc
 
                     # 前向兼容：允许未来 writer 增加未知顶层字段；读取时忽略未知字段，避免崩溃整段迭代。
                     if not isinstance(obj, dict):
