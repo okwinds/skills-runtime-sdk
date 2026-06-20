@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from skills_runtime.safety.descriptors import (
+    parse_shellish_command_to_argv as _parse_shellish_command_to_argv,
+)
 from skills_runtime.safety.guard import CommandRisk, evaluate_command_risk
 from skills_runtime.skills.mentions import extract_skill_mentions
 
@@ -32,47 +35,6 @@ def _format_argv(argv: list[str]) -> str:
     """
 
     return " ".join(shlex.quote(x) for x in argv)
-
-
-def _parse_shellish_command_to_argv(command: str) -> tuple[list[str], bool, str]:
-    """
-    将 “shell string” 尽力解析为 argv（用于 allowlist/denylist 与 risk 评估）。
-
-    约束与动机：
-    - `shell_command` / `exec_command` 使用 `/bin/sh -lc <command>` 执行；
-      若直接把 wrapper argv 交给 policy，会导致 allowlist/denylist 永远匹配不到（cmd0 会变成 /bin/sh）。
-    - 但 shell string 可能包含管道/重定向/控制符等语法；这类命令应被视为“复杂”，即使 allowlist 命中也建议走 approvals（避免 `pytest && rm -rf /` 误放行）。
-
-    返回：
-    - argv：解析结果（可能为空）
-    - is_complex：是否疑似包含 shell 控制语法（建议强制 approvals）
-    - reason：用于审计/调试的简短原因（不用于执行）
-    """
-
-    s = str(command or "")
-    if not s.strip():
-        return [], True, "empty command"
-
-    # fast path：明显复杂语法（best-effort；宁可误判为复杂，也不要误判为简单）
-    if "\n" in s or "`" in s or "$(" in s:
-        return [], True, "shell metacharacters detected"
-
-    try:
-        argv = shlex.split(s)
-    except ValueError:
-        return [], True, "shlex split failed"
-
-    if not argv:
-        return [], True, "empty argv after parse"
-
-    # 若出现典型控制符/管道/重定向，则视为复杂命令（禁止 allowlist 直通）
-    control_tokens = {"&&", "||", ";", "|", "|&", "&"}
-    for tok in argv:
-        if tok in control_tokens:
-            return argv, True, f"control token detected: {tok}"
-        if tok.startswith(">") or tok.startswith("<"):
-            return argv, True, "redirection token detected"
-    return argv, False, "parsed"
 
 
 def _extract_env_keys(args: Dict[str, Any]) -> list[str]:

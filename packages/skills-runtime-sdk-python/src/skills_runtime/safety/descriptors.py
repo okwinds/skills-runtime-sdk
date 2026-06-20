@@ -58,7 +58,7 @@ def parse_shellish_command_to_argv(command: str) -> tuple[list[str], bool, str]:
         return [], True, "empty command"
 
     # 保守策略：复杂语法宁可误判复杂，也不误判为简单。
-    if "\n" in s or "`" in s or "$(" in s:
+    if "\n" in s or "`" in s or "$(" in s or any(ch in s for ch in ";&|><"):
         return [], True, "shell metacharacters detected"
 
     try:
