@@ -151,7 +151,7 @@ def exec_command(call: ToolCall, ctx: ToolExecutionContext) -> ToolResult:
             )
 
     try:
-        session = ctx.exec_sessions.spawn(argv=argv, cwd=exec_cwd, env=env, tty=bool(args.tty))  # type: ignore[union-attr]
+        session = ctx.exec_sessions.spawn(argv=argv, cwd=exec_cwd, env=env, tty=bool(args.tty), run_id=ctx.run_id)  # type: ignore[union-attr]
     except (OSError, RuntimeError) as e:
         return ToolResult.error_payload(error_kind="unknown", stderr=str(e))
 

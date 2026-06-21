@@ -254,6 +254,11 @@ class AgentLoop:
                         message=f"budget exceeded: max_wall_time_sec={session.loop.max_wall_time_sec}"
                     )
                     return
+                if session.loop.is_turn_budget_exceeded():
+                    session.finalizer.emit_budget_exceeded(
+                        message=f"budget exceeded: max_turns={session.loop.max_turns}"
+                    )
+                    return
                 turn_id = session.loop.next_turn_id()
                 result = await session.turn_orchestrator.run_turn(
                     ctx=session.ctx,
@@ -301,4 +306,7 @@ class AgentLoop:
             session.finalizer.emit_failed(e)
             return
         finally:
+            # 资源释放优先于簿记：先清理 exec session（PTY/进程组），再合并 env vars，
+            # 避免 env merge 异常时跳过资源清理导致进程泄漏。
+            session.cleanup_exec_sessions()
             session.finalizer.merge_new_env_vars()

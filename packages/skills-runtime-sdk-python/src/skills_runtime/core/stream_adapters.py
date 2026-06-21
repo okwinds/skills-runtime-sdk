@@ -136,6 +136,7 @@ async def run_stream_async_iter(
     """
 
     q: "asyncio.Queue[AgentEvent | None]" = asyncio.Queue()
+    runner_exc: "list[BaseException]" = []
 
     def _emit(e: AgentEvent) -> None:
         """把事件写入 asyncio queue（非阻塞）。"""
@@ -151,6 +152,8 @@ async def run_stream_async_iter(
 
         try:
             await loop._run_stream_async(task, run_id=run_id, initial_history=initial_history, emit=_emit)
+        except BaseException as e:  # 捕获并暂存，供消费者循环结束后 re-raise（fail-loud，对齐 sync err_q）。
+            runner_exc.append(e)
         finally:
             with contextlib.suppress(Exception):
                 q.put_nowait(None)
@@ -167,6 +170,13 @@ async def run_stream_async_iter(
             t.cancel()
             with contextlib.suppress(BaseException):
                 await asyncio.gather(t, return_exceptions=True)
+        # 传播后台异常：不得让启动期/运行期失败静默为空流（对齐 run_stream_sync 的 err_q 语义）。
+        # 但排除消费者早退（break/GeneratorExit）触发 t.cancel() 产生的 CancelledError —— 那不是 runner
+        # 真实失败，干净的中途退出不应向消费者抛异常。
+        if runner_exc:
+            exc = runner_exc[0]
+            if not isinstance(exc, (asyncio.CancelledError, GeneratorExit)):
+                raise exc
 
 
 __all__ = ["RunSyncSummary", "run_sync", "run_stream_sync", "run_stream_async_iter"]

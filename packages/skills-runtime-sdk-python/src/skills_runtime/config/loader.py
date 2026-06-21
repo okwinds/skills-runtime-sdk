@@ -207,6 +207,7 @@ class AgentSdkRunConfig(BaseModel):
 
     max_steps: int = Field(default=40, ge=1)
     max_wall_time_sec: Optional[int] = Field(default=None, ge=1)
+    max_turns: Optional[int] = Field(default=None, ge=0)
     human_timeout_ms: Optional[int] = Field(default=None, ge=1)
     resume_strategy: Literal["summary", "replay"] = Field(default="summary")
     context_recovery: ContextRecovery = Field(default_factory=ContextRecovery)
