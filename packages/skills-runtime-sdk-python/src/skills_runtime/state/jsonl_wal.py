@@ -85,6 +85,9 @@ class JsonlWal:
         说明：
         - `dataclass` 初始化后会调用该方法；
         - `_next_index` 通过扫描现有文件行数得到（0-based）。
+        - 构造副作用不变量：打开既有 WAL 时会持锁修复掉电产生的尾部半行
+         （`_repair_truncated_tail`），并 best-effort fsync 父目录；故构造非幂等只读。
+        - 构造期 I/O 异常会关闭已打开句柄再传播，避免半构造对象与 fd 泄漏。
         """
 
         self.path = Path(self.path)

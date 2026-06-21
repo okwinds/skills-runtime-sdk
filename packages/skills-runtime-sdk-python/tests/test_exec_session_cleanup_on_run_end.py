@@ -200,6 +200,20 @@ def test_cleanup_on_cancelled(tmp_path: Path) -> None:
     assert not mgr.has(s.session_id)
 
 
+def test_cleanup_on_budget_exceeded(tmp_path: Path) -> None:
+    """钉死 P0-3 AC 枚举项：budget_exceeded 经 emit_budget_exceeded（发 type=run_failed）→ failed 终态 → 清理。"""
+
+    ctx = _make_ctx(tmp_path, run_id="run-a")
+    mgr = ExecSessionManager()
+    s = mgr.spawn(argv=["python", "-c", "import time;time.sleep(30)"], cwd=tmp_path, run_id="run-a")
+    session = _make_run_session(ctx, mgr)
+    # emit_budget_exceeded 实际发 type="run_failed" + error_kind=budget_exceeded
+    ctx.emit_budget_exceeded(message="budget exceeded: max_turns=3")
+    assert ctx.last_terminal_state == "failed"  # 经 emit_event 收口映射
+    session.cleanup_exec_sessions()
+    assert not mgr.has(s.session_id)
+
+
 def test_cleanup_on_failed_includes_denial_abort(tmp_path: Path) -> None:
     """denial-abort 直接 emit run_failed（不经具名 setter），收口仍应覆盖。"""
 

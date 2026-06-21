@@ -192,3 +192,34 @@ def test_approval_sanitizer_shellish_parser_matches_descriptor_parser() -> None:
     assert argv == []
     assert is_complex is True
     assert reason == "shell metacharacters detected"
+
+
+class _DictDescriptor:
+    """返回 dict 的假 descriptor（模拟外部 descriptor 缺 is_complex/command 字段）。"""
+
+    policy_category = "shell"
+
+    def extract_risk(self, args, **ctx):  # type: ignore[no-untyped-def]
+        # 故意缺 is_complex 与 command 字段（gate._extract_risk 应兜底 False/None 不抛）。
+        return {"argv": ["ls"], "risk_level": "low", "reason": "ok"}
+
+    def sanitize_for_approval(self, args, **ctx):  # type: ignore[no-untyped-def]
+        return {}
+
+    def sanitize_for_event(self, args, **ctx):  # type: ignore[no-untyped-def]
+        return {}
+
+
+def test_gate_extract_risk_tolerates_descriptor_dict_missing_fields() -> None:
+    """规格 Test Plan P0-1 错误路径：descriptor 返回 dict 缺 is_complex/command → gate._extract_risk 不抛，按兜底值返回。
+
+    注：P0-1 最终方案不收紧 allowlist，policy/gate 不改；_extract_risk 保持 2 元组（argv, risk），
+    is_complex/command 不外传到 policy。本测试锁死缺字段 dict 的兜底健壮性（既有行为护栏）。
+    """
+
+    gate = SafetyGate(safety_config=_safety(mode="ask"), get_descriptor=lambda tool: _DictDescriptor())
+    call = ToolCall(call_id="c1", name="shell_command", args={"command": "ls"})
+    # 不应抛异常；argv 从 dict 取，risk_level 兜底
+    argv, risk = gate._extract_risk(gate._get_descriptor(call.name), call.args)
+    assert argv == ["ls"]
+    assert risk.risk_level == "low"

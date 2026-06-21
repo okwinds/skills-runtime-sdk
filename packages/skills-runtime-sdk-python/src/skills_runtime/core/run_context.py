@@ -19,6 +19,9 @@ from skills_runtime.state.wal_protocol import WalBackend
 
 # 终态事件 type → 终态名映射（在 emit_event 收口统一设置，覆盖所有终态来源）。
 # 模块常量：避免每实例副本与构造参数注入泄漏。
+# 注：与 jsonl_wal._TERMINAL_EVENT_TYPES（fsync 触发集）成员不同——后者含 budget_exceeded
+# （前瞻性兜底），而本表不含，因 budget 耗尽实际经 emit_budget_exceeded 以 type="run_failed"
+# 发出，由 run_failed 分支覆盖。两者语义不同（状态跟踪 vs fsync 触发），勿强行统一。
 _TERMINAL_STATE_BY_TYPE: Dict[str, str] = {
     "run_completed": "completed",
     "run_cancelled": "cancelled",

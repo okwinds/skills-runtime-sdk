@@ -69,6 +69,8 @@ def parse_shellish_command_to_argv(command: str) -> tuple[list[str], bool, str]:
     if not argv:
         return [], True, "empty argv after parse"
 
+    # 防御性兜底：上方原始串字符级检测（;&|><）已覆盖 control_tokens 与重定向，
+    # 此处理论不可达；保留作为字符级检测逻辑调整时的二次防线（安全 hot path 宁多勿少）。
     control_tokens = {"&&", "||", ";", "|", "|&", "&"}
     for tok in argv:
         if tok in control_tokens:
